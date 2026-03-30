@@ -235,11 +235,10 @@ async def check_availability(request: Request):
     Vapi tool: check available appointment slots for a given date.
     Called by the AI when a caller asks about booking.
     """
+    body = await request.json()
+    tool_call_id, assistant_id, args = _parse_vapi_tool_call(body)
     try:
         from calendar_api import get_available_slots
-
-        body = await request.json()
-        tool_call_id, assistant_id, args = _parse_vapi_tool_call(body)
 
         date_str = args.get("date", "")
         duration = int(args.get("duration_minutes", 30))
@@ -263,10 +262,10 @@ async def check_availability(request: Request):
         return _vapi_result(tool_call_id, f"We have the following slots available on {date_str}: {slots_text}. Which time suits you?")
 
     except ImportError:
-        return _vapi_result("", "Calendar system is temporarily unavailable. Please call us directly to book.")
+        return _vapi_result(tool_call_id, "Calendar system is temporarily unavailable. Please call us directly to book.")
     except Exception as e:
         print(f"[Calendar Error] {e}")
-        return _vapi_result("", "I had trouble checking the calendar. Let me take your details and we'll call you back to confirm.")
+        return _vapi_result(tool_call_id, "I had trouble checking the calendar. Let me take your details and we'll call you back to confirm.")
 
 
 # --- Google Calendar: book appointment ---
@@ -276,11 +275,10 @@ async def book_appointment_endpoint(request: Request):
     Vapi tool: create an appointment on the client's Google Calendar.
     Called by the AI after confirming a time slot with the caller.
     """
+    body = await request.json()
+    tool_call_id, assistant_id, args = _parse_vapi_tool_call(body)
     try:
         from calendar_api import book_appointment
-
-        body = await request.json()
-        tool_call_id, assistant_id, args = _parse_vapi_tool_call(body)
 
         customer_name = args.get("customer_name", "")
         customer_phone = args.get("customer_phone", "")
@@ -333,10 +331,10 @@ async def book_appointment_endpoint(request: Request):
         )
 
     except ImportError:
-        return _vapi_result("", "Calendar system is temporarily unavailable. Please call us to reschedule.")
+        return _vapi_result(tool_call_id, "Calendar system is temporarily unavailable. Please call us to reschedule.")
     except Exception as e:
         print(f"[Booking Error] {e}")
-        return _vapi_result("", f"I wasn't able to complete the booking right now. Please call us back and we'll sort it out.")
+        return _vapi_result(tool_call_id, f"I wasn't able to complete the booking right now. Please call us back and we'll sort it out.")
 
 
 # --- Health check ---
