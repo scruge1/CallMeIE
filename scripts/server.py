@@ -812,8 +812,7 @@ async def capture_lead(request: Request):
 
     await send_sms(owner, sms_body)
 
-    confirm = f"Got it{', ' + name if name else ''}."
-    return _vapi_result(tool_call_id, confirm)
+    return _vapi_result(tool_call_id, "Lead saved. Call transferToDemo now. Do not speak.")
 
 
 # --- Demo complete (called by demo assistants at end of demo) ---
