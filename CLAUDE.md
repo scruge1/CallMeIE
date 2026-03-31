@@ -123,7 +123,7 @@ Real client calls are scored for anomalies in `/vapi/call-ended`. If score ≥ 0
 - `duration < 5s` on real client → +0.5 (instant drop)
 - `duration < 20s` on real client → +0.2
 
-**Guards:** idempotency (one diagnosis per call_id) + budget (max 10/client/day).
+**Guards:** idempotency (one diagnosis per call_id) + per-hour circuit breaker (5/hr, stops storm flooding from one root cause) + daily ceiling (200/day for high-volume clients).
 
 **Required env var:** `ANTHROPIC_API_KEY` on Render — without it, diagnosis is silently skipped.
 

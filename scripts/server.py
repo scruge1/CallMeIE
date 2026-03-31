@@ -61,7 +61,8 @@ ADMIN_TOKEN = os.environ.get("ADMIN_TOKEN", "changeme")
 # --- Anomaly diagnostics (Claude API) ---
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 ANOMALY_THRESHOLD = 0.7   # min score to invoke Claude
-ANOMALY_BUDGET_PER_DAY = 10  # max Claude calls per client per day
+ANOMALY_BUDGET_PER_HOUR = 5   # circuit breaker — stops storm flooding (same root cause)
+ANOMALY_BUDGET_PER_DAY = 200  # daily ceiling for a busy high-volume client
 GOOGLE_SA_EMAIL = os.environ.get("GOOGLE_SA_EMAIL", "callmeie-receptionist@callme-ie.iam.gserviceaccount.com")
 
 # --- Client registry (env var fallback for manually-configured clients) ---
@@ -228,13 +229,22 @@ async def diagnose_call_anomaly(
             if existing:
                 return  # already diagnosed
 
-            # --- Daily budget per assistant ---
-            used = conn.execute("""
+            # --- Per-hour circuit breaker (stops storm flooding from one root cause) ---
+            used_hour = conn.execute("""
+                SELECT COUNT(*) AS n FROM call_diagnostics
+                WHERE assistant = ? AND created_at > datetime('now', '-1 hour')
+            """, (assistant_id,)).fetchone()["n"]
+            if used_hour >= ANOMALY_BUDGET_PER_HOUR:
+                print(f"[Diag] Hour circuit breaker for {assistant_name} ({used_hour}/hr)")
+                return
+
+            # --- Daily ceiling (high-volume clients) ---
+            used_day = conn.execute("""
                 SELECT COUNT(*) AS n FROM call_diagnostics
                 WHERE assistant = ? AND created_at > datetime('now', '-1 day')
             """, (assistant_id,)).fetchone()["n"]
-            if used >= ANOMALY_BUDGET_PER_DAY:
-                print(f"[Diag] Budget exhausted for {assistant_name} ({used}/day)")
+            if used_day >= ANOMALY_BUDGET_PER_DAY:
+                print(f"[Diag] Daily ceiling for {assistant_name} ({used_day}/day)")
                 return
     except Exception as e:
         print(f"[Diag] DB check failed: {e}")
