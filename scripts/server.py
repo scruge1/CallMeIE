@@ -33,15 +33,15 @@ from fastapi.responses import FileResponse, JSONResponse
 
 sys.path.insert(0, os.path.dirname(__file__))
 
-app = FastAPI(title="CallMe.ie — AI Receptionist Server")
+app = FastAPI(title="CallMeIE — AI Receptionist Server")
 
 # CORS — allow the onboarding form and landing page to POST to this server
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "https://callmeie.github.io",
-        "https://callme.ie",
-        "https://www.callme.ie",
+        "https://callmeie.ie",
+        "https://www.callmeie.ie",
     ],
     allow_methods=["GET", "POST"],
     allow_headers=["Content-Type"],
@@ -453,7 +453,7 @@ async def capture_lead(request: Request):
     owner = client.get("owner", OWNER_NUMBER)
 
     # SMS the owner
-    msg_parts = ["[CallMe.ie Lead]"]
+    msg_parts = ["[CallMeIE Lead]"]
     if name:    msg_parts.append(name)
     if phone:   msg_parts.append(phone)
     if business: msg_parts.append(business)
@@ -517,7 +517,7 @@ async def submit_onboarding(request: Request):
 
     # SMS 1: headline alert
     alert = (
-        f"[CallMe.ie] NEW CLIENT: {business_name} ({business_type})\n"
+        f"[CallMeIE] NEW CLIENT: {business_name} ({business_type})\n"
         f"Contact: {contact_name} {contact_phone}\n"
         f"Plan: {plan}\n"
         f"Email: {contact_email}"
@@ -700,7 +700,7 @@ async def provision(submission_id: int, token: str = Query("")):
 
     # SMS owner
     await send_sms(OWNER_NUMBER,
-        f"[CallMe.ie] Provisioned: {sub['business_name']}\n"
+        f"[CallMeIE] Provisioned: {sub['business_name']}\n"
         f"Assistant ID: {assistant_id}\n"
         f"Next: share calendar + assign phone number."
     )
