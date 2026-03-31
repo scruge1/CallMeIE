@@ -58,6 +58,12 @@
   #main { display: none; }
   .assist-id { font-size: 0.72rem; font-family: monospace; color: #475569;
                background: #0f172a; padding: 2px 6px; border-radius: 4px; }
+  .health-ok     { color: #4ade80; }
+  .health-quiet  { color: #fbbf24; }
+  .health-errors { color: #ef4444; }
+  .health-dead   { color: #475569; }
+  .stat-row { display: flex; gap: 16px; font-size: 0.78rem; color: #64748b; margin-top: 6px; }
+  .stat-row span strong { color: #94a3b8; }
   /* Call log */
   .call-group { background: #1e293b; border: 1px solid #334155; border-radius: 10px;
                 margin-bottom: 12px; overflow: hidden; }
@@ -351,37 +357,76 @@ async function loadSubmissions() {
 }
 
 async function loadClients() {
-  const res = await fetch(`${BASE}/admin/api/clients?token=${TOKEN}`);
-  if (!res.ok) return;
-  const data = await res.json();
+  const [clientsRes, healthRes] = await Promise.all([
+    fetch(`${BASE}/admin/api/clients?token=${TOKEN}`),
+    fetch(`${BASE}/admin/api/health?token=${TOKEN}`),
+  ]);
+  if (!clientsRes.ok) return;
+  const clients = await clientsRes.json();
+  const healthData = healthRes.ok ? await healthRes.json() : [];
+  const healthMap = {};
+  for (const h of healthData) healthMap[h.assistant_id] = h;
+
   const el = document.getElementById('clientsSection');
-  if (data.length === 0) {
-    el.innerHTML = '<div class="empty">No provisioned clients yet.</div>';
+
+  // Show demo system health even if no real clients yet
+  const allEntries = [...clients];
+  const HEALTH_ICON = { ok: '🟢', quiet: '🟡', errors: '🔴', dead: '⚫' };
+  const HEALTH_LABEL = { ok: 'Active', quiet: 'Quiet', errors: 'Errors', dead: 'No data' };
+
+  // Demo health summary
+  const demoEntries = healthData.filter(h => h.is_demo);
+  const demoHtml = demoEntries.length ? `
+    <div class="card" style="border-color:#1e3a5f">
+      <div class="biz-name" style="color:#64748b;font-size:0.85rem;margin-bottom:10px">Demo System Health (7 days)</div>
+      ${demoEntries.map(h => `
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid #1a2535;font-size:0.8rem">
+          <span>${HEALTH_ICON[h.health]} ${esc(h.name)}</span>
+          <span class="health-${h.health}" style="font-size:0.72rem">
+            ${h.calls_7d} calls · ${h.leads_7d} leads · ${h.bookings_7d} bookings
+            ${h.errors_7d > 0 ? `· <span style="color:#ef4444">${h.errors_7d} errors</span>` : ''}
+          </span>
+        </div>
+      `).join('')}
+    </div>
+  ` : '';
+
+  if (clients.length === 0) {
+    el.innerHTML = demoHtml + '<div class="empty" style="margin-top:8px">No provisioned clients yet.</div>';
     return;
   }
-  el.innerHTML = data.map(c => `
+
+  el.innerHTML = demoHtml + clients.map(c => {
+    const h = healthMap[c.assistant_id] || {};
+    const healthIcon = HEALTH_ICON[h.health] || '⚫';
+    const healthLabel = HEALTH_LABEL[h.health] || 'No data';
+    const healthCls = `health-${h.health || 'dead'}`;
+    return `
     <div class="card">
       <div class="card-header">
         <div>
           <div class="biz-name">${esc(c.name)}</div>
           <span class="status-badge status-${c.status}" style="margin-top:4px;display:inline-block">${c.status}</span>
+          <span class="${healthCls}" style="font-size:0.78rem;margin-left:8px">${healthIcon} ${healthLabel}</span>
         </div>
         <div style="font-size:0.75rem;color:#475569;text-align:right">${fmtDate(c.created_at)}</div>
       </div>
-      <div class="meta">
-        <strong>Assistant ID:</strong><br>
+      ${h.calls_7d !== undefined ? `
+      <div class="stat-row">
+        <span><strong>7d calls:</strong> ${h.calls_7d}</span>
+        <span><strong>Bookings:</strong> ${h.bookings_7d}</span>
+        <span><strong>Leads:</strong> ${h.leads_7d}</span>
+        ${h.errors_7d > 0 ? `<span style="color:#ef4444"><strong>Errors:</strong> ${h.errors_7d}</span>` : ''}
+        ${h.last_event ? `<span><strong>Last:</strong> ${fmtDate(h.last_event)}</span>` : ''}
+      </div>` : ''}
+      <div class="meta" style="margin-top:8px">
         <span class="assist-id">${c.assistant_id}</span>
       </div>
-      <div class="meta">
-        <strong>Owner #:</strong> ${c.owner_phone || '—'} ·
-        <strong>From #:</strong> ${c.from_number || '—'}<br>
-        <strong>Calendar:</strong> ${c.calendar_id || 'primary'}
+      <div class="actions" style="margin-top:8px">
+        <button class="btn btn-sms" onclick="copyText('${c.assistant_id}')">Copy ID</button>
       </div>
-      <div class="actions">
-        <button class="btn btn-sms" onclick="copyText('${c.assistant_id}')">Copy assistant ID</button>
-      </div>
-    </div>
-  `).join('');
+    </div>`;
+  }).join('');
 }
 
 async function provision(id) {

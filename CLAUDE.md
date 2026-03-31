@@ -122,25 +122,59 @@ api("PATCH", f"/assistant/{assistant_id}", {
 
 ---
 
-## Peer Role
+## Peer Role — General Manager
 
-When running as the CallMeIE ops peer:
+This peer oversees ALL clients, not just the demo system. Every provisioned client is your responsibility.
 
-**Autonomous (no approval needed):**
-- Read call logs and diagnose issues
-- Research new business verticals for demo expansion
-- Draft new system prompts for demo assistants
-- Write scripts for client setup
+### On every session start:
+1. Read CLAUDE.md + SYSTEM.md
+2. Hit `GET /admin/api/health?token=TOKEN` — check every client's status
+3. Flag anything with `health: errors` or `health: dead` before doing anything else
+4. Check `/admin/api/submissions` for new onboarding queue entries
 
-**Needs owner approval:**
-- PATCH any live Vapi assistant
-- Push to GitHub main
+### Health statuses and what they mean:
+| Status | Meaning | Action |
+|--------|---------|--------|
+| `ok` | Calls happening, no errors | Monitor only |
+| `quiet` | No activity for 2-5 days | Investigate — is their number assigned? |
+| `errors` | `lead-error` events in last 7 days | Check call log, fix tools |
+| `dead` | No events ever or 5+ days silent | Check Vapi assistant config, check phone number assignment |
+
+### Per-client responsibilities:
+- **Demo system:** Monitor demo call flow — Claire → transfer → demo assistant → demoComplete
+- **Real clients:** Monitor call volume, booking success rate, missed call recovery
+- **All clients:** Catch tool stripping (tools go missing after PATCH — check `/admin/api/health`)
+
+### Anomaly patterns to watch for:
+- Client had calls yesterday, none today → phone number may have expired or been reassigned
+- `avail-check` events but 0 `booking` events → calendar not shared with service account
+- `call-ended` events but no `lead-captured` → Claire's captureLead tool may be missing
+- Client booking rate drops → check if calendar is full or service account lost access
+
+### Autonomous (no approval needed):
+- Read call logs and health data
+- Diagnose issues from event sequences
+- Research new business verticals
+- Draft system prompts and scripts (don't deploy without approval)
+- Generate weekly client digest for owner
+
+### Needs owner approval before acting:
+- PATCH any live Vapi assistant (risk: tool stripping)
+- Push to GitHub main (triggers Render redeploy)
 - Send SMS via Twilio
-- Provision a new client (involves creating Vapi assistants + billing)
+- Provision a new client
+- Change any client's phone number or calendar config
 
-**Escalate immediately via note to owner if:**
-- A demo call shows an error in the call log (missing tools, failed transfer)
-- A new submission arrives in the onboarding queue
-- A booking fails
+### Escalate immediately if:
+- Any real client has `health: errors`
+- A booking fails for a paying client
+- A new submission sits in the queue for more than 2 hours
+- Call volume for any client drops to 0 for 3+ days
 
-**Upgrade path:** Once first client revenue comes in, this peer gets its own API credits and can run scheduled monitoring (check call log hourly, flag anomalies, send weekly digest to owner).
+### Weekly digest (once scheduled):
+For each active client, report to owner:
+- Total calls, bookings, leads (7 days vs prior 7 days)
+- Any errors or anomalies
+- Suggestions: "Client X has high call volume — consider upgrading their plan"
+
+**Upgrade path:** Once first client revenue: own API credits + run hourly health checks + send weekly digest automatically.
