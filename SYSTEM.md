@@ -62,7 +62,7 @@ _(Swap to Irish +353 number once Twilio verified)_
 
 ## 4. VAPI TOOLS (Shared Tool IDs)
 
-These tools are attached to the dental demo assistant. Re-use or clone for each new client.
+All tools now live in Vapi tool library. Attached inline (no toolId) to assistants. Re-use or clone for each new client.
 
 | Tool | ID | Endpoint |
 |------|----|----------|
@@ -119,24 +119,36 @@ These tools are attached to the dental demo assistant. Re-use or clone for each 
 | `CLIENTS_JSON` | (JSON blob — see below) | Per-assistant routing |
 | `PORT` | 8080 | Auto-set by Render |
 
-**Current CLIENTS_JSON:**
+**Current CLIENTS_JSON (4 assistants, updated 2026-03-31):**
 ```json
 {
+  "adee3d89-99d8-4f58-9dc3-78c38b9f2a7c": {
+    "name": "CallMe.ie Demo",
+    "owner": "+353857863564",
+    "from": "+16617643212",
+    "calendar_id": "primary"
+  },
   "0b37deb5-2fc2-4e7b-81b1-e61e97103506": {
     "name": "Bright Smile Dental",
     "owner": "+353857863564",
     "from": "+16617643212",
     "calendar_id": "primary"
   },
-  "9d91033c-cbcc-4e30-8a57-13bef92aecd3": {
-    "name": "Bright Smile Dental",
+  "8a533a56-2ca4-486f-b328-69183b59fa41": {
+    "name": "Murphy's Motor Factors",
+    "owner": "+353857863564",
+    "from": "+16617643212",
+    "calendar_id": "primary"
+  },
+  "cce54cf3-bff2-4792-b0b4-8cfffac965ae": {
+    "name": "Riley",
     "owner": "+353857863564",
     "from": "+16617643212",
     "calendar_id": "primary"
   }
 }
 ```
-_(Add new assistant IDs here as they are created)_
+_(Add new client assistant IDs here as they are created)_
 
 ### 5d. Twilio
 
@@ -151,7 +163,7 @@ _(Add new assistant IDs here as they are created)_
 | KB | File ID | Contents | Syncs From |
 |----|---------|----------|-----------|
 | Bright Smile Dental | `f90cf5a0-e723-480b-86f6-7e5fdf4ac3c8` | Services, pricing, hours, FAQs, insurance | Static (manual update) |
-| Murphy's Motor Factors | _TBC_ | Parts categories, hours, delivery schedule, contact | Static initially |
+| Murphy's Motor Factors | `56bbdc26-c23d-42fb-909c-34e7f17ce1e6` | Parts categories, hours, delivery schedule, contact | Static (shared with dental KB — TODO: create separate KB) |
 
 ---
 
