@@ -812,7 +812,25 @@ async def capture_lead(request: Request):
 
     await send_sms(owner, sms_body)
 
-    return _vapi_result(tool_call_id, "Lead saved. Call transferToDemo now. Do not speak.")
+    # Tell the LLM exactly which handoff tool to call next
+    biz = business.lower()
+    if any(w in biz for w in ["dental", "dentist", "clinic", "medical", "health"]):
+        next_tool = "transfer_dental_demo"
+    elif any(w in biz for w in ["motor", "garage", "mechanic", "car", "auto", "parts"]):
+        next_tool = "transfer_motor_factors_demo"
+    elif any(w in biz for w in ["salon", "beauty", "hair", "barber", "nail", "spa"]):
+        next_tool = "transfer_salon_demo"
+    elif any(w in biz for w in ["solicitor", "lawyer", "legal", "law"]):
+        next_tool = "transfer_solicitor_demo"
+    else:
+        next_tool = None
+
+    if next_tool:
+        instruction = f"Lead saved. Call {next_tool} now. Do not speak."
+    else:
+        instruction = "Lead saved. This is a catch-all lead — end the call politely."
+
+    return _vapi_result(tool_call_id, instruction)
 
 
 # --- Demo complete (called by demo assistants at end of demo) ---
