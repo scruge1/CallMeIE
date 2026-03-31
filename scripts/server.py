@@ -28,7 +28,7 @@ import sys
 from datetime import datetime
 
 import httpx
-from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi import BackgroundTasks, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 
@@ -57,6 +57,11 @@ OWNER_NUMBER = os.environ.get("OWNER_NOTIFICATION_NUMBER", "")
 # --- Vapi + admin ---
 VAPI_API_KEY = os.environ.get("VAPI_API_KEY", "")
 ADMIN_TOKEN = os.environ.get("ADMIN_TOKEN", "changeme")
+
+# --- Anomaly diagnostics (Claude API) ---
+ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
+ANOMALY_THRESHOLD = 0.7   # min score to invoke Claude
+ANOMALY_BUDGET_PER_DAY = 10  # max Claude calls per client per day
 GOOGLE_SA_EMAIL = os.environ.get("GOOGLE_SA_EMAIL", "callmeie-receptionist@callme-ie.iam.gserviceaccount.com")
 
 # --- Client registry (env var fallback for manually-configured clients) ---
@@ -135,6 +140,17 @@ def init_db():
             )
         """)
         conn.execute("""
+            CREATE TABLE IF NOT EXISTS call_diagnostics (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                created_at  TEXT DEFAULT (datetime('now')),
+                call_id     TEXT UNIQUE,
+                assistant   TEXT,
+                score       REAL,
+                diagnosis   TEXT,
+                action      TEXT
+            )
+        """)
+        conn.execute("""
             CREATE TABLE IF NOT EXISTS clients (
                 id            INTEGER PRIMARY KEY AUTOINCREMENT,
                 assistant_id  TEXT UNIQUE,
@@ -164,6 +180,147 @@ def log_event(call_id: str, event_type: str, assistant: str, summary: str, detai
             conn.commit()
     except Exception as e:
         print(f"[LOG] {e}")
+
+
+def score_anomaly(status: str, duration: int, is_demo: bool) -> float:
+    """
+    Score how anomalous a call-ended event is (0.0–1.0).
+    Anything >= ANOMALY_THRESHOLD gets queued for Claude diagnosis.
+    """
+    score = 0.0
+    if status in ("missed", "no-answer"):
+        score += 0.4
+    if status == "failed":
+        score += 0.6
+    if not is_demo:
+        if duration < 5:
+            score += 0.5   # call dropped almost instantly
+        elif duration < 20:
+            score += 0.2   # very short call on a real assistant
+    return min(score, 1.0)
+
+
+async def diagnose_call_anomaly(
+    call_id: str,
+    assistant_id: str,
+    assistant_name: str,
+    status: str,
+    duration: int,
+    caller: str,
+    score: float,
+) -> None:
+    """
+    Background task: call Claude API to diagnose an anomalous call.
+    Guarded by: idempotency check + per-client daily budget.
+    Logs result to call_diagnostics + call_events.
+    SMS owner if action is required.
+    """
+    if not ANTHROPIC_API_KEY:
+        print(f"[Diag] No ANTHROPIC_API_KEY — skipping diagnosis for {call_id}")
+        return
+
+    # --- Idempotency ---
+    try:
+        with get_db() as conn:
+            existing = conn.execute(
+                "SELECT id FROM call_diagnostics WHERE call_id = ?", (call_id,)
+            ).fetchone()
+            if existing:
+                return  # already diagnosed
+
+            # --- Daily budget per assistant ---
+            used = conn.execute("""
+                SELECT COUNT(*) AS n FROM call_diagnostics
+                WHERE assistant = ? AND created_at > datetime('now', '-1 day')
+            """, (assistant_id,)).fetchone()["n"]
+            if used >= ANOMALY_BUDGET_PER_DAY:
+                print(f"[Diag] Budget exhausted for {assistant_name} ({used}/day)")
+                return
+    except Exception as e:
+        print(f"[Diag] DB check failed: {e}")
+        return
+
+    # --- Pull last 10 events for context ---
+    context_lines = []
+    try:
+        with get_db() as conn:
+            events = conn.execute("""
+                SELECT event_type, summary, created_at FROM call_events
+                WHERE call_id = ? ORDER BY created_at ASC LIMIT 10
+            """, (call_id,)).fetchall()
+            context_lines = [f"- [{r['created_at']}] {r['event_type']}: {r['summary']}" for r in events]
+    except Exception:
+        pass
+
+    context_str = "\n".join(context_lines) if context_lines else "(no events logged for this call)"
+
+    prompt = (
+        f"You are the operations monitor for CallMeIE, an Irish AI phone receptionist service.\n\n"
+        f"A call anomaly was detected (score {score:.2f}/1.0).\n\n"
+        f"Assistant: {assistant_name} ({assistant_id})\n"
+        f"Call ID: {call_id}\n"
+        f"Caller: {caller}\n"
+        f"Status: {status} | Duration: {duration}s\n\n"
+        f"Call event log:\n{context_str}\n\n"
+        f"In 2-3 sentences: diagnose what likely went wrong, and recommend ONE action for the owner.\n"
+        f"Format: DIAGNOSIS: <text> | ACTION: <text>"
+    )
+
+    diagnosis = ""
+    action = ""
+    try:
+        async with httpx.AsyncClient(timeout=20) as h:
+            r = await h.post(
+                "https://api.anthropic.com/v1/messages",
+                headers={
+                    "x-api-key": ANTHROPIC_API_KEY,
+                    "anthropic-version": "2023-06-01",
+                    "content-type": "application/json",
+                },
+                json={
+                    "model": "claude-haiku-4-5-20251001",
+                    "max_tokens": 200,
+                    "messages": [{"role": "user", "content": prompt}],
+                },
+            )
+        if r.status_code == 200:
+            text = r.json()["content"][0]["text"].strip()
+            if "| ACTION:" in text:
+                parts = text.split("| ACTION:", 1)
+                diagnosis = parts[0].replace("DIAGNOSIS:", "").strip()
+                action = parts[1].strip()
+            else:
+                diagnosis = text
+        else:
+            diagnosis = f"Claude API error {r.status_code}"
+            print(f"[Diag] Claude error: {r.status_code} {r.text[:200]}")
+    except Exception as e:
+        diagnosis = f"Diagnosis failed: {e}"
+        print(f"[Diag] Exception: {e}")
+
+    # --- Persist ---
+    try:
+        with get_db() as conn:
+            conn.execute(
+                "INSERT OR IGNORE INTO call_diagnostics (call_id, assistant, score, diagnosis, action) VALUES (?,?,?,?,?)",
+                (call_id, assistant_id, score, diagnosis, action),
+            )
+            conn.commit()
+        log_event(call_id, "diagnosed", assistant_id,
+                  f"score={score:.2f} | {diagnosis[:80]}",
+                  {"score": score, "diagnosis": diagnosis, "action": action})
+    except Exception as e:
+        print(f"[Diag] Persist failed: {e}")
+
+    # --- Alert owner if action needed ---
+    if action and OWNER_NUMBER:
+        await send_sms(
+            OWNER_NUMBER,
+            f"[CallMeIE Alert] {assistant_name}\n"
+            f"Anomaly (score {score:.1f}) on call from {caller}\n"
+            f"{diagnosis}\nAction: {action}",
+        )
+    print(f"[Diag] {assistant_name} | score={score:.2f} | {diagnosis[:60]}")
 
 
 def check_admin(token: str = Query("")):
@@ -215,8 +372,8 @@ async def send_sms(to: str, body: str, from_number: str = "") -> dict:
 
 # --- Vapi post-call webhook ---
 @app.post("/vapi/call-ended")
-async def call_ended(request: Request):
-    """Vapi fires this when any call ends."""
+async def call_ended(request: Request, background_tasks: BackgroundTasks):
+    """Vapi fires this when any call ends. Returns 200 immediately; anomaly diagnosis runs in background."""
     body = await request.json()
 
     call = body.get("call", body)
@@ -283,6 +440,22 @@ async def call_ended(request: Request):
             f"[{business}] {caller} called ({duration}s). Check Vapi dashboard.",
             from_number=from_num,
         )
+
+    # --- Anomaly detection (real clients only) ---
+    if not is_demo and call_id:
+        anomaly_score = score_anomaly(status, duration, is_demo=False)
+        if anomaly_score >= ANOMALY_THRESHOLD:
+            background_tasks.add_task(
+                diagnose_call_anomaly,
+                call_id=call_id,
+                assistant_id=assistant_id,
+                assistant_name=business,
+                status=status,
+                duration=duration,
+                caller=caller,
+                score=anomaly_score,
+            )
+            print(f"[Anomaly] Queued diagnosis for {business} | score={anomaly_score:.2f}")
 
     return JSONResponse({"status": "ok"})
 
@@ -968,6 +1141,17 @@ async def client_health(token: str = Query("")):
     # Real clients first, demos last
     results.sort(key=lambda x: (x["is_demo"], x["name"]))
     return results
+
+
+@app.get("/admin/api/diagnoses")
+async def list_diagnoses(token: str = Query(""), limit: int = Query(50)):
+    """Recent anomaly diagnoses — for GM peer and admin portal."""
+    check_admin(token)
+    with get_db() as conn:
+        rows = conn.execute(
+            "SELECT * FROM call_diagnostics ORDER BY created_at DESC LIMIT ?", (limit,)
+        ).fetchall()
+    return [dict(r) for r in rows]
 
 
 @app.post("/admin/api/reject/{submission_id}")
