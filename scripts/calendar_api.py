@@ -15,8 +15,13 @@ Setup per client:
 import json
 import os
 from datetime import datetime, timedelta, timezone
+try:
+    from zoneinfo import ZoneInfo
+except ImportError:
+    from backports.zoneinfo import ZoneInfo
 
 SCOPES = ["https://www.googleapis.com/auth/calendar"]
+DUBLIN_TZ = ZoneInfo("Europe/Dublin")
 
 
 def _get_service():
@@ -47,10 +52,13 @@ def get_available_slots(calendar_id: str, date_str: str, duration_minutes: int =
     """
     service = _get_service()
 
-    # Parse date, set to local midnight UTC
-    target = datetime.strptime(date_str, "%Y-%m-%d").replace(tzinfo=timezone.utc)
-    day_start = target.replace(hour=9, minute=0, second=0)   # 9am
-    day_end = target.replace(hour=17, minute=0, second=0)    # 5pm
+    # Parse date in Dublin local time (handles GMT/IST automatically)
+    target = datetime.strptime(date_str, "%Y-%m-%d")
+    day_start = target.replace(hour=9, minute=0, second=0, tzinfo=DUBLIN_TZ)
+    day_end   = target.replace(hour=17, minute=0, second=0, tzinfo=DUBLIN_TZ)
+    # Exclude 1pm–2pm lunch break
+    lunch_start = target.replace(hour=13, minute=0, second=0, tzinfo=DUBLIN_TZ)
+    lunch_end   = target.replace(hour=14, minute=0, second=0, tzinfo=DUBLIN_TZ)
 
     # Get existing events for the day
     events_result = service.events().list(
@@ -83,11 +91,15 @@ def get_available_slots(calendar_id: str, date_str: str, duration_minutes: int =
             slot_start < b_end and slot_end > b_start
             for b_start, b_end in busy_slots
         )
-        if not conflict:
+        # Also exclude lunch (1pm–2pm)
+        lunch_overlap = slot_start < lunch_end and slot_end > lunch_start
+        if not conflict and not lunch_overlap:
+            # strftime %-I is Linux-only; use lstrip("0") for cross-platform
+            hour_str = slot_start.strftime("%I:%M %p").lstrip("0")
             available.append({
                 "start": slot_start.isoformat(),
                 "end": slot_end.isoformat(),
-                "display": slot_start.strftime("%-I:%M %p"),
+                "display": hour_str,
             })
         slot_start += delta
 
