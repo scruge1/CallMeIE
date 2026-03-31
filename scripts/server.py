@@ -10,7 +10,8 @@ Endpoints:
   POST /reminder               — Send appointment reminder
   POST /no-show                — Send no-show follow-up
   POST /sync-inventory         — Sync Google Sheet to Vapi KB
-  POST /capture-lead           — Demo lead capture (Claire)
+  POST /capture-lead           — Demo lead capture (Claire) — stores in DB + SMS owner
+  POST /demo-complete          — Demo assistant end-of-demo hook — enriched owner alert
   POST /submit-onboarding      — Client onboarding form submission
   GET  /admin                  — Admin portal (protected)
   GET  /admin/api/submissions  — List pending submissions
@@ -65,6 +66,14 @@ try:
 except Exception:
     CLIENTS = {}
 
+# --- Demo assistant IDs (used to detect demo calls in webhooks) ---
+DEMO_ASSISTANT_IDS = {
+    "0b37deb5-2fc2-4e7b-81b1-e61e97103506": "dental",
+    "8a533a56-2ca4-486f-b328-69183b59fa41": "motor factors",
+    "db4ab378-cd8a-40f5-b3f9-8fcaaba408b0": "salon",
+    "7774b535-95fe-4e75-b571-dde098e2f8fb": "solicitor",
+}
+
 # --- SQLite DB ---
 DB_PATH = os.environ.get("DB_PATH", "/tmp/callmeie.db")
 
@@ -97,6 +106,21 @@ def init_db():
                 notes         TEXT,
                 vapi_assistant_id TEXT,
                 provisioned_at    TEXT
+            )
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS leads (
+                id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                created_at    TEXT DEFAULT (datetime('now')),
+                call_id       TEXT,
+                name          TEXT,
+                phone         TEXT,
+                business_type TEXT,
+                interest      TEXT,
+                source        TEXT DEFAULT 'demo',
+                demo_completed INTEGER DEFAULT 0,
+                topics_discussed TEXT,
+                interest_level   TEXT
             )
         """)
         conn.execute("""
@@ -171,12 +195,12 @@ async def call_ended(request: Request):
     """Vapi fires this when any call ends."""
     body = await request.json()
 
-    # Vapi wraps the call object differently depending on event type
     call = body.get("call", body)
     assistant_id = call.get("assistantId", "") or body.get("assistant", {}).get("id", "")
     status = call.get("status", "")
     caller = call.get("customer", {}).get("number", "")
     duration = call.get("duration", 0)
+    call_id = call.get("id", "")
 
     client = get_client(assistant_id)
     business = client["name"]
@@ -185,8 +209,37 @@ async def call_ended(request: Request):
 
     print(f"[Call] assistant={assistant_id} status={status} caller={caller} duration={duration}s")
 
-    # Missed call text-back (with GDPR opt-out)
-    if status in ("missed", "no-answer") and caller:
+    is_demo = assistant_id in DEMO_ASSISTANT_IDS
+
+    if is_demo and caller and duration > 30:
+        # Look up the captured lead for this call to get their name
+        lead = None
+        if call_id:
+            try:
+                with get_db() as conn:
+                    lead = conn.execute(
+                        "SELECT * FROM leads WHERE call_id = ? ORDER BY created_at DESC LIMIT 1",
+                        (call_id,)
+                    ).fetchone()
+            except Exception:
+                pass
+
+        name = lead["name"] if lead and lead["name"] else ""
+        greeting = f"Hi {name}! " if name else "Hi! "
+        demo_type = DEMO_ASSISTANT_IDS[assistant_id]
+
+        # Follow-up SMS to prospect
+        await send_sms(
+            caller,
+            f"{greeting}Thanks for trying the CallMeIE {demo_type} demo. "
+            f"Our team will ring you shortly to chat about getting this set up for your business. "
+            f"Reply STOP to opt out.",
+            from_number=from_num,
+        )
+        print(f"[Demo Follow-up] SMS sent to {caller} ({demo_type})")
+
+    elif not is_demo and status in ("missed", "no-answer") and caller:
+        # Regular missed call text-back for real client assistants
         await send_sms(
             caller,
             f"Hi! We missed your call to {business}. "
@@ -196,8 +249,8 @@ async def call_ended(request: Request):
         )
         print(f"[Missed Call] Text-back sent to {caller} for {business}")
 
-    # Notify business owner
-    if owner and duration > 10:
+    # Owner notification for real client calls (demo complete alerts come from /demo-complete)
+    if not is_demo and owner and duration > 10:
         await send_sms(
             owner,
             f"[{business}] {caller} called ({duration}s). Check Vapi dashboard.",
@@ -430,9 +483,9 @@ async def book_appointment_endpoint(request: Request):
 @app.post("/capture-lead")
 async def capture_lead(request: Request):
     """
-    Claire calls this when a demo prospect gives their name + number.
-    Fires an SMS to the owner immediately so no lead is lost.
-    Also returns a Vapi-compatible tool result so Claire can continue.
+    Claire calls this before transferring a demo prospect.
+    Saves lead to DB (for post-call follow-up lookup) and fires SMS to owner.
+    source="demo" for standard demo leads, source="catch_all" for custom enquiries.
     """
     body = await request.json()
     tool_call_id, assistant_id, args = _parse_vapi_tool_call(body)
@@ -441,31 +494,100 @@ async def capture_lead(request: Request):
     phone       = args.get("phone", "").strip()
     business    = args.get("business_type", "").strip()
     interest    = args.get("interest", "").strip()
+    source      = args.get("source", "demo").strip()
+    call_id     = body.get("message", {}).get("call", {}).get("id", "")
 
     if not phone:
         return _vapi_result(tool_call_id, "Could you repeat that number for me? I want to make sure I have it right.")
 
-    # Log to stdout (visible in Render logs)
-    print(f"[DEMO LEAD] {name} | {phone} | {business} | {interest}")
+    print(f"[LEAD] {source} | {name} | {phone} | {business} | {interest}")
 
-    # Route SMS to the correct owner for this assistant (multi-tenant safe)
+    # Save to DB so /vapi/call-ended and /demo-complete can look up by call_id
+    try:
+        with get_db() as conn:
+            conn.execute(
+                "INSERT INTO leads (call_id, name, phone, business_type, interest, source) VALUES (?,?,?,?,?,?)",
+                (call_id, name, phone, business, interest, source)
+            )
+            conn.commit()
+    except Exception as e:
+        print(f"[DB] Failed to save lead: {e}")
+
     client = get_client(assistant_id)
     owner = client.get("owner", OWNER_NUMBER)
 
-    # SMS the owner
-    msg_parts = ["[CallMeIE Lead]"]
-    if name:    msg_parts.append(name)
-    if phone:   msg_parts.append(phone)
-    if business: msg_parts.append(business)
-    if interest: msg_parts.append(f"Interest: {interest}")
-    msg_parts.append("Follow up today.")
+    if source == "catch_all":
+        sms_body = (
+            f"[CallMeIE Custom Lead]\n"
+            f"{name} — {phone}\n"
+            f"Business: {business}\n"
+            f"Needs: {interest}\n"
+            f"No demo match — build custom. Ring back today."
+        )
+    else:
+        msg_parts = ["[CallMeIE Lead]"]
+        if name:     msg_parts.append(name)
+        if phone:    msg_parts.append(phone)
+        if business: msg_parts.append(business)
+        if interest: msg_parts.append(f"Interest: {interest}")
+        msg_parts.append("Demo in progress.")
+        sms_body = " — ".join(msg_parts)
 
-    sms_body = " — ".join(msg_parts)
     await send_sms(owner, sms_body)
 
-    # Confirm to Claire so she can proceed to transfer
-    confirm = f"Got it — I've noted your details{', ' + name if name else ''}."
+    confirm = f"Got it{', ' + name if name else ''}."
     return _vapi_result(tool_call_id, confirm)
+
+
+# --- Demo complete (called by demo assistants at end of demo) ---
+@app.post("/demo-complete")
+async def demo_complete(request: Request):
+    """
+    Demo assistants call this just before saying goodbye.
+    Sends the owner an enriched alert: who called, what they asked, how interested.
+    """
+    body = await request.json()
+    tool_call_id, assistant_id, args = _parse_vapi_tool_call(body)
+
+    topics   = args.get("topics_discussed", "").strip()
+    interest = args.get("interest_level", "").strip()
+    call_id  = body.get("message", {}).get("call", {}).get("id", "")
+
+    demo_type = DEMO_ASSISTANT_IDS.get(assistant_id, "unknown")
+
+    # Look up and update the lead record
+    lead = None
+    if call_id:
+        try:
+            with get_db() as conn:
+                lead = conn.execute(
+                    "SELECT * FROM leads WHERE call_id = ? ORDER BY created_at DESC LIMIT 1",
+                    (call_id,)
+                ).fetchone()
+                if lead:
+                    conn.execute(
+                        "UPDATE leads SET demo_completed=1, topics_discussed=?, interest_level=? WHERE call_id=?",
+                        (topics, interest, call_id)
+                    )
+                    conn.commit()
+        except Exception as e:
+            print(f"[DB] demo_complete error: {e}")
+
+    name  = (lead["name"]  if lead and lead["name"]  else "Unknown")
+    phone = (lead["phone"] if lead and lead["phone"] else "Unknown")
+
+    heat = {"very_interested": "🔥 HOT", "curious": "🌡 WARM", "just_browsing": "❄ COLD"}.get(interest, interest)
+
+    sms = (
+        f"[CallMeIE Demo Done] {demo_type.upper()} — {heat}\n"
+        f"{name} — {phone}\n"
+        f"Asked about: {topics or 'n/a'}\n"
+        f"Ring back now."
+    )
+    await send_sms(OWNER_NUMBER, sms)
+    print(f"[Demo Complete] {demo_type} | {name} | {interest}")
+
+    return _vapi_result(tool_call_id, "noted")
 
 
 # --- Client onboarding form submission ---
