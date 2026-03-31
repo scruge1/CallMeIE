@@ -40,6 +40,8 @@ An Irish AI phone receptionist agency. We build and operate AI voice assistants 
 | **Claire** (qualifier) | `adee3d89-99d8-4f58-9dc3-78c38b9f2a7c` | +1 (661) 764-3212 (main demo line) | Greets prospects, qualifies business type, warm-transfers to niche demo |
 | **Bright Smile Dental** | `0b37deb5-2fc2-4e7b-81b1-e61e97103506` | (via squad) | Demo: Irish dental practice (booking, PRSI, medical card, emergency) |
 | **Murphy's Motor Factors** | `8a533a56-2ca4-486f-b328-69183b59fa41` | (via squad) | Demo: Irish motor factors (stock queries, pricing, delivery, hours) |
+| **City Salon (Aoife)** | `db4ab378-cd8a-40f5-b3f9-8fcaaba408b0` | (via squad) | Demo: Hair salon (booking, services, hours) |
+| **O'Brien Solicitors (Ciara)** | `7774b535-95fe-4e75-b571-dde098e2f8fb` | (via squad) | Demo: Legal firm (conveyancing, family, wills, consultations) |
 
 **Demo Squad ID:** `ff47df7a-41b8-4379-b6ab-8cad448acefd` (Vapi Squad — no extra phone numbers needed)
 **Demo number (hand to prospects):** +1 (661) 764-3212 ← Claire answers, squad routes
@@ -311,3 +313,5 @@ SMS lead alert to owner: "[CallMe.ie Lead] John Murphy, dental practice Cork —
 | 2026-03-31 | CLIENTS_JSON updated with both Vapi org IDs. toolCallId bug fixed. Calendar shared with service account. |
 | 2026-03-31 | SYSTEM.md created. Claire + Murphy's Motor Factors built. Dental updated with PRSI/medical card. Demo Squad created. +1 (661) 764-3212 now routes through squad — Claire answers, transfers to dental or motor demo. |
 | 2026-03-31 | Lead capture added to Claire (captureLead tool → /capture-lead endpoint). Onboarding form built (onboard.html → /submit-onboarding). Two new server endpoints live on next Render deploy. |
+| 2026-03-31 | Admin portal built (admin.html + SQLite queue + one-click provisioning). Scripts directory cleaned up (21→13 files). |
+| 2026-03-31 | Two new demo assistants: City Salon (Aoife, db4ab378) + O'Brien Solicitors (Ciara, 7774b535). Both in squad. Claire now routes to all 4 demos. Demo assistants renamed to simple routing names (dental/motor_factors/salon/solicitor). |
