@@ -109,6 +109,17 @@ def init_db():
             )
         """)
         conn.execute("""
+            CREATE TABLE IF NOT EXISTS call_events (
+                id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                created_at TEXT DEFAULT (datetime('now')),
+                call_id    TEXT,
+                event_type TEXT,
+                assistant  TEXT,
+                summary    TEXT,
+                detail     TEXT
+            )
+        """)
+        conn.execute("""
             CREATE TABLE IF NOT EXISTS leads (
                 id            INTEGER PRIMARY KEY AUTOINCREMENT,
                 created_at    TEXT DEFAULT (datetime('now')),
@@ -140,6 +151,19 @@ def init_db():
 
 
 init_db()
+
+
+def log_event(call_id: str, event_type: str, assistant: str, summary: str, detail: dict = None):
+    """Write a structured event to call_events for the live call log."""
+    try:
+        with get_db() as conn:
+            conn.execute(
+                "INSERT INTO call_events (call_id, event_type, assistant, summary, detail) VALUES (?,?,?,?,?)",
+                (call_id, event_type, assistant, summary, json.dumps(detail or {}))
+            )
+            conn.commit()
+    except Exception as e:
+        print(f"[LOG] {e}")
 
 
 def check_admin(token: str = Query("")):
@@ -208,6 +232,9 @@ async def call_ended(request: Request):
     from_num = client.get("from", TWILIO_FROM)
 
     print(f"[Call] assistant={assistant_id} status={status} caller={caller} duration={duration}s")
+    log_event(call_id, "call-ended", assistant_id,
+              f"{status} | {duration}s | caller:{caller}",
+              {"status": status, "duration": duration, "caller": caller})
 
     is_demo = assistant_id in DEMO_ASSISTANT_IDS
 
@@ -394,6 +421,9 @@ async def check_availability(request: Request):
 
         slots = get_available_slots(calendar_id, date_str, duration)
         print(f"[Availability] {date_str} — {len(slots)} slots for {business}")
+        log_event(call_id, "avail-check", assistant_id,
+                  f"{date_str} → {len(slots)} slots",
+                  {"date": date_str, "slots_found": len(slots), "business": business})
 
         if not slots:
             return _vapi_result(tool_call_id, f"I'm sorry, we have no availability on {date_str}. Would you like to try another date?")
@@ -466,6 +496,9 @@ async def book_appointment_endpoint(request: Request):
             )
 
         print(f"[Booking] {customer_name} at {business} — {readable}")
+        log_event(call_id, "booking", assistant_id,
+                  f"{customer_name} | {readable}",
+                  {"name": customer_name, "phone": customer_phone, "time": readable, "business": business})
         return _vapi_result(
             tool_call_id,
             f"Perfect, {customer_name}! Your appointment at {business} is confirmed for {readable}. "
@@ -498,9 +531,13 @@ async def capture_lead(request: Request):
     call_id     = body.get("message", {}).get("call", {}).get("id", "")
 
     if not phone:
+        log_event(call_id, "lead-error", assistant_id, "captureLead called but no phone provided")
         return _vapi_result(tool_call_id, "Could you repeat that number for me? I want to make sure I have it right.")
 
     print(f"[LEAD] {source} | {name} | {phone} | {business} | {interest}")
+    log_event(call_id, "lead-captured", assistant_id,
+              f"{name} | {phone} | {business} | source:{source}",
+              {"name": name, "phone": phone, "business_type": business, "interest": interest, "source": source})
 
     # Save to DB so /vapi/call-ended and /demo-complete can look up by call_id
     try:
@@ -554,6 +591,9 @@ async def demo_complete(request: Request):
     call_id  = body.get("message", {}).get("call", {}).get("id", "")
 
     demo_type = DEMO_ASSISTANT_IDS.get(assistant_id, "unknown")
+    log_event(call_id, "demo-complete", demo_type,
+              f"{interest} | {topics}",
+              {"topics_discussed": topics, "interest_level": interest, "demo_type": demo_type})
 
     # Look up and update the lead record
     lead = None
@@ -838,6 +878,16 @@ async def provision(submission_id: int, token: str = Query("")):
 
     print(f"[PROVISIONED] {sub['business_name']} → {assistant_id}")
     return {"status": "provisioned", "assistant_id": assistant_id}
+
+
+@app.get("/admin/api/events")
+async def list_events(token: str = Query(""), limit: int = Query(200)):
+    check_admin(token)
+    with get_db() as conn:
+        rows = conn.execute(
+            "SELECT * FROM call_events ORDER BY created_at DESC LIMIT ?", (limit,)
+        ).fetchall()
+    return [dict(r) for r in rows]
 
 
 @app.post("/admin/api/reject/{submission_id}")
