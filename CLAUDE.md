@@ -56,6 +56,7 @@ Vapi API key + Twilio creds: see `SYSTEM.md` Section 2 and 5c.
 | `POST /submit-onboarding` | onboard.html form |
 | `GET  /admin` | Admin portal UI |
 | `GET  /admin/api/events` | Live call log (call_events table) |
+| `GET  /admin/api/diagnoses` | Recent Claude anomaly diagnoses |
 | `GET  /admin/api/submissions` | Onboarding queue |
 | `POST /admin/api/provision/{id}` | One-click client provisioning |
 
@@ -109,6 +110,24 @@ api("PATCH", f"/assistant/{assistant_id}", {
     }
 })
 ```
+
+---
+
+## Anomaly Diagnosis (Hybrid Architecture)
+
+Real client calls are scored for anomalies in `/vapi/call-ended`. If score ≥ 0.7, a `BackgroundTasks` job calls Claude API (`claude-haiku`) to diagnose and recommend action. Result is logged to `call_diagnostics` and visible at `/admin/api/diagnoses`.
+
+**Scoring signals:**
+- `status=missed/no-answer` → +0.4
+- `status=failed` → +0.6
+- `duration < 5s` on real client → +0.5 (instant drop)
+- `duration < 20s` on real client → +0.2
+
+**Guards:** idempotency (one diagnosis per call_id) + budget (max 10/client/day).
+
+**Required env var:** `ANTHROPIC_API_KEY` on Render — without it, diagnosis is silently skipped.
+
+The GM peer (`callmeie-ops`) handles scheduled aggregate health checks. The webhook handles real-time anomalies. Together they form the full hybrid monitoring layer.
 
 ---
 
