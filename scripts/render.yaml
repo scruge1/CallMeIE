@@ -18,4 +18,10 @@ services:
         sync: false
       - key: CLIENTS_JSON
         sync: false
+      - key: VAPI_API_KEY
+        sync: false
+      - key: ADMIN_TOKEN
+        sync: false
+      - key: GOOGLE_SA_EMAIL
+        sync: false
     plan: free
