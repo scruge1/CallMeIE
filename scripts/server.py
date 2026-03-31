@@ -27,11 +27,24 @@ import sys
 
 import httpx
 from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 sys.path.insert(0, os.path.dirname(__file__))
 
 app = FastAPI(title="CallMe.ie — AI Receptionist Server")
+
+# CORS — allow the onboarding form and landing page to POST to this server
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "https://callmeie.github.io",
+        "https://callme.ie",
+        "https://www.callme.ie",
+    ],
+    allow_methods=["GET", "POST"],
+    allow_headers=["Content-Type"],
+)
 
 # --- Global Twilio fallback (used if client has no per-number config) ---
 TWILIO_SID = os.environ.get("TWILIO_ACCOUNT_SID", "")
@@ -359,8 +372,12 @@ async def capture_lead(request: Request):
     # Log to stdout (visible in Render logs)
     print(f"[DEMO LEAD] {name} | {phone} | {business} | {interest}")
 
+    # Route SMS to the correct owner for this assistant (multi-tenant safe)
+    client = get_client(assistant_id)
+    owner = client.get("owner", OWNER_NUMBER)
+
     # SMS the owner
-    msg_parts = [f"[CallMe.ie Lead]"]
+    msg_parts = ["[CallMe.ie Lead]"]
     if name:    msg_parts.append(name)
     if phone:   msg_parts.append(phone)
     if business: msg_parts.append(business)
@@ -368,7 +385,7 @@ async def capture_lead(request: Request):
     msg_parts.append("Follow up today.")
 
     sms_body = " — ".join(msg_parts)
-    await send_sms(OWNER_NUMBER, sms_body)
+    await send_sms(owner, sms_body)
 
     # Confirm to Claire so she can proceed to transfer
     confirm = f"Got it — I've noted your details{', ' + name if name else ''}."

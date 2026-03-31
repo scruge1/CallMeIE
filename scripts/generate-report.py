@@ -114,8 +114,16 @@ PEAK CALL TIMES
     for hour, count in peak_hours:
         report += f"  {hour:02d}:00 - {hour + 1:02d}:00    {count} calls\n"
 
-    # ROI estimate
-    estimated_value_per_booking = 500  # EUR, configurable
+    # ROI estimate — per-industry average appointment value
+    industry_values = {
+        "dental": 120,
+        "salon": 45,
+        "motor": 180,
+        "solicitor": 300,
+        "clinic": 200,
+        "default": 100,
+    }
+    estimated_value_per_booking = industry_values.get("default", 100)  # override per client
     roi = appointments * estimated_value_per_booking
     report += f"""
 ESTIMATED VALUE CAPTURED
