@@ -187,6 +187,13 @@ def score_anomaly(status: str, duration: int, is_demo: bool) -> float:
     """
     Score how anomalous a call-ended event is (0.0–1.0).
     Anything >= ANOMALY_THRESHOLD gets queued for Claude diagnosis.
+
+    Thresholds based on industry benchmarks:
+    - Dental/salon average call duration for booking: 60–180s
+    - <10s = almost certainly a technical failure (not a real interaction)
+    - <30s = dropped or AI confused (too short for any real booking conversation)
+    - missed/no-answer: standard SMB miss rate is 30–35%; individual events are normal
+      but combined with very short duration they signal infrastructure failure
     """
     score = 0.0
     if status in ("missed", "no-answer"):
@@ -194,10 +201,10 @@ def score_anomaly(status: str, duration: int, is_demo: bool) -> float:
     if status == "failed":
         score += 0.6
     if not is_demo:
-        if duration < 5:
-            score += 0.5   # call dropped almost instantly
-        elif duration < 20:
-            score += 0.2   # very short call on a real assistant
+        if duration < 10:
+            score += 0.5   # almost certainly technical failure — not a real interaction
+        elif duration < 30:
+            score += 0.2   # too short for any real booking conversation
     return min(score, 1.0)
 
 
@@ -589,6 +596,7 @@ async def check_availability(request: Request):
     """
     body = await request.json()
     tool_call_id, assistant_id, args = _parse_vapi_tool_call(body)
+    call_id = body.get("message", {}).get("call", {}).get("id", "")
     try:
         from calendar_api import get_available_slots
 
@@ -608,18 +616,52 @@ async def check_availability(request: Request):
                   f"{date_str} → {len(slots)} slots",
                   {"date": date_str, "slots_found": len(slots), "business": business})
 
+        # Alert if 3+ avail-checks on this call with no booking yet (calendar full or AI looping)
+        # Industry benchmark: normal booking = 1–2 checks; 3+ = something is wrong
+        if call_id:
+            try:
+                with get_db() as conn:
+                    check_count = conn.execute(
+                        "SELECT COUNT(*) AS n FROM call_events WHERE call_id=? AND event_type='avail-check'",
+                        (call_id,)
+                    ).fetchone()["n"]
+                    has_booking = conn.execute(
+                        "SELECT 1 FROM call_events WHERE call_id=? AND event_type='booking' LIMIT 1",
+                        (call_id,)
+                    ).fetchone()
+                if check_count >= 3 and not has_booking:
+                    log_event(call_id, "avail-check-loop", assistant_id,
+                              f"{check_count} checks, no booking — calendar full or AI looping",
+                              {"checks": check_count, "business": business})
+                    await send_sms(
+                        OWNER_NUMBER,
+                        f"[CallMeIE] {business}: caller checked availability {check_count} times with no booking.\n"
+                        f"Calendar may be full or the AI is looping. Check Vapi call log.",
+                    )
+            except Exception as loop_err:
+                print(f"[AvailLoop] {loop_err}")
+
         if not slots:
             return _vapi_result(tool_call_id, f"I'm sorry, we have no availability on {date_str}. Would you like to try another date?")
 
-        # Build human-readable slot list for the AI to read out
-        slot_names = [s["display"] for s in slots[:6]]  # cap at 6 to keep response short
+        slot_names = [s["display"] for s in slots[:6]]
         slots_text = ", ".join(slot_names[:-1]) + f", or {slot_names[-1]}" if len(slot_names) > 1 else slot_names[0]
         return _vapi_result(tool_call_id, f"We have the following slots available on {date_str}: {slots_text}. Which time suits you?")
 
     except ImportError:
+        log_event(call_id, "avail-check-fail", assistant_id, "calendar_api module missing")
         return _vapi_result(tool_call_id, "Calendar system is temporarily unavailable. Please call us directly to book.")
     except Exception as e:
         print(f"[Calendar Error] {e}")
+        log_event(call_id, "avail-check-fail", assistant_id, str(e)[:120],
+                  {"error": str(e)})
+        # Alert owner immediately — calendar access broken = silent revenue loss
+        await send_sms(
+            OWNER_NUMBER,
+            f"[CallMeIE] Calendar check failed for {get_client(assistant_id)['name']}.\n"
+            f"Error: {str(e)[:80]}\n"
+            f"Check Google Calendar is still shared with the service account.",
+        )
         return _vapi_result(tool_call_id, "I had trouble checking the calendar. Let me take your details and we'll call you back to confirm.")
 
 
@@ -632,6 +674,7 @@ async def book_appointment_endpoint(request: Request):
     """
     body = await request.json()
     tool_call_id, assistant_id, args = _parse_vapi_tool_call(body)
+    call_id = body.get("message", {}).get("call", {}).get("id", "")
     try:
         from calendar_api import book_appointment
 
@@ -665,12 +708,26 @@ async def book_appointment_endpoint(request: Request):
         from_num = client.get("from", TWILIO_FROM)
         owner = client.get("owner", OWNER_NUMBER)
         if customer_phone:
-            await send_sms(
+            sms_result = await send_sms(
                 customer_phone,
                 f"Hi {customer_name}! Your appointment at {business} is confirmed for {readable}. "
                 f"We look forward to seeing you. Reply STOP to opt out.",
                 from_number=from_num,
             )
+            # Every booking confirmation failure is individually significant — a patient
+            # who didn't get this text is a likely no-show (Twilio benchmark: near 100% delivery expected)
+            sms_status = sms_result.get("status", "") if isinstance(sms_result, dict) else ""
+            if sms_status in ("failed", "undelivered"):
+                log_event(call_id, "sms-fail", assistant_id,
+                          f"Booking confirmation not delivered to {customer_phone}",
+                          {"to": customer_phone, "twilio_status": sms_status, "name": customer_name})
+                if owner:
+                    await send_sms(
+                        owner,
+                        f"[CallMeIE] SMS confirmation FAILED for {customer_name} ({customer_phone}) "
+                        f"at {business} — {readable}. Ring them to confirm manually.",
+                        from_number=from_num,
+                    )
         if owner:
             await send_sms(
                 owner,
