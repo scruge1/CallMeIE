@@ -337,6 +337,100 @@ async def book_appointment_endpoint(request: Request):
         return _vapi_result(tool_call_id, f"I wasn't able to complete the booking right now. Please call us back and we'll sort it out.")
 
 
+# --- Demo lead capture (called by Claire via Vapi tool) ---
+@app.post("/capture-lead")
+async def capture_lead(request: Request):
+    """
+    Claire calls this when a demo prospect gives their name + number.
+    Fires an SMS to the owner immediately so no lead is lost.
+    Also returns a Vapi-compatible tool result so Claire can continue.
+    """
+    body = await request.json()
+    tool_call_id, assistant_id, args = _parse_vapi_tool_call(body)
+
+    name        = args.get("name", "").strip()
+    phone       = args.get("phone", "").strip()
+    business    = args.get("business_type", "").strip()
+    interest    = args.get("interest", "").strip()
+
+    if not phone:
+        return _vapi_result(tool_call_id, "Could you repeat that number for me? I want to make sure I have it right.")
+
+    # Log to stdout (visible in Render logs)
+    print(f"[DEMO LEAD] {name} | {phone} | {business} | {interest}")
+
+    # SMS the owner
+    msg_parts = [f"[CallMe.ie Lead]"]
+    if name:    msg_parts.append(name)
+    if phone:   msg_parts.append(phone)
+    if business: msg_parts.append(business)
+    if interest: msg_parts.append(f"Interest: {interest}")
+    msg_parts.append("Follow up today.")
+
+    sms_body = " — ".join(msg_parts)
+    await send_sms(OWNER_NUMBER, sms_body)
+
+    # Confirm to Claire so she can proceed to transfer
+    confirm = f"Got it — I've noted your details{', ' + name if name else ''}."
+    return _vapi_result(tool_call_id, confirm)
+
+
+# --- Client onboarding form submission ---
+@app.post("/submit-onboarding")
+async def submit_onboarding(request: Request):
+    """
+    Receives new client onboarding form data.
+    Sends owner a detailed SMS + logs full submission to stdout.
+    """
+    body = await request.json()
+
+    business_name   = body.get("business_name", "")
+    contact_name    = body.get("contact_name", "")
+    contact_phone   = body.get("contact_phone", "")
+    contact_email   = body.get("contact_email", "")
+    business_type   = body.get("business_type", "")
+    address         = body.get("address", "")
+    hours           = body.get("hours", "")
+    services        = body.get("services", "")
+    emergency_number = body.get("emergency_number", "")
+    calendar_email  = body.get("calendar_email", "")
+    plan            = body.get("plan", "")
+    faqs            = body.get("faqs", "")
+    insurance       = body.get("insurance", "")
+    ai_name         = body.get("ai_name", "")
+    notes           = body.get("notes", "")
+
+    # Log full submission (Render logs are retained)
+    print(f"[ONBOARDING] {json.dumps(body, indent=2)}")
+
+    if not business_name:
+        return JSONResponse({"error": "business_name required"}, status_code=400)
+
+    # SMS 1: headline alert
+    alert = (
+        f"[CallMe.ie] NEW CLIENT: {business_name} ({business_type})\n"
+        f"Contact: {contact_name} {contact_phone}\n"
+        f"Plan: {plan}\n"
+        f"Email: {contact_email}"
+    )
+    await send_sms(OWNER_NUMBER, alert)
+
+    # SMS 2: setup details (if emergency number and calendar provided)
+    if emergency_number or calendar_email:
+        setup = (
+            f"Setup info for {business_name}:\n"
+            f"Emergency: {emergency_number}\n"
+            f"Calendar: {calendar_email}\n"
+            f"Hours: {hours[:80] if hours else 'TBC'}"
+        )
+        await send_sms(OWNER_NUMBER, setup)
+
+    return JSONResponse({
+        "status": "received",
+        "message": f"Thanks {contact_name}! We'll have {business_name} live within 3-5 business days. We'll ring {contact_phone} to confirm.",
+    })
+
+
 # --- Health check ---
 @app.get("/health")
 async def health():
