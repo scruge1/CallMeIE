@@ -1,0 +1,705 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Get Started — CallMe.ie</title>
+<meta name="description" content="Set up your AI receptionist. Takes 5 minutes. We'll have you live within 3-5 business days.">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    background: #f8fafc;
+    color: #1e293b;
+    line-height: 1.6;
+    min-height: 100vh;
+  }
+
+  .header {
+    background: #0f172a;
+    padding: 20px 24px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .header .logo {
+    color: #22d3ee;
+    font-weight: 800;
+    font-size: 1.2rem;
+    letter-spacing: -0.3px;
+    text-decoration: none;
+  }
+  .header .tagline {
+    color: #64748b;
+    font-size: 0.85rem;
+    margin-left: auto;
+  }
+
+  .hero {
+    background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+    color: #fff;
+    padding: 48px 24px 56px;
+    text-align: center;
+  }
+  .hero h1 {
+    font-size: clamp(1.6rem, 4vw, 2.4rem);
+    font-weight: 800;
+    margin-bottom: 12px;
+    letter-spacing: -0.5px;
+  }
+  .hero h1 span { color: #22d3ee; }
+  .hero p {
+    color: #94a3b8;
+    font-size: 1rem;
+    max-width: 480px;
+    margin: 0 auto;
+  }
+  .steps {
+    display: flex;
+    justify-content: center;
+    gap: 32px;
+    margin-top: 32px;
+    flex-wrap: wrap;
+  }
+  .step {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.85rem;
+    color: #cbd5e1;
+  }
+  .step .num {
+    width: 24px;
+    height: 24px;
+    background: #22d3ee;
+    color: #0f172a;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 0.75rem;
+    flex-shrink: 0;
+  }
+
+  .container {
+    max-width: 680px;
+    margin: -24px auto 48px;
+    padding: 0 16px;
+  }
+
+  .card {
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: 16px;
+    padding: 36px;
+    margin-bottom: 16px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+  }
+
+  .section-label {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 24px;
+  }
+  .section-label .badge {
+    background: #eff6ff;
+    color: #2563eb;
+    font-size: 0.7rem;
+    font-weight: 700;
+    padding: 3px 10px;
+    border-radius: 20px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .section-label h2 {
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: #0f172a;
+  }
+
+  .field {
+    margin-bottom: 20px;
+  }
+  .field label {
+    display: block;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: #374151;
+    margin-bottom: 6px;
+  }
+  .field label .req { color: #ef4444; margin-left: 2px; }
+  .field label .hint {
+    font-weight: 400;
+    color: #9ca3af;
+    font-size: 0.8rem;
+    margin-left: 6px;
+  }
+  .field input,
+  .field select,
+  .field textarea {
+    width: 100%;
+    padding: 10px 14px;
+    border: 1.5px solid #e2e8f0;
+    border-radius: 8px;
+    font-size: 0.95rem;
+    color: #1e293b;
+    background: #fff;
+    transition: border-color 0.15s;
+    font-family: inherit;
+  }
+  .field input:focus,
+  .field select:focus,
+  .field textarea:focus {
+    outline: none;
+    border-color: #22d3ee;
+    box-shadow: 0 0 0 3px rgba(34,211,238,0.1);
+  }
+  .field textarea { resize: vertical; min-height: 80px; }
+  .field .example {
+    margin-top: 5px;
+    font-size: 0.78rem;
+    color: #94a3b8;
+  }
+
+  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 500px) { .row { grid-template-columns: 1fr; } }
+
+  .plan-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 12px;
+    margin-top: 4px;
+  }
+  .plan-option {
+    border: 2px solid #e2e8f0;
+    border-radius: 10px;
+    padding: 16px;
+    cursor: pointer;
+    transition: border-color 0.15s, background 0.15s;
+    position: relative;
+  }
+  .plan-option:hover { border-color: #22d3ee; background: #f0fdfe; }
+  .plan-option input[type="radio"] {
+    position: absolute;
+    opacity: 0;
+    width: 0;
+    height: 0;
+  }
+  .plan-option.selected {
+    border-color: #22d3ee;
+    background: #f0fdfe;
+  }
+  .plan-option .plan-name {
+    font-weight: 700;
+    font-size: 0.9rem;
+    color: #0f172a;
+  }
+  .plan-option .plan-price {
+    color: #22d3ee;
+    font-weight: 800;
+    font-size: 1.1rem;
+    margin: 4px 0;
+  }
+  .plan-option .plan-desc {
+    font-size: 0.75rem;
+    color: #64748b;
+    line-height: 1.4;
+  }
+
+  .faq-group { }
+  .faq-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-bottom: 8px;
+  }
+  .faq-row input { font-size: 0.85rem; }
+  @media (max-width: 500px) { .faq-row { grid-template-columns: 1fr; } }
+  .faq-label-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-bottom: 4px;
+  }
+  .faq-label-row span {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #9ca3af;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+  }
+  @media (max-width: 500px) { .faq-label-row { display: none; } }
+
+  .checkbox-group {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 4px;
+  }
+  .checkbox-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: #f8fafc;
+    border: 1.5px solid #e2e8f0;
+    border-radius: 6px;
+    padding: 6px 12px;
+    cursor: pointer;
+    transition: border-color 0.15s;
+    font-size: 0.85rem;
+  }
+  .checkbox-item:has(input:checked) {
+    border-color: #22d3ee;
+    background: #f0fdfe;
+    color: #0f172a;
+    font-weight: 600;
+  }
+  .checkbox-item input { cursor: pointer; accent-color: #22d3ee; }
+
+  .submit-card {
+    background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+    border-radius: 16px;
+    padding: 36px;
+    text-align: center;
+    color: #fff;
+  }
+  .submit-card h3 {
+    font-size: 1.3rem;
+    font-weight: 700;
+    margin-bottom: 8px;
+  }
+  .submit-card p {
+    color: #94a3b8;
+    font-size: 0.9rem;
+    margin-bottom: 24px;
+  }
+  .submit-btn {
+    background: #22d3ee;
+    color: #0f172a;
+    border: none;
+    padding: 16px 48px;
+    border-radius: 10px;
+    font-size: 1rem;
+    font-weight: 800;
+    cursor: pointer;
+    transition: transform 0.15s, box-shadow 0.15s;
+    letter-spacing: -0.2px;
+  }
+  .submit-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(34,211,238,0.35);
+  }
+  .submit-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    transform: none;
+  }
+  .privacy {
+    color: #64748b;
+    font-size: 0.75rem;
+    margin-top: 12px;
+  }
+
+  .success-screen {
+    display: none;
+    text-align: center;
+    padding: 48px 24px;
+  }
+  .success-screen .tick {
+    width: 72px;
+    height: 72px;
+    background: #d1fae5;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto 24px;
+    font-size: 2rem;
+  }
+  .success-screen h2 {
+    font-size: 1.6rem;
+    font-weight: 800;
+    margin-bottom: 12px;
+    color: #0f172a;
+  }
+  .success-screen p {
+    color: #64748b;
+    max-width: 400px;
+    margin: 0 auto 8px;
+  }
+
+  .error-msg {
+    background: #fef2f2;
+    border: 1px solid #fca5a5;
+    color: #dc2626;
+    border-radius: 8px;
+    padding: 12px 16px;
+    font-size: 0.85rem;
+    margin-bottom: 16px;
+    display: none;
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <a href="/" class="logo">CallMe.ie</a>
+  <span class="tagline">Your AI receptionist is almost ready</span>
+</div>
+
+<div class="hero">
+  <h1>Get your <span>AI receptionist</span> live</h1>
+  <p>Fill this in once. We'll build your assistant and have it answering calls within 3–5 business days.</p>
+  <div class="steps">
+    <div class="step"><div class="num">1</div> Fill this form (5 min)</div>
+    <div class="step"><div class="num">2</div> We build your assistant</div>
+    <div class="step"><div class="num">3</div> Test call together</div>
+    <div class="step"><div class="num">4</div> Go live</div>
+  </div>
+</div>
+
+<div class="container">
+
+  <div id="error-msg" class="error-msg"></div>
+
+  <form id="onboard-form">
+
+    <!-- Section 1: Your Details -->
+    <div class="card">
+      <div class="section-label">
+        <div class="badge">Step 1</div>
+        <h2>Your contact details</h2>
+      </div>
+
+      <div class="row">
+        <div class="field">
+          <label>Your name <span class="req">*</span></label>
+          <input type="text" name="contact_name" placeholder="e.g. Ciara Murphy" required>
+        </div>
+        <div class="field">
+          <label>Your phone number <span class="req">*</span></label>
+          <input type="tel" name="contact_phone" placeholder="e.g. 085 123 4567" required>
+        </div>
+      </div>
+      <div class="field">
+        <label>Your email <span class="req">*</span></label>
+        <input type="email" name="contact_email" placeholder="e.g. ciara@brightsmile.ie" required>
+      </div>
+    </div>
+
+    <!-- Section 2: Business Info -->
+    <div class="card">
+      <div class="section-label">
+        <div class="badge">Step 2</div>
+        <h2>Your business</h2>
+      </div>
+
+      <div class="row">
+        <div class="field">
+          <label>Business name <span class="req">*</span></label>
+          <input type="text" name="business_name" placeholder="e.g. Bright Smile Dental" required>
+        </div>
+        <div class="field">
+          <label>Business type <span class="req">*</span></label>
+          <select name="business_type" required>
+            <option value="" disabled selected>Select your industry</option>
+            <option value="dental">Dental Practice</option>
+            <option value="medical">Medical / GP Practice</option>
+            <option value="salon">Hair Salon / Barbershop</option>
+            <option value="beauty">Beauty / Spa / Nails</option>
+            <option value="physio">Physiotherapy / Sports Clinic</option>
+            <option value="motor_factors">Motor Factors</option>
+            <option value="garage">Garage / Auto Repair</option>
+            <option value="solicitor">Solicitor / Law Firm</option>
+            <option value="accountant">Accountant</option>
+            <option value="restaurant">Restaurant / Cafe</option>
+            <option value="home_services">Plumber / Electrician / Tradesperson</option>
+            <option value="estate_agent">Estate Agent</option>
+            <option value="other">Other</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="field">
+        <label>Business address <span class="req">*</span></label>
+        <input type="text" name="address" placeholder="e.g. 14 O'Connell Street, Limerick" required>
+      </div>
+
+      <div class="field">
+        <label>Opening hours <span class="req">*</span>
+          <span class="hint">Include all days you're open</span>
+        </label>
+        <textarea name="hours" placeholder="e.g. Monday to Friday 9am–5:30pm, Saturday 9am–1pm, closed Sunday" required></textarea>
+      </div>
+
+      <div class="field">
+        <label>What your AI assistant should be named
+          <span class="hint">Leave blank and we'll suggest one</span>
+        </label>
+        <input type="text" name="ai_name" placeholder="e.g. Sarah, Aoife, Ciara — or leave blank">
+      </div>
+    </div>
+
+    <!-- Section 3: Services & Payment -->
+    <div class="card">
+      <div class="section-label">
+        <div class="badge">Step 3</div>
+        <h2>Services &amp; payment</h2>
+      </div>
+
+      <div class="field">
+        <label>Services you offer <span class="req">*</span>
+          <span class="hint">List everything the AI might be asked about</span>
+        </label>
+        <textarea name="services" placeholder="e.g. Dental check-ups, fillings, root canals, crowns, teeth whitening, Invisalign, emergency dental care" required></textarea>
+      </div>
+
+      <div class="field">
+        <label>Payment &amp; insurance accepted</label>
+        <div class="checkbox-group" id="insurance-checks">
+          <label class="checkbox-item"><input type="checkbox" name="insurance" value="PRSI"> PRSI</label>
+          <label class="checkbox-item"><input type="checkbox" name="insurance" value="Medical Card"> Medical Card</label>
+          <label class="checkbox-item"><input type="checkbox" name="insurance" value="VHI"> VHI</label>
+          <label class="checkbox-item"><input type="checkbox" name="insurance" value="Laya"> Laya Healthcare</label>
+          <label class="checkbox-item"><input type="checkbox" name="insurance" value="Irish Life"> Irish Life Health</label>
+          <label class="checkbox-item"><input type="checkbox" name="insurance" value="Aviva"> Aviva</label>
+          <label class="checkbox-item"><input type="checkbox" name="insurance" value="Cash/Card"> Cash &amp; Card</label>
+          <label class="checkbox-item"><input type="checkbox" name="insurance" value="Payment Plans"> Payment Plans</label>
+        </div>
+      </div>
+
+      <div class="field">
+        <label>Parking &amp; access info
+          <span class="hint">What do callers typically ask?</span>
+        </label>
+        <input type="text" name="parking" placeholder="e.g. Free parking on site / Street parking on O'Connell St / Wheelchair accessible">
+      </div>
+    </div>
+
+    <!-- Section 4: Call Handling -->
+    <div class="card">
+      <div class="section-label">
+        <div class="badge">Step 4</div>
+        <h2>Call handling &amp; emergencies</h2>
+      </div>
+
+      <div class="row">
+        <div class="field">
+          <label>Emergency / on-call number <span class="req">*</span>
+            <span class="hint">Urgent calls transfer here</span>
+          </label>
+          <input type="tel" name="emergency_number" placeholder="e.g. 085 123 4567" required>
+          <div class="example">This is where the AI will transfer calls it can't handle — severe pain, emergencies, or callers who ask for a real person.</div>
+        </div>
+        <div class="field">
+          <label>Existing business phone number
+            <span class="hint">Your current number (we'll set up call forwarding)</span>
+          </label>
+          <input type="tel" name="existing_number" placeholder="e.g. 061 234 567">
+        </div>
+      </div>
+
+      <div class="field">
+        <label>Google Calendar email
+          <span class="hint">So the AI can check availability and book appointments</span>
+        </label>
+        <input type="email" name="calendar_email" placeholder="e.g. brightsmile@gmail.com">
+        <div class="example">We'll share our calendar service with this address. You'll get an email to accept — just click OK.</div>
+      </div>
+    </div>
+
+    <!-- Section 5: Top FAQs -->
+    <div class="card">
+      <div class="section-label">
+        <div class="badge">Step 5</div>
+        <h2>Common questions your callers ask</h2>
+      </div>
+      <p style="font-size:0.85rem; color:#64748b; margin-bottom:16px;">
+        Add the questions your customers ask most often. The AI will answer these from memory — no need to look anything up.
+      </p>
+
+      <div class="faq-label-row">
+        <span>Question</span>
+        <span>Answer</span>
+      </div>
+      <div class="faq-group" id="faq-group">
+        <div class="faq-row">
+          <input type="text" name="faq_q[]" placeholder="e.g. Do you take medical cards?">
+          <input type="text" name="faq_a[]" placeholder="e.g. Yes, we do — bring your card">
+        </div>
+        <div class="faq-row">
+          <input type="text" name="faq_q[]" placeholder="e.g. How long is a check-up?">
+          <input type="text" name="faq_a[]" placeholder="e.g. About 30 minutes">
+        </div>
+        <div class="faq-row">
+          <input type="text" name="faq_q[]" placeholder="e.g. Do you have parking?">
+          <input type="text" name="faq_a[]" placeholder="">
+        </div>
+        <div class="faq-row">
+          <input type="text" name="faq_q[]" placeholder="">
+          <input type="text" name="faq_a[]" placeholder="">
+        </div>
+        <div class="faq-row">
+          <input type="text" name="faq_q[]" placeholder="">
+          <input type="text" name="faq_a[]" placeholder="">
+        </div>
+      </div>
+      <button type="button" onclick="addFaqRow()" style="font-size:0.8rem; color:#22d3ee; background:none; border:none; cursor:pointer; margin-top:8px; padding:0;">+ Add another question</button>
+    </div>
+
+    <!-- Section 6: Plan -->
+    <div class="card">
+      <div class="section-label">
+        <div class="badge">Step 6</div>
+        <h2>Choose your plan</h2>
+      </div>
+
+      <div class="plan-grid" id="plan-grid">
+        <div class="plan-option" onclick="selectPlan(this, 'Starter')">
+          <input type="radio" name="plan" value="Starter">
+          <div class="plan-name">Starter</div>
+          <div class="plan-price">€149<span style="font-size:0.7rem;font-weight:400;color:#64748b">/mo</span></div>
+          <div class="plan-desc">AI answers calls, books appointments, handles FAQs. Business hours only.</div>
+        </div>
+        <div class="plan-option" onclick="selectPlan(this, 'Professional')">
+          <input type="radio" name="plan" value="Professional">
+          <div class="plan-name">Professional</div>
+          <div class="plan-price">€249<span style="font-size:0.7rem;font-weight:400;color:#64748b">/mo</span></div>
+          <div class="plan-desc">+ After-hours, missed call text-back, SMS confirmations, weekly report.</div>
+        </div>
+        <div class="plan-option" onclick="selectPlan(this, 'Growth')">
+          <input type="radio" name="plan" value="Growth">
+          <div class="plan-name">Growth</div>
+          <div class="plan-price">€347<span style="font-size:0.7rem;font-weight:400;color:#64748b">/mo</span></div>
+          <div class="plan-desc">+ Knowledge base, live inventory sync, monthly optimisation call.</div>
+        </div>
+      </div>
+      <p style="font-size:0.8rem; color:#94a3b8; margin-top:12px;">All plans include €297 setup fee. No long-term contract — cancel anytime with 30 days notice.</p>
+    </div>
+
+    <!-- Section 7: Anything else -->
+    <div class="card">
+      <div class="section-label">
+        <div class="badge">Step 7</div>
+        <h2>Anything else we should know?</h2>
+      </div>
+      <div class="field">
+        <label>Notes
+          <span class="hint">Specific scripts, tone preferences, things callers often ask that aren't covered above</span>
+        </label>
+        <textarea name="notes" placeholder="e.g. We never quote prices over the phone. Always say 'the dentist will advise on costs at your appointment.' Our tone is warm but professional — not too casual."></textarea>
+      </div>
+    </div>
+
+    <!-- Submit -->
+    <div class="submit-card">
+      <h3>Ready to go live?</h3>
+      <p>We'll review your details and ring you within 1 business day to confirm everything before we build.</p>
+      <button type="submit" class="submit-btn" id="submit-btn">Submit &amp; Get Started</button>
+      <div class="privacy">Your details are kept confidential and never shared. GDPR compliant.</div>
+    </div>
+
+  </form>
+
+  <div class="success-screen" id="success-screen">
+    <div class="card" style="max-width:480px; margin:0 auto;">
+      <div class="tick">&#10003;</div>
+      <h2>You're all set!</h2>
+      <p>We've received your details and will ring you within 1 business day to get things moving.</p>
+      <p style="margin-top:8px;">Your AI receptionist will be live within <strong>3–5 business days</strong>.</p>
+      <p style="margin-top:16px; font-size:0.85rem; color:#94a3b8;">
+        Questions in the meantime? Ring <strong>+1 (661) 764-3212</strong> and ask for the team.
+      </p>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  const API = 'https://callmeie.onrender.com';
+
+  // Plan selection
+  function selectPlan(el, value) {
+    document.querySelectorAll('.plan-option').forEach(p => p.classList.remove('selected'));
+    el.classList.add('selected');
+    el.querySelector('input[type="radio"]').checked = true;
+  }
+
+  // FAQ rows
+  function addFaqRow() {
+    const group = document.getElementById('faq-group');
+    const row = document.createElement('div');
+    row.className = 'faq-row';
+    row.innerHTML = '<input type="text" name="faq_q[]" placeholder="Question"><input type="text" name="faq_a[]" placeholder="Answer">';
+    group.appendChild(row);
+  }
+
+  // Collect insurance checkboxes
+  function getInsurance() {
+    return Array.from(document.querySelectorAll('input[name="insurance"]:checked'))
+      .map(el => el.value).join(', ');
+  }
+
+  // Collect FAQs
+  function getFaqs() {
+    const qs = Array.from(document.querySelectorAll('input[name="faq_q[]"]')).map(el => el.value.trim());
+    const as = Array.from(document.querySelectorAll('input[name="faq_a[]"]')).map(el => el.value.trim());
+    const pairs = [];
+    for (let i = 0; i < qs.length; i++) {
+      if (qs[i]) pairs.push(`Q: ${qs[i]}\nA: ${as[i] || '(to be confirmed)'}`);
+    }
+    return pairs.join('\n\n');
+  }
+
+  // Form submit
+  document.getElementById('onboard-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const btn = document.getElementById('submit-btn');
+    const errEl = document.getElementById('error-msg');
+    errEl.style.display = 'none';
+    btn.disabled = true;
+    btn.textContent = 'Sending...';
+
+    const fd = new FormData(e.target);
+    const data = Object.fromEntries(fd.entries());
+    data.insurance = getInsurance();
+    data.faqs = getFaqs();
+
+    // Validate plan selected
+    if (!data.plan) {
+      errEl.textContent = 'Please choose a plan before submitting.';
+      errEl.style.display = 'block';
+      btn.disabled = false;
+      btn.textContent = 'Submit & Get Started';
+      window.scrollTo({ top: document.querySelector('.plan-grid').getBoundingClientRect().top + window.scrollY - 80, behavior: 'smooth' });
+      return;
+    }
+
+    try {
+      const res = await fetch(`${API}/submit-onboarding`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+      const json = await res.json();
+
+      if (res.ok) {
+        document.getElementById('onboard-form').style.display = 'none';
+        document.getElementById('success-screen').style.display = 'block';
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      } else {
+        throw new Error(json.error || 'Something went wrong');
+      }
+    } catch (err) {
+      errEl.textContent = `There was a problem submitting: ${err.message}. Please ring us on +1 (661) 764-3212.`;
+      errEl.style.display = 'block';
+      btn.disabled = false;
+      btn.textContent = 'Submit & Get Started';
+    }
+  });
+</script>
+</body>
+</html>

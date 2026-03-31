@@ -97,6 +97,8 @@ These tools are attached to the dental demo assistant. Re-use or clone for each 
 | `/reminder` | POST | External scheduler — 24hr appointment reminder SMS |
 | `/no-show` | POST | External scheduler — no-show follow-up SMS |
 | `/sync-inventory` | POST | Sync Google Sheet → Vapi knowledge base |
+| `/capture-lead` | POST | Vapi tool (Claire) — capture demo prospect name/phone, SMS owner |
+| `/submit-onboarding` | POST | Client onboarding form — receive new client data, SMS owner |
 
 ### 5b. Google Calendar Integration
 
@@ -284,7 +286,8 @@ SMS lead alert to owner: "[CallMe.ie Lead] John Murphy, dental practice Cork —
 - [ ] Move Claire to +353 number
 - [ ] Run lead-scraper for motor factors in Limerick
 - [ ] First client outreach (8 dental leads in CSV)
-- [ ] Build Tally onboarding form (collect business info from new clients)
+- [x] Build onboarding form — `callmeie.ie/onboard` (7-section HTML form, submits to `/submit-onboarding`)
+- [x] Add lead capture to Claire — captures name/phone before demo transfer, SMS owner instantly
 
 ---
 
@@ -295,3 +298,4 @@ SMS lead alert to owner: "[CallMe.ie Lead] John Murphy, dental practice Cork —
 | 2026-03-30 | Project initialised. 48 files built. Dental assistant live. Calendar integration working. |
 | 2026-03-31 | CLIENTS_JSON updated with both Vapi org IDs. toolCallId bug fixed. Calendar shared with service account. |
 | 2026-03-31 | SYSTEM.md created. Claire + Murphy's Motor Factors built. Dental updated with PRSI/medical card. Demo Squad created. +1 (661) 764-3212 now routes through squad — Claire answers, transfers to dental or motor demo. |
+| 2026-03-31 | Lead capture added to Claire (captureLead tool → /capture-lead endpoint). Onboarding form built (onboard.html → /submit-onboarding). Two new server endpoints live on next Render deploy. |
