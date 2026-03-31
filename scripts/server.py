@@ -890,6 +890,86 @@ async def list_events(token: str = Query(""), limit: int = Query(200)):
     return [dict(r) for r in rows]
 
 
+@app.get("/admin/api/health")
+async def client_health(token: str = Query("")):
+    """
+    Per-client health summary for the ops peer and admin portal.
+    Returns stats for every provisioned client + demo assistants.
+    Health status: ok | quiet | errors | dead
+    """
+    check_admin(token)
+
+    DEMO_CLIENTS = {
+        "adee3d89-99d8-4f58-9dc3-78c38b9f2a7c": "Claire (qualifier)",
+        "0b37deb5-2fc2-4e7b-81b1-e61e97103506": "Demo: Dental",
+        "8a533a56-2ca4-486f-b328-69183b59fa41": "Demo: Motor Factors",
+        "db4ab378-cd8a-40f5-b3f9-8fcaaba408b0": "Demo: Salon",
+        "7774b535-95fe-4e75-b571-dde098e2f8fb": "Demo: Solicitor",
+    }
+
+    with get_db() as conn:
+        db_clients = conn.execute(
+            "SELECT assistant_id, name FROM clients WHERE status = 'active'"
+        ).fetchall()
+
+    all_clients = {row["assistant_id"]: row["name"] for row in db_clients}
+    all_clients.update(DEMO_CLIENTS)
+
+    results = []
+    with get_db() as conn:
+        for aid, name in all_clients.items():
+            row = conn.execute("""
+                SELECT
+                    COUNT(*)                                                  AS total,
+                    MAX(created_at)                                           AS last_event,
+                    SUM(event_type = 'call-ended')                           AS calls,
+                    SUM(event_type = 'booking')                              AS bookings,
+                    SUM(event_type IN ('lead-captured', 'demo-complete'))     AS leads,
+                    SUM(event_type = 'lead-error')                           AS errors
+                FROM call_events
+                WHERE assistant = ?
+                AND   created_at > datetime('now', '-7 days')
+            """, (aid,)).fetchone()
+
+            last = row["last_event"]
+            days_silent = None
+            if last:
+                try:
+                    from datetime import timezone
+                    last_dt = datetime.fromisoformat(last)
+                    now = datetime.now(timezone.utc).replace(tzinfo=None)
+                    days_silent = (now - last_dt).days
+                except Exception:
+                    pass
+
+            if row["errors"] and row["errors"] > 0:
+                health = "errors"
+            elif days_silent is None or days_silent > 5:
+                health = "dead"
+            elif days_silent > 2:
+                health = "quiet"
+            else:
+                health = "ok"
+
+            is_demo = aid in DEMO_CLIENTS
+            results.append({
+                "assistant_id": aid,
+                "name": name,
+                "is_demo": is_demo,
+                "health": health,
+                "last_event": last,
+                "days_silent": days_silent,
+                "calls_7d": row["calls"] or 0,
+                "bookings_7d": row["bookings"] or 0,
+                "leads_7d": row["leads"] or 0,
+                "errors_7d": row["errors"] or 0,
+            })
+
+    # Real clients first, demos last
+    results.sort(key=lambda x: (x["is_demo"], x["name"]))
+    return results
+
+
 @app.post("/admin/api/reject/{submission_id}")
 async def reject(submission_id: int, token: str = Query("")):
     check_admin(token)
