@@ -790,9 +790,11 @@ async def book_appointment_endpoint(request: Request):
 
         customer_name = args.get("customer_name", "")
         customer_phone = args.get("customer_phone", "")
+        customer_email = args.get("customer_email", "").strip()
         start_iso = args.get("start_iso", "")
         end_iso = args.get("end_iso", "")
         title = args.get("title", "Appointment")
+        notes = args.get("notes", "").strip()
 
         if not all([customer_name, customer_phone, start_iso, end_iso]):
             return _vapi_result(tool_call_id, "I need your name, phone number, and preferred time to complete the booking. Could you provide those?")
@@ -808,6 +810,8 @@ async def book_appointment_endpoint(request: Request):
             end_iso=end_iso,
             customer_name=customer_name,
             customer_phone=customer_phone,
+            customer_email=customer_email,
+            notes=notes,
         )
 
         from datetime import datetime
@@ -838,6 +842,10 @@ async def book_appointment_endpoint(request: Request):
                         f"at {business} — {readable}. Ring them to confirm manually.",
                         from_number=from_num,
                     )
+            else:
+                log_event(call_id, "sms-booking-confirmation", assistant_id,
+                          f"{customer_phone} | {sms_status or 'sent'}",
+                          {"to": customer_phone, "twilio_status": sms_status or "sent", "name": customer_name})
         if owner:
             await send_sms(
                 owner,
@@ -848,7 +856,16 @@ async def book_appointment_endpoint(request: Request):
         print(f"[Booking] {customer_name} at {business} — {readable}")
         log_event(call_id, "booking", assistant_id,
                   f"{customer_name} | {readable}",
-                  {"name": customer_name, "phone": customer_phone, "time": readable, "business": business})
+                  {
+                      "name": customer_name,
+                      "phone": customer_phone,
+                      "email": customer_email,
+                      "time": readable,
+                      "business": business,
+                      "event_id": event.get("id", ""),
+                      "event_link": event.get("link", ""),
+                      "notes": notes,
+                  })
         return _vapi_result(
             tool_call_id,
             f"Perfect, {customer_name}! Your appointment at {business} is confirmed for {readable}. "
@@ -856,9 +873,20 @@ async def book_appointment_endpoint(request: Request):
         )
 
     except ImportError:
+        await send_sms(
+            OWNER_NUMBER,
+            f"[CallMeIE] Booking failed for {get_client(assistant_id)['name']} because calendar_api could not load.",
+        )
         return _vapi_result(tool_call_id, "Calendar system is temporarily unavailable. Please call us to reschedule.")
     except Exception as e:
         print(f"[Booking Error] {e}")
+        log_event(call_id, "booking-fail", assistant_id, str(e)[:120], {"error": str(e)})
+        await send_sms(
+            OWNER_NUMBER,
+            f"[CallMeIE] Booking failed for {get_client(assistant_id)['name']}.\n"
+            f"Caller: {customer_name or 'Unknown'} ({customer_phone or 'Unknown'})\n"
+            f"Error: {str(e)[:120]}",
+        )
         return _vapi_result(tool_call_id, f"I wasn't able to complete the booking right now. Please call us back and we'll sort it out.")
 
 

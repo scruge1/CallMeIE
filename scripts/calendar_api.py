@@ -113,6 +113,7 @@ def book_appointment(
     end_iso: str,
     customer_name: str,
     customer_phone: str,
+    customer_email: str = "",
     notes: str = "",
 ) -> dict:
     """
@@ -122,12 +123,28 @@ def book_appointment(
     """
     service = _get_service()
 
+    description_parts = [f"Phone: {customer_phone}"]
+    if customer_email:
+        description_parts.append(f"Email: {customer_email}")
+    if notes:
+        description_parts.append(notes)
+
     event = {
         "summary": f"{title} — {customer_name}",
-        "description": f"Phone: {customer_phone}\n{notes}".strip(),
+        "description": "\n".join(description_parts).strip(),
         "start": {"dateTime": start_iso, "timeZone": "Europe/Dublin"},
         "end": {"dateTime": end_iso, "timeZone": "Europe/Dublin"},
+        "reminders": {
+            "useDefault": False,
+            "overrides": [
+                {"method": "popup", "minutes": 60},
+                {"method": "popup", "minutes": 15},
+            ],
+        },
     }
+
+    if customer_email:
+        event["attendees"] = [{"email": customer_email}]
 
     created = service.events().insert(calendarId=calendar_id, body=event).execute()
     return {
