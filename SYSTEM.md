@@ -2,7 +2,7 @@
 
 > Single source of truth for the entire CallMe.ie AI Receptionist system.
 > Update this file every time anything changes: new assistants, phone numbers, tools, features, pricing, clients, links.
-> Last updated: 2026-03-31
+> Last updated: 2026-04-01
 
 ---
 
@@ -11,7 +11,7 @@
 An Irish AI phone receptionist agency. We build and operate AI voice assistants that answer calls 24/7 for Irish SMBs — booking appointments, handling FAQs, capturing leads, sending SMS confirmations, and transferring emergencies. Built on Vapi + Twilio + Google Calendar + our own webhook server hosted on Render.
 
 **Target market:** Limerick / Munster initially, scaling nationally.
-**Niche focus:** Dental, motor factors, salons, home services, solicitors.
+**Niche focus:** Dental, motor factors, salons, solicitors, and dynamic fallback discovery for every other business type.
 **Pricing:** €149-347/mo (see Section 6).
 
 ---
@@ -42,6 +42,7 @@ An Irish AI phone receptionist agency. We build and operate AI voice assistants 
 | **Murphy's Motor Factors** | `8a533a56-2ca4-486f-b328-69183b59fa41` | (via squad) | Demo: Irish motor factors (stock queries, pricing, delivery, hours) |
 | **City Salon (Aoife)** | `db4ab378-cd8a-40f5-b3f9-8fcaaba408b0` | (via squad) | Demo: Hair salon (booking, services, hours) |
 | **O'Brien Solicitors (Ciara)** | `7774b535-95fe-4e75-b571-dde098e2f8fb` | (via squad) | Demo: Legal firm (conveyancing, family, wills, consultations) |
+| **General Business Discovery** | `3e2f8e1c-e4eb-46ab-b8be-d7f97cbe6080` | (via squad) | Dynamic fallback demo for every business type outside the 4 specialist verticals |
 
 **Demo Squad ID:** `ff47df7a-41b8-4379-b6ab-8cad448acefd` (Vapi Squad — no extra phone numbers needed)
 **Demo number (hand to prospects):** +1 (661) 764-3212 ← Claire answers, squad routes
@@ -57,7 +58,7 @@ _(Swap to Irish +353 number once Twilio verified)_
 
 | Org | API Key | Used For |
 |-----|---------|----------|
-| Primary (API org) | `69a708ae-229f-4d0b-bb37-ac4e9ecd2afb` | Scripts, server |
+| Primary (API org) | stored in env only | Scripts, server |
 | Browser org | Get from dashboard | Manual dashboard work |
 
 ---
@@ -121,7 +122,7 @@ All tools now live in Vapi tool library. Attached inline (no toolId) to assistan
 | `CLIENTS_JSON` | (JSON blob — see below) | Per-assistant routing |
 | `PORT` | 8080 | Auto-set by Render |
 
-**Current CLIENTS_JSON (4 assistants, updated 2026-03-31):**
+**Current CLIENTS_JSON note (demo assistants updated 2026-04-01):**
 ```json
 {
   "adee3d89-99d8-4f58-9dc3-78c38b9f2a7c": {
@@ -142,15 +143,27 @@ All tools now live in Vapi tool library. Attached inline (no toolId) to assistan
     "from": "+16617643212",
     "calendar_id": "primary"
   },
-  "cce54cf3-bff2-4792-b0b4-8cfffac965ae": {
-    "name": "Riley",
+  "db4ab378-cd8a-40f5-b3f9-8fcaaba408b0": {
+    "name": "City Salon",
+    "owner": "+353857863564",
+    "from": "+16617643212",
+    "calendar_id": "primary"
+  },
+  "7774b535-95fe-4e75-b571-dde098e2f8fb": {
+    "name": "O'Brien Solicitors",
+    "owner": "+353857863564",
+    "from": "+16617643212",
+    "calendar_id": "primary"
+  },
+  "3e2f8e1c-e4eb-46ab-b8be-d7f97cbe6080": {
+    "name": "General Business Discovery",
     "owner": "+353857863564",
     "from": "+16617643212",
     "calendar_id": "primary"
   }
 }
 ```
-_(Add new client assistant IDs here as they are created)_
+_(Example shape only. Keep live assistant ids and routing in sync with the current Vapi squad.)_
 
 ### 5d. Twilio
 
@@ -196,7 +209,9 @@ _(Add new client assistant IDs here as they are created)_
     ↓
 Dental          →  warm transfer →  Bright Smile Dental demo
 Motor Factors   →  warm transfer →  Murphy's Motor Factors demo
-Other           →  "We work with [X] — let me take your details"
+Salon           →  warm transfer →  City Salon demo
+Solicitor       →  warm transfer →  O'Brien Solicitors demo
+Other           →  warm transfer →  General Business Discovery demo
     ↓
 End of demo call:
 "You've just experienced what your customers would hear.
@@ -218,7 +233,7 @@ SMS lead alert to owner: "[CallMe.ie Lead] John Murphy, dental practice Cork —
 **Voice:** Amy (ElevenLabs, warm Irish tone)
 **First message:** "Hi there! Thanks for ringing CallMe.ie. I'm Claire, the virtual assistant here. Can I ask — what type of business do you run?"
 **Goal:** Qualify → route to correct niche demo → capture lead at end
-**Transfer targets:** Dental demo number, Motor Factors demo number
+**Transfer targets:** Dental, Motor Factors, Salon, Solicitor, General Business Discovery
 
 ### Bright Smile Dental Demo
 
@@ -315,3 +330,5 @@ SMS lead alert to owner: "[CallMe.ie Lead] John Murphy, dental practice Cork —
 | 2026-03-31 | Lead capture added to Claire (captureLead tool → /capture-lead endpoint). Onboarding form built (onboard.html → /submit-onboarding). Two new server endpoints live on next Render deploy. |
 | 2026-03-31 | Admin portal built (admin.html + SQLite queue + one-click provisioning). Scripts directory cleaned up (21→13 files). |
 | 2026-03-31 | Two new demo assistants: City Salon (Aoife, db4ab378) + O'Brien Solicitors (Ciara, 7774b535). Both in squad. Claire now routes to all 4 demos. Demo assistants renamed to simple routing names (dental/motor_factors/salon/solicitor). |
+| 2026-04-01 | General Business Discovery fallback assistant added to the demo squad. Claire now routes all non-core business types into a dynamic fallback demo instead of ending at a generic catch-all path. |
+| 2026-04-01 | Live callback flow hardened: Render `/demo-complete` now creates internal sales callback events for actionable demo leads, and live assistants now expose richer callback fields for follow-up context. |

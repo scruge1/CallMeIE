@@ -4,6 +4,12 @@ Create the CallMe.ie demo assistant system:
   2. Claire — qualifier that warm-transfers to niche demos
   3. Update Bright Smile Dental — add PRSI/medical card handling
 
+LEGACY NOTE:
+    This script bootstraps the original smaller demo stack.
+    The live 2026-04-01 system has expanded beyond this file and now includes
+    salon, solicitor, and general-business fallback routing. Do not treat this
+    script as the canonical description of the current live squad.
+
 Run:
     VAPI_API_KEY=... python create-demo-assistants.py
 
@@ -18,7 +24,11 @@ import os
 import sys
 import requests
 
-VAPI_API_KEY = os.environ.get("VAPI_API_KEY", "69a708ae-229f-4d0b-bb37-ac4e9ecd2afb")
+VAPI_API_KEY = os.environ.get("VAPI_API_KEY")
+if not VAPI_API_KEY:
+    print("ERROR: VAPI_API_KEY is required in the environment.")
+    sys.exit(1)
+
 VAPI_BASE = "https://api.vapi.ai"
 HEADERS = {"Authorization": f"Bearer {VAPI_API_KEY}", "Content-Type": "application/json"}
 
