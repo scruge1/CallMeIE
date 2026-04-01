@@ -146,11 +146,21 @@ def book_appointment(
     if customer_email:
         event["attendees"] = [{"email": customer_email}]
 
-    created = service.events().insert(
-        calendarId=calendar_id,
-        body=event,
-        sendUpdates="none",
-    ).execute()
+    try:
+        created = service.events().insert(
+            calendarId=calendar_id,
+            body=event,
+            sendUpdates="none",
+        ).execute()
+    except Exception:
+        # Some shared-calendar configurations reject attendee writes.
+        # In that case, keep the booking itself instead of failing the whole flow.
+        event.pop("attendees", None)
+        created = service.events().insert(
+            calendarId=calendar_id,
+            body=event,
+            sendUpdates="none",
+        ).execute()
     return {
         "id": created.get("id"),
         "link": created.get("htmlLink"),
