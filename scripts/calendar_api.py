@@ -35,7 +35,7 @@ def _get_service():
 
     info = json.loads(raw)
     creds = service_account.Credentials.from_service_account_info(info, scopes=SCOPES)
-    return build("calendar", "v3", credentials=creds)
+    return build("calendar", "v3", credentials=creds, cache_discovery=False)
 
 
 def get_available_slots(calendar_id: str, date_str: str, duration_minutes: int = 30) -> list[dict]:
@@ -146,7 +146,11 @@ def book_appointment(
     if customer_email:
         event["attendees"] = [{"email": customer_email}]
 
-    created = service.events().insert(calendarId=calendar_id, body=event).execute()
+    created = service.events().insert(
+        calendarId=calendar_id,
+        body=event,
+        sendUpdates="none",
+    ).execute()
     return {
         "id": created.get("id"),
         "link": created.get("htmlLink"),
