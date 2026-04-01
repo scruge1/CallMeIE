@@ -85,6 +85,7 @@ DEMO_ASSISTANT_IDS = {
     "8a533a56-2ca4-486f-b328-69183b59fa41": "motor factors",
     "db4ab378-cd8a-40f5-b3f9-8fcaaba408b0": "salon",
     "7774b535-95fe-4e75-b571-dde098e2f8fb": "solicitor",
+    "3e2f8e1c-e4eb-46ab-b8be-d7f97cbe6080": "general business discovery",
 }
 
 # --- SQLite DB ---
@@ -133,6 +134,9 @@ def create_callback_event(
     topics: str,
     demo_type: str,
     call_id: str,
+    pain_point: str = "",
+    estimated_missed_calls_per_week: str = "",
+    next_action: str = "",
 ):
     credentials = _load_google_credentials()
     if credentials is None or not CALLMEIE_CALLBACK_CALENDAR_ID:
@@ -152,6 +156,9 @@ def create_callback_event(
                 f"Demo type: {demo_type or 'Unknown'}",
                 f"Interest: {interest or 'Unknown'}",
                 f"Asked about: {topics or 'n/a'}",
+                f"Pain point: {pain_point or 'n/a'}",
+                f"Missed calls/week: {estimated_missed_calls_per_week or 'n/a'}",
+                f"Next action: {next_action or 'n/a'}",
                 f"Call ID: {call_id or 'n/a'}",
                 "Created automatically from CallMeIE /demo-complete.",
             ]
@@ -224,7 +231,11 @@ def init_db():
                 source        TEXT DEFAULT 'demo',
                 demo_completed INTEGER DEFAULT 0,
                 topics_discussed TEXT,
-                interest_level   TEXT
+                interest_level   TEXT,
+                pain_point       TEXT,
+                estimated_missed_calls_per_week TEXT,
+                next_action      TEXT,
+                callback_requested INTEGER DEFAULT 0
             )
         """)
         conn.execute("""
@@ -251,6 +262,18 @@ def init_db():
                 submission_id INTEGER
             )
         """)
+        existing_columns = {
+            row["name"] for row in conn.execute("PRAGMA table_info(leads)").fetchall()
+        }
+        lead_column_migrations = {
+            "pain_point": "ALTER TABLE leads ADD COLUMN pain_point TEXT",
+            "estimated_missed_calls_per_week": "ALTER TABLE leads ADD COLUMN estimated_missed_calls_per_week TEXT",
+            "next_action": "ALTER TABLE leads ADD COLUMN next_action TEXT",
+            "callback_requested": "ALTER TABLE leads ADD COLUMN callback_requested INTEGER DEFAULT 0",
+        }
+        for column, sql in lead_column_migrations.items():
+            if column not in existing_columns:
+                conn.execute(sql)
         conn.commit()
 
 
@@ -930,14 +953,28 @@ async def demo_complete(request: Request):
     body = await request.json()
     tool_call_id, assistant_id, args = _parse_vapi_tool_call(body)
 
-    topics   = args.get("topics_discussed", "").strip()
+    topics = args.get("topics_discussed", "").strip()
     interest = args.get("interest_level", "").strip()
-    call_id  = body.get("message", {}).get("call", {}).get("id", "")
+    business_type_arg = args.get("business_type", "").strip()
+    pain_point = args.get("pain_point", "").strip()
+    estimated_missed_calls = str(args.get("estimated_missed_calls_per_week", "")).strip()
+    next_action = args.get("next_action", "").strip()
+    callback_requested = bool(args.get("callback_requested", False))
+    call_id = body.get("message", {}).get("call", {}).get("id", "")
 
     demo_type = DEMO_ASSISTANT_IDS.get(assistant_id, "unknown")
     log_event(call_id, "demo-complete", demo_type,
               f"{interest} | {topics}",
-              {"topics_discussed": topics, "interest_level": interest, "demo_type": demo_type})
+              {
+                  "topics_discussed": topics,
+                  "interest_level": interest,
+                  "demo_type": demo_type,
+                  "business_type": business_type_arg,
+                  "pain_point": pain_point,
+                  "estimated_missed_calls_per_week": estimated_missed_calls,
+                  "next_action": next_action,
+                  "callback_requested": callback_requested,
+              })
 
     # Look up and update the lead record
     lead = None
@@ -950,8 +987,26 @@ async def demo_complete(request: Request):
                 ).fetchone()
                 if lead:
                     conn.execute(
-                        "UPDATE leads SET demo_completed=1, topics_discussed=?, interest_level=? WHERE call_id=?",
-                        (topics, interest, call_id)
+                        """
+                        UPDATE leads
+                        SET demo_completed=1,
+                            topics_discussed=?,
+                            interest_level=?,
+                            pain_point=?,
+                            estimated_missed_calls_per_week=?,
+                            next_action=?,
+                            callback_requested=?
+                        WHERE call_id=?
+                        """,
+                        (
+                            topics,
+                            interest,
+                            pain_point,
+                            estimated_missed_calls,
+                            next_action,
+                            1 if callback_requested else 0,
+                            call_id,
+                        )
                     )
                     conn.commit()
         except Exception as e:
@@ -959,11 +1014,12 @@ async def demo_complete(request: Request):
 
     name  = (lead["name"]  if lead and lead["name"]  else "Unknown")
     phone = (lead["phone"] if lead and lead["phone"] else "Unknown")
-    business_type = (lead["business_type"] if lead and lead["business_type"] else demo_type)
+    business_type = business_type_arg or (lead["business_type"] if lead and lead["business_type"] else demo_type)
 
     callback_event = None
     callback_error = ""
-    if interest in ("very_interested", "curious"):
+    should_create_callback = interest in ("very_interested", "curious") or callback_requested
+    if should_create_callback:
         try:
             callback_event = create_callback_event(
                 name=name,
@@ -973,6 +1029,9 @@ async def demo_complete(request: Request):
                 topics=topics,
                 demo_type=demo_type,
                 call_id=call_id,
+                pain_point=pain_point,
+                estimated_missed_calls_per_week=estimated_missed_calls,
+                next_action=next_action,
             )
         except Exception as e:
             callback_error = str(e)
@@ -983,8 +1042,11 @@ async def demo_complete(request: Request):
     sms = (
         f"[CallMeIE Demo Done] {demo_type.upper()} — {heat}\n"
         f"{name} — {phone}\n"
+        f"Business: {business_type or 'n/a'}\n"
         f"Asked about: {topics or 'n/a'}\n"
-        f"{'Callback calendar event created.' if callback_event else ('Callback calendar not configured.' if not callback_error and interest in ('very_interested', 'curious') else 'Ring back now.')}"
+        f"Pain point: {pain_point or 'n/a'}\n"
+        f"Next action: {next_action or 'n/a'}\n"
+        f"{'Callback calendar event created.' if callback_event else ('Callback calendar not configured.' if not callback_error and should_create_callback else 'No callback created.')}"
     )
     await send_sms(OWNER_NUMBER, sms)
     log_event(
@@ -997,6 +1059,11 @@ async def demo_complete(request: Request):
             "callback_calendar_configured": bool(CALLMEIE_CALLBACK_CALENDAR_ID),
             "callback_event": callback_event or {},
             "error": callback_error,
+            "business_type": business_type,
+            "pain_point": pain_point,
+            "estimated_missed_calls_per_week": estimated_missed_calls,
+            "next_action": next_action,
+            "callback_requested": callback_requested,
         },
     )
     print(f"[Demo Complete] {demo_type} | {name} | {interest} | callback={'yes' if callback_event else 'no'}")
