@@ -25,12 +25,16 @@ import json
 import os
 import sqlite3
 import sys
-from datetime import datetime
+from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 
 import httpx
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
+
+from google.oauth2 import service_account
+from googleapiclient.discovery import build
 
 sys.path.insert(0, os.path.dirname(__file__))
 
@@ -64,6 +68,9 @@ ANOMALY_THRESHOLD = 0.7   # min score to invoke Claude
 ANOMALY_BUDGET_PER_HOUR = 5   # circuit breaker — stops storm flooding (same root cause)
 ANOMALY_BUDGET_PER_DAY = 200  # daily ceiling for a busy high-volume client
 GOOGLE_SA_EMAIL = os.environ.get("GOOGLE_SA_EMAIL", "callmeie-receptionist@callme-ie.iam.gserviceaccount.com")
+GOOGLE_SERVICE_ACCOUNT_JSON = os.environ.get("GOOGLE_SERVICE_ACCOUNT_JSON", "")
+CALLMEIE_CALLBACK_CALENDAR_ID = os.environ.get("CALLMEIE_CALLBACK_CALENDAR_ID", "primary")
+CALLMEIE_TIMEZONE = os.environ.get("CALLMEIE_TIMEZONE", "Europe/Dublin")
 
 # --- Client registry (env var fallback for manually-configured clients) ---
 _raw = os.environ.get("CLIENTS_JSON", "{}")
@@ -88,6 +95,86 @@ def get_db() -> sqlite3.Connection:
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     return conn
+
+
+def _load_google_credentials():
+    if not GOOGLE_SERVICE_ACCOUNT_JSON:
+        return None
+    try:
+        info = json.loads(GOOGLE_SERVICE_ACCOUNT_JSON)
+        return service_account.Credentials.from_service_account_info(
+            info, scopes=["https://www.googleapis.com/auth/calendar"]
+        )
+    except Exception as e:
+        print(f"[Calendar] Failed to load service account credentials: {e}")
+        return None
+
+
+def _next_business_callback(interest: str) -> datetime:
+    now_local = datetime.now(ZoneInfo(CALLMEIE_TIMEZONE))
+    candidate = now_local.replace(
+        hour=14 if interest == "curious" else 10,
+        minute=0,
+        second=0,
+        microsecond=0,
+    )
+    if candidate <= now_local:
+        candidate += timedelta(days=1)
+    while candidate.weekday() >= 5:
+        candidate += timedelta(days=1)
+    return candidate
+
+
+def create_callback_event(
+    name: str,
+    phone: str,
+    business_type: str,
+    interest: str,
+    topics: str,
+    demo_type: str,
+    call_id: str,
+):
+    credentials = _load_google_credentials()
+    if credentials is None or not CALLMEIE_CALLBACK_CALENDAR_ID:
+        return None
+
+    start_local = _next_business_callback(interest)
+    end_local = start_local + timedelta(minutes=15)
+    service = build("calendar", "v3", credentials=credentials, cache_discovery=False)
+
+    event = {
+        "summary": f"Call back {name or 'Unknown'} - {business_type or demo_type or 'demo lead'}",
+        "description": "\n".join(
+            [
+                f"Lead: {name or 'Unknown'}",
+                f"Phone: {phone or 'Unknown'}",
+                f"Business: {business_type or 'Unknown'}",
+                f"Demo type: {demo_type or 'Unknown'}",
+                f"Interest: {interest or 'Unknown'}",
+                f"Asked about: {topics or 'n/a'}",
+                f"Call ID: {call_id or 'n/a'}",
+                "Created automatically from CallMeIE /demo-complete.",
+            ]
+        ),
+        "start": {"dateTime": start_local.isoformat(), "timeZone": CALLMEIE_TIMEZONE},
+        "end": {"dateTime": end_local.isoformat(), "timeZone": CALLMEIE_TIMEZONE},
+        "reminders": {
+            "useDefault": False,
+            "overrides": [
+                {"method": "popup", "minutes": 30},
+                {"method": "popup", "minutes": 5},
+            ],
+        },
+    }
+    created = (
+        service.events()
+        .insert(calendarId=CALLMEIE_CALLBACK_CALENDAR_ID, body=event, sendUpdates="none")
+        .execute()
+    )
+    return {
+        "event_id": created.get("id", ""),
+        "html_link": created.get("htmlLink", ""),
+    }
 
 
 def init_db():
@@ -872,6 +959,24 @@ async def demo_complete(request: Request):
 
     name  = (lead["name"]  if lead and lead["name"]  else "Unknown")
     phone = (lead["phone"] if lead and lead["phone"] else "Unknown")
+    business_type = (lead["business_type"] if lead and lead["business_type"] else demo_type)
+
+    callback_event = None
+    callback_error = ""
+    if interest in ("very_interested", "curious"):
+        try:
+            callback_event = create_callback_event(
+                name=name,
+                phone=phone,
+                business_type=business_type,
+                interest=interest,
+                topics=topics,
+                demo_type=demo_type,
+                call_id=call_id,
+            )
+        except Exception as e:
+            callback_error = str(e)
+            print(f"[Calendar] demo_complete callback error: {e}")
 
     heat = {"very_interested": "🔥 HOT", "curious": "🌡 WARM", "just_browsing": "❄ COLD"}.get(interest, interest)
 
@@ -879,10 +984,22 @@ async def demo_complete(request: Request):
         f"[CallMeIE Demo Done] {demo_type.upper()} — {heat}\n"
         f"{name} — {phone}\n"
         f"Asked about: {topics or 'n/a'}\n"
-        f"Ring back now."
+        f"{'Callback calendar event created.' if callback_event else ('Callback calendar not configured.' if not callback_error and interest in ('very_interested', 'curious') else 'Ring back now.')}"
     )
     await send_sms(OWNER_NUMBER, sms)
-    print(f"[Demo Complete] {demo_type} | {name} | {interest}")
+    log_event(
+        call_id,
+        "callback-calendar",
+        demo_type,
+        "created" if callback_event else ("error" if callback_error else "skipped"),
+        {
+            "interest_level": interest,
+            "callback_calendar_configured": bool(CALLMEIE_CALLBACK_CALENDAR_ID),
+            "callback_event": callback_event or {},
+            "error": callback_error,
+        },
+    )
+    print(f"[Demo Complete] {demo_type} | {name} | {interest} | callback={'yes' if callback_event else 'no'}")
 
     return _vapi_result(tool_call_id, "noted")
 
