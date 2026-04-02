@@ -1,0 +1,1352 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WonderWorld — TikTok Content Scheduler</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:        #0f172a;
+    --surface:   #1e293b;
+    --surface2:  #334155;
+    --border:    #475569;
+    --accent:    #22d3ee;
+    --accent2:   #06b6d4;
+    --accent-dim:#164e63;
+    --text:      #f8fafc;
+    --text-muted:#94a3b8;
+    --success:   #10b981;
+    --radius:    12px;
+    --radius-lg: 20px;
+    --shadow:    0 25px 50px rgba(0,0,0,0.5);
+  }
+
+  html, body {
+    height: 100%;
+    background: var(--bg);
+    color: var(--text);
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-size: 16px;
+    line-height: 1.5;
+  }
+
+  /* ── LAYOUT ─────────────────────────────────────────────── */
+  .demo-wrapper {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    padding: 0 0 60px;
+  }
+
+  /* ── BROWSER CHROME ─────────────────────────────────────── */
+  .browser {
+    width: 100%;
+    max-width: 900px;
+    margin: 40px auto 0;
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    box-shadow: var(--shadow);
+    border: 1px solid var(--border);
+  }
+
+  .browser-bar {
+    background: #1e293b;
+    padding: 12px 16px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .browser-dots {
+    display: flex;
+    gap: 6px;
+    flex-shrink: 0;
+  }
+  .dot { width: 12px; height: 12px; border-radius: 50%; }
+  .dot-r { background: #ef4444; }
+  .dot-y { background: #f59e0b; }
+  .dot-g { background: #10b981; }
+
+  .browser-url {
+    flex: 1;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 6px 12px;
+    font-size: 13px;
+    color: var(--text-muted);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .browser-url .lock { color: var(--success); font-size: 11px; }
+  .browser-url .url-text { color: var(--text); }
+  .browser-url .url-path { color: var(--text-muted); }
+
+  .browser-content {
+    background: var(--bg);
+    position: relative;
+    min-height: 580px;
+    overflow: hidden;
+  }
+
+  /* ── SCREENS ────────────────────────────────────────────── */
+  .screen {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    opacity: 0;
+    transform: translateX(60px);
+    pointer-events: none;
+    transition: opacity 0.45s ease, transform 0.45s ease;
+  }
+  .screen.active {
+    opacity: 1;
+    transform: translateX(0);
+    pointer-events: auto;
+  }
+  .screen.exit {
+    opacity: 0;
+    transform: translateX(-60px);
+  }
+
+  /* ── SITE HEADER ────────────────────────────────────────── */
+  .site-header {
+    background: #0f172a;
+    border-bottom: 1px solid var(--border);
+    padding: 0 32px;
+    height: 60px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-shrink: 0;
+  }
+  .logo {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-weight: 700;
+    font-size: 18px;
+    letter-spacing: -0.3px;
+  }
+  .logo-icon {
+    width: 32px; height: 32px;
+    background: linear-gradient(135deg, var(--accent), #818cf8);
+    border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 16px;
+  }
+  .header-nav {
+    display: flex; gap: 24px;
+    font-size: 14px;
+    color: var(--text-muted);
+  }
+
+  /* ── COMMON COMPONENTS ──────────────────────────────────── */
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+    padding: 12px 24px;
+    border-radius: 10px;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    border: none;
+    transition: transform 0.15s, opacity 0.15s, box-shadow 0.15s;
+    text-decoration: none;
+  }
+  .btn:hover { transform: translateY(-1px); box-shadow: 0 8px 20px rgba(0,0,0,0.3); }
+  .btn:active { transform: translateY(0); }
+  .btn-primary { background: var(--accent); color: #0f172a; }
+  .btn-primary:hover { background: #38bdf8; }
+  .btn-outline {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text);
+  }
+  .btn-sm { padding: 8px 16px; font-size: 13px; border-radius: 8px; }
+  .btn-success { background: var(--success); color: white; }
+
+  .badge {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 4px 10px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 600;
+  }
+  .badge-cyan { background: rgba(34,211,238,0.15); color: var(--accent); border: 1px solid rgba(34,211,238,0.3); }
+  .badge-green { background: rgba(16,185,129,0.15); color: var(--success); border: 1px solid rgba(16,185,129,0.3); }
+  .badge-purple { background: rgba(129,140,248,0.15); color: #818cf8; border: 1px solid rgba(129,140,248,0.3); }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 24px;
+  }
+
+  /* ── SCREEN 1: LANDING ──────────────────────────────────── */
+  #screen1 .hero {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 48px 32px;
+    gap: 24px;
+  }
+  .hero-eyebrow {
+    display: flex; gap: 8px; flex-wrap: wrap; justify-content: center;
+  }
+  .hero h1 {
+    font-size: clamp(28px, 4vw, 42px);
+    font-weight: 800;
+    letter-spacing: -1px;
+    line-height: 1.15;
+  }
+  .hero h1 span { color: var(--accent); }
+  .hero p {
+    font-size: 17px;
+    color: var(--text-muted);
+    max-width: 480px;
+    line-height: 1.6;
+  }
+  .hero-features {
+    display: flex; gap: 12px; flex-wrap: wrap; justify-content: center;
+    margin-top: 4px;
+  }
+  .feature-chip {
+    display: flex; align-items: center; gap: 6px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 6px 14px;
+    font-size: 13px;
+    color: var(--text-muted);
+  }
+  .feature-chip .dot2 {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: var(--accent);
+  }
+  .scopes-note {
+    background: rgba(34,211,238,0.07);
+    border: 1px solid rgba(34,211,238,0.2);
+    border-radius: 10px;
+    padding: 14px 20px;
+    font-size: 13px;
+    color: var(--text-muted);
+    display: flex; align-items: center; gap: 10px;
+    max-width: 480px;
+  }
+  .scopes-note code {
+    background: rgba(34,211,238,0.15);
+    color: var(--accent);
+    border-radius: 4px;
+    padding: 2px 6px;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    font-size: 12px;
+  }
+
+  /* ── SCREEN 2: OAUTH ────────────────────────────────────── */
+  #screen2 .oauth-wrap {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 32px;
+    position: relative;
+  }
+  /* Dimmed background effect */
+  #screen2 .oauth-wrap::before {
+    content: '';
+    position: absolute; inset: 0;
+    background: rgba(0,0,0,0.6);
+    backdrop-filter: blur(2px);
+  }
+  #screen2 .bg-site {
+    position: absolute; inset: 0;
+    display: flex; flex-direction: column;
+    pointer-events: none;
+  }
+  #screen2 .oauth-popup {
+    position: relative;
+    z-index: 2;
+    width: 100%;
+    max-width: 380px;
+    background: white;
+    border-radius: 16px;
+    overflow: hidden;
+    box-shadow: 0 40px 80px rgba(0,0,0,0.6);
+    color: #1a1a1a;
+  }
+  .oauth-tt-header {
+    background: #010101;
+    padding: 20px 24px 16px;
+    display: flex; align-items: center; gap: 12px;
+  }
+  .tt-logo {
+    width: 36px; height: 36px;
+    background: #010101;
+    border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    position: relative;
+  }
+  /* TikTok logo built from CSS */
+  .tt-logo::before {
+    content: '';
+    position: absolute;
+    width: 22px; height: 26px;
+    background: white;
+    clip-path: path('M16 0 C16 6 21 10 21 10 L21 15 C21 15 18 14 16 12 L16 20 C16 24 13 27 9 27 C5 27 2 24 2 20 C2 16 5 13 9 13 C10 13 10 13 10 13 L10 18 C8 18 7 19 7 20 C7 21 8 22 9 22 C10 22 11 21 11 20 L11 0 Z');
+  }
+  .tt-logo::after {
+    content: '';
+    position: absolute;
+    width: 22px; height: 26px;
+    background: #fe2c55;
+    opacity: 0.9;
+    clip-path: path('M14 0 C14 6 19 10 19 10 L19 15 C19 15 16 14 14 12 L14 20 C14 24 11 27 7 27 C3 27 0 24 0 20 C0 16 3 13 7 13 C8 13 8 13 8 13 L8 18 C6 18 5 19 5 20 C5 21 6 22 7 22 C8 22 9 21 9 20 L9 0 Z');
+  }
+
+  .oauth-tt-header h3 { color: white; font-size: 16px; font-weight: 700; }
+  .oauth-tt-header p { color: #94a3b8; font-size: 12px; margin-top: 2px; }
+
+  .oauth-body { padding: 24px; }
+  .oauth-body h4 { font-size: 15px; font-weight: 700; color: #0f172a; margin-bottom: 4px; }
+  .oauth-app-name { color: #0ea5e9; font-weight: 700; }
+  .oauth-body .oauth-sub { font-size: 13px; color: #64748b; margin-bottom: 16px; }
+
+  .oauth-scopes {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    padding: 14px 16px;
+    margin-bottom: 16px;
+  }
+  .oauth-scopes-title { font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 10px; }
+  .scope-item {
+    display: flex; align-items: flex-start; gap: 10px;
+    padding: 8px 0;
+    border-bottom: 1px solid #e2e8f0;
+  }
+  .scope-item:last-child { border-bottom: none; padding-bottom: 0; }
+  .scope-icon { font-size: 16px; flex-shrink: 0; margin-top: 1px; }
+  .scope-label { font-size: 13px; font-weight: 600; color: #1e293b; }
+  .scope-desc { font-size: 12px; color: #64748b; }
+
+  .oauth-btns { display: flex; gap: 10px; }
+  .oauth-btn {
+    flex: 1; padding: 11px; border-radius: 8px;
+    font-size: 14px; font-weight: 600; cursor: pointer; border: none;
+    transition: opacity 0.15s;
+  }
+  .oauth-btn:hover { opacity: 0.85; }
+  .oauth-deny { background: #f1f5f9; color: #475569; }
+  .oauth-allow { background: #fe2c55; color: white; }
+
+  .oauth-footer { padding: 12px 24px; background: #f8fafc; border-top: 1px solid #e2e8f0; font-size: 11px; color: #94a3b8; text-align: center; }
+
+  /* ── SCREEN 3: CONTENT CREATION ─────────────────────────── */
+  #screen3 .create-body {
+    flex: 1;
+    padding: 24px 32px;
+    overflow-y: auto;
+    display: flex;
+    gap: 24px;
+  }
+  .create-sidebar {
+    width: 220px;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+  .create-main { flex: 1; display: flex; flex-direction: column; gap: 16px; }
+
+  /* Connected account pill */
+  .account-pill {
+    background: var(--surface);
+    border: 1px solid rgba(34,211,238,0.3);
+    border-radius: 10px;
+    padding: 12px 14px;
+    display: flex; align-items: center; gap: 10px;
+  }
+  .account-avatar {
+    width: 36px; height: 36px;
+    background: linear-gradient(135deg, var(--accent), #818cf8);
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 14px; font-weight: 700; color: #0f172a;
+    flex-shrink: 0;
+  }
+  .account-info .account-name { font-size: 13px; font-weight: 600; }
+  .account-info .account-sub { font-size: 11px; color: var(--text-muted); display: flex; align-items: center; gap: 4px; }
+  .account-info .account-sub .online-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--success); }
+
+  /* Video thumbnail picker */
+  .video-picker {
+    background: var(--surface);
+    border: 2px dashed var(--border);
+    border-radius: var(--radius);
+    padding: 0;
+    overflow: hidden;
+    cursor: pointer;
+    transition: border-color 0.2s;
+    position: relative;
+  }
+  .video-picker.selected { border-style: solid; border-color: var(--accent); }
+  .video-thumb {
+    width: 100%;
+    aspect-ratio: 9/16;
+    background: linear-gradient(160deg, #1a1a2e 0%, #16213e 40%, #0f3460 100%);
+    display: flex; align-items: center; justify-content: center;
+    position: relative;
+    overflow: hidden;
+  }
+  /* Fake video content */
+  .video-thumb .vt-content {
+    position: absolute; inset: 0;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    gap: 8px;
+  }
+  .vt-waveform {
+    display: flex; align-items: flex-end; gap: 3px;
+    height: 40px;
+  }
+  .vt-bar {
+    width: 4px;
+    border-radius: 2px;
+    background: rgba(34,211,238,0.7);
+    animation: wave 1.2s ease-in-out infinite;
+  }
+  .vt-bar:nth-child(1) { height: 60%; animation-delay: 0s; }
+  .vt-bar:nth-child(2) { height: 90%; animation-delay: 0.1s; }
+  .vt-bar:nth-child(3) { height: 45%; animation-delay: 0.2s; }
+  .vt-bar:nth-child(4) { height: 100%; animation-delay: 0.3s; }
+  .vt-bar:nth-child(5) { height: 70%; animation-delay: 0.4s; }
+  .vt-bar:nth-child(6) { height: 55%; animation-delay: 0.15s; }
+  .vt-bar:nth-child(7) { height: 80%; animation-delay: 0.25s; }
+  @keyframes wave {
+    0%, 100% { transform: scaleY(1); opacity: 0.7; }
+    50% { transform: scaleY(0.4); opacity: 1; }
+  }
+  .vt-filename { font-size: 11px; color: rgba(255,255,255,0.5); text-align: center; padding: 0 8px; }
+  .video-duration {
+    position: absolute; bottom: 8px; right: 8px;
+    background: rgba(0,0,0,0.7);
+    border-radius: 4px;
+    padding: 2px 6px;
+    font-size: 11px; font-weight: 600;
+  }
+  .play-overlay {
+    position: absolute; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .play-btn-fake {
+    width: 44px; height: 44px;
+    background: rgba(255,255,255,0.15);
+    border: 2px solid rgba(255,255,255,0.4);
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 16px;
+    backdrop-filter: blur(4px);
+  }
+
+  .video-thumb-label {
+    padding: 10px 12px;
+    font-size: 12px; font-weight: 600;
+    display: flex; align-items: center; justify-content: space-between;
+    color: var(--text-muted);
+  }
+  .video-thumb-label .vt-name { color: var(--text); font-size: 12px; }
+
+  /* Form elements */
+  .form-group { display: flex; flex-direction: column; gap: 6px; }
+  .form-label { font-size: 13px; font-weight: 600; color: var(--text-muted); }
+  .form-input, .form-textarea {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 14px;
+    color: var(--text);
+    font-size: 14px;
+    font-family: inherit;
+    transition: border-color 0.15s;
+    width: 100%;
+    resize: none;
+  }
+  .form-input:focus, .form-textarea:focus {
+    outline: none;
+    border-color: var(--accent);
+  }
+  .char-counter {
+    font-size: 11px;
+    color: var(--text-muted);
+    text-align: right;
+    margin-top: -2px;
+  }
+  .char-counter.warn { color: #f59e0b; }
+
+  .tags-input {
+    display: flex; flex-wrap: wrap; gap: 6px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px;
+    min-height: 42px;
+  }
+  .tag {
+    background: rgba(34,211,238,0.12);
+    border: 1px solid rgba(34,211,238,0.25);
+    color: var(--accent);
+    border-radius: 6px;
+    padding: 3px 9px;
+    font-size: 12px; font-weight: 500;
+  }
+
+  .schedule-row {
+    display: flex; gap: 10px;
+  }
+  .schedule-row .form-input { flex: 1; }
+
+  /* ── SCREEN 4: POSTING ───────────────────────────────────── */
+  #screen4 .posting-body {
+    flex: 1;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    gap: 32px;
+    padding: 48px 32px;
+    text-align: center;
+  }
+  .posting-icon {
+    width: 96px; height: 96px;
+    background: var(--surface);
+    border: 2px solid var(--accent-dim);
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 40px;
+    position: relative;
+    animation: posting-pulse 2s ease-in-out infinite;
+  }
+  @keyframes posting-pulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(34,211,238,0.3); }
+    50% { box-shadow: 0 0 0 20px rgba(34,211,238,0); }
+  }
+  .posting-spin {
+    position: absolute; inset: -6px;
+    border-radius: 50%;
+    border: 2px solid transparent;
+    border-top-color: var(--accent);
+    border-right-color: var(--accent);
+    animation: spin 1.5s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .posting-body h2 { font-size: 24px; font-weight: 700; }
+  .posting-body p { color: var(--text-muted); font-size: 15px; max-width: 400px; }
+
+  .progress-track {
+    width: 100%; max-width: 440px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+    padding: 20px;
+  }
+  .progress-steps { display: flex; flex-direction: column; gap: 14px; }
+  .progress-step {
+    display: flex; align-items: center; gap: 12px;
+    font-size: 14px;
+  }
+  .step-icon {
+    width: 28px; height: 28px;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 13px;
+    flex-shrink: 0;
+    transition: all 0.3s;
+  }
+  .step-icon.done { background: var(--success); color: white; }
+  .step-icon.active { background: var(--accent); color: #0f172a; animation: spin 1.2s linear infinite; }
+  .step-icon.pending { background: var(--surface2); color: var(--text-muted); }
+  .step-label.done { color: var(--text); }
+  .step-label.active { color: var(--accent); font-weight: 600; }
+  .step-label.pending { color: var(--text-muted); }
+
+  .progress-bar-wrap {
+    margin-top: 20px;
+    background: var(--surface2);
+    border-radius: 4px;
+    height: 6px;
+    overflow: hidden;
+  }
+  .progress-bar {
+    height: 100%;
+    background: linear-gradient(90deg, var(--accent), #818cf8);
+    border-radius: 4px;
+    width: 0%;
+    transition: width 0.4s ease;
+  }
+  .progress-pct { margin-top: 6px; font-size: 12px; color: var(--text-muted); text-align: right; }
+
+  /* API call indicator */
+  .api-call-box {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 12px 16px;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    font-size: 12px;
+    width: 100%; max-width: 440px;
+    text-align: left;
+  }
+  .api-method { color: var(--accent); font-weight: 700; }
+  .api-url { color: var(--text-muted); }
+  .api-status { color: var(--success); font-size: 11px; margin-top: 4px; }
+
+  /* ── SCREEN 5: SUCCESS ───────────────────────────────────── */
+  #screen5 .success-body {
+    flex: 1;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    gap: 24px;
+    padding: 48px 32px;
+    text-align: center;
+  }
+  .success-icon {
+    width: 100px; height: 100px;
+    background: linear-gradient(135deg, rgba(16,185,129,0.2), rgba(34,211,238,0.2));
+    border: 2px solid var(--success);
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 44px;
+    animation: pop 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) both;
+  }
+  @keyframes pop {
+    0% { transform: scale(0.5); opacity: 0; }
+    100% { transform: scale(1); opacity: 1; }
+  }
+  .success-body h2 { font-size: 28px; font-weight: 800; letter-spacing: -0.5px; }
+  .success-body h2 span { color: var(--accent); }
+  .success-body > p { color: var(--text-muted); font-size: 15px; max-width: 420px; }
+
+  .success-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 20px 24px;
+    width: 100%; max-width: 440px;
+    text-align: left;
+  }
+  .success-row {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 8px 0;
+    font-size: 14px;
+    border-bottom: 1px solid var(--border);
+  }
+  .success-row:last-child { border-bottom: none; }
+  .success-row .sr-label { color: var(--text-muted); }
+  .success-row .sr-val { font-weight: 600; }
+  .success-row .sr-val.green { color: var(--success); }
+  .success-row .sr-val.cyan { color: var(--accent); }
+  .success-row .sr-val.code {
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    font-size: 12px;
+    background: var(--surface2);
+    padding: 3px 8px;
+    border-radius: 4px;
+  }
+
+  .confetti { font-size: 28px; animation: float 3s ease-in-out infinite; }
+  @keyframes float {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-8px); }
+  }
+
+  /* ── PROGRESS BAR (STEP INDICATOR) ──────────────────────── */
+  .step-nav {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0;
+    padding: 16px 32px 0;
+    flex-shrink: 0;
+  }
+  .step-dot {
+    width: 28px; height: 28px;
+    border-radius: 50%;
+    background: var(--surface2);
+    border: 2px solid var(--border);
+    color: var(--text-muted);
+    font-size: 12px; font-weight: 700;
+    display: flex; align-items: center; justify-content: center;
+    transition: all 0.3s;
+    position: relative;
+    z-index: 1;
+    flex-shrink: 0;
+  }
+  .step-dot.done { background: var(--success); border-color: var(--success); color: white; }
+  .step-dot.active { background: var(--accent); border-color: var(--accent); color: #0f172a; box-shadow: 0 0 0 4px rgba(34,211,238,0.2); }
+  .step-line {
+    flex: 1;
+    height: 2px;
+    background: var(--border);
+    max-width: 80px;
+    transition: background 0.3s;
+  }
+  .step-line.done { background: var(--success); }
+
+  /* ── AUTO-TIMER BAR ──────────────────────────────────────── */
+  .timer-bar-wrap {
+    height: 3px;
+    background: var(--surface2);
+    overflow: hidden;
+    flex-shrink: 0;
+  }
+  .timer-bar {
+    height: 100%;
+    background: var(--accent);
+    width: 100%;
+    transform-origin: left;
+    transform: scaleX(1);
+  }
+  .timer-bar.running {
+    animation: drain 3s linear forwards;
+  }
+  @keyframes drain { from { transform: scaleX(1); } to { transform: scaleX(0); } }
+
+  /* ── CONTROL ROW ─────────────────────────────────────────── */
+  .control-row {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 32px;
+    border-top: 1px solid var(--border);
+    background: var(--bg);
+    flex-shrink: 0;
+  }
+  .control-left { display: flex; align-items: center; gap: 12px; font-size: 13px; color: var(--text-muted); }
+  .timer-countdown { font-variant-numeric: tabular-nums; font-weight: 600; color: var(--accent); }
+  .control-right { display: flex; gap: 10px; }
+
+  /* ── SCREEN 2 BG elements ────────────────────────────────── */
+  .bg-landing-blur {
+    flex: 1;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 16px; text-align: center; padding: 24px;
+    filter: blur(2px);
+    opacity: 0.3;
+  }
+  .bg-landing-blur h2 { font-size: 28px; font-weight: 800; }
+  .bg-landing-blur p { color: var(--text-muted); font-size: 15px; }
+
+  /* Responsive touch */
+  @media (max-width: 640px) {
+    .browser { margin: 12px; border-radius: var(--radius); }
+    #screen3 .create-body { flex-direction: column; }
+    .create-sidebar { width: 100%; flex-direction: row; overflow-x: auto; }
+    .video-picker { min-width: 160px; }
+  }
+</style>
+</head>
+<body>
+<div class="demo-wrapper">
+
+  <!-- ─── BROWSER CHROME ─────────────────────────────────────── -->
+  <div class="browser">
+    <div class="browser-bar">
+      <div class="browser-dots">
+        <div class="dot dot-r"></div>
+        <div class="dot dot-y"></div>
+        <div class="dot dot-g"></div>
+      </div>
+      <div class="browser-url">
+        <span class="lock">🔒</span>
+        <span class="url-text">scruge1.github.io</span><span class="url-path">/CallMeIE</span>
+      </div>
+    </div>
+
+    <!-- ── TIMER BAR ── -->
+    <div class="timer-bar-wrap">
+      <div class="timer-bar" id="timerBar"></div>
+    </div>
+
+    <!-- ── STEP INDICATOR ── -->
+    <div class="step-nav" id="stepNav">
+      <div class="step-dot active" id="sd1">1</div>
+      <div class="step-line" id="sl1"></div>
+      <div class="step-dot" id="sd2">2</div>
+      <div class="step-line" id="sl2"></div>
+      <div class="step-dot" id="sd3">3</div>
+      <div class="step-line" id="sl3"></div>
+      <div class="step-dot" id="sd4">4</div>
+      <div class="step-line" id="sl4"></div>
+      <div class="step-dot" id="sd5">5</div>
+    </div>
+
+    <!-- ────────────────── SCREEN CONTAINER ─────────────────── -->
+    <div class="browser-content" id="screenContainer">
+
+      <!-- ══════ SCREEN 1: LANDING ══════ -->
+      <div class="screen active" id="screen1">
+        <header class="site-header">
+          <div class="logo">
+            <div class="logo-icon">🌍</div>
+            WonderWorld
+          </div>
+          <nav class="header-nav">
+            <span>Features</span>
+            <span>Pricing</span>
+            <span>Docs</span>
+          </nav>
+        </header>
+
+        <div class="hero">
+          <div class="hero-eyebrow">
+            <span class="badge badge-cyan">✦ TikTok Content Scheduler</span>
+            <span class="badge badge-purple">Content Posting API</span>
+          </div>
+
+          <h1>Schedule &amp; post to<br><span>TikTok automatically</span></h1>
+
+          <p>WonderWorld lets creators plan, caption, and schedule TikTok videos — all without leaving the app. Connect once, post forever.</p>
+
+          <div class="hero-features">
+            <div class="feature-chip"><span class="dot2"></span>Video scheduling</div>
+            <div class="feature-chip"><span class="dot2"></span>Caption editor</div>
+            <div class="feature-chip"><span class="dot2"></span>Hashtag suggestions</div>
+            <div class="feature-chip"><span class="dot2"></span>Post analytics</div>
+          </div>
+
+          <div class="scopes-note">
+            <span style="font-size:18px">🔑</span>
+            <span>Uses TikTok scopes <code>video.upload</code> and <code>video.publish</code> via the Content Posting API.</span>
+          </div>
+
+          <button class="btn btn-primary" style="font-size:16px; padding:14px 32px;" onclick="nextScreen()">
+            <span>Connect TikTok Account</span>
+            <span>→</span>
+          </button>
+          <p style="font-size:12px; color:var(--text-muted); margin-top:-8px;">Secure OAuth 2.0 · No password shared</p>
+        </div>
+      </div>
+
+      <!-- ══════ SCREEN 2: TIKTOK OAUTH ══════ -->
+      <div class="screen" id="screen2">
+        <header class="site-header">
+          <div class="logo">
+            <div class="logo-icon">🌍</div>
+            WonderWorld
+          </div>
+          <nav class="header-nav">
+            <span>Features</span><span>Pricing</span><span>Docs</span>
+          </nav>
+        </header>
+
+        <div class="oauth-wrap">
+          <!-- blurred background content -->
+          <div class="bg-site">
+            <div class="bg-landing-blur">
+              <h2>Schedule &amp; post to TikTok automatically</h2>
+              <p>WonderWorld lets creators plan, caption, and schedule TikTok videos.</p>
+            </div>
+          </div>
+
+          <!-- OAuth popup -->
+          <div class="oauth-popup">
+            <div class="oauth-tt-header">
+              <div class="tt-logo"></div>
+              <div>
+                <h3>TikTok</h3>
+                <p>Login to authorize</p>
+              </div>
+            </div>
+
+            <div class="oauth-body">
+              <h4><span class="oauth-app-name">WonderWorld</span> wants to access your TikTok account</h4>
+              <p class="oauth-sub">@swarm_agent_2026 · swarm_agent_2026@gmail.com</p>
+
+              <div class="oauth-scopes">
+                <div class="oauth-scopes-title">Permissions requested</div>
+
+                <div class="scope-item">
+                  <div class="scope-icon">📤</div>
+                  <div>
+                    <div class="scope-label">video.upload</div>
+                    <div class="scope-desc">Upload video files to your TikTok draft library</div>
+                  </div>
+                </div>
+
+                <div class="scope-item">
+                  <div class="scope-icon">📢</div>
+                  <div>
+                    <div class="scope-label">video.publish</div>
+                    <div class="scope-desc">Publish videos to your TikTok profile publicly or privately</div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="oauth-btns">
+                <button class="oauth-btn oauth-deny">Deny</button>
+                <button class="oauth-btn oauth-allow" onclick="nextScreen()">Allow</button>
+              </div>
+            </div>
+
+            <div class="oauth-footer">
+              By authorizing, you agree to TikTok's Terms of Service and Privacy Policy.
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ══════ SCREEN 3: CONTENT CREATION ══════ -->
+      <div class="screen" id="screen3">
+        <header class="site-header">
+          <div class="logo">
+            <div class="logo-icon">🌍</div>
+            WonderWorld
+          </div>
+          <div style="display:flex; align-items:center; gap:12px;">
+            <span class="badge badge-green" style="font-size:11px;">✓ TikTok Connected</span>
+            <div class="account-avatar" style="width:30px;height:30px;font-size:12px;">S</div>
+          </div>
+        </header>
+
+        <div class="create-body">
+          <!-- LEFT SIDEBAR: account + video picker -->
+          <div class="create-sidebar">
+            <div class="account-pill">
+              <div class="account-avatar">S</div>
+              <div class="account-info">
+                <div class="account-name">@swarm_agent_2026</div>
+                <div class="account-sub"><span class="online-dot"></span> Connected via TikTok</div>
+              </div>
+            </div>
+
+            <div class="video-picker selected">
+              <div class="video-thumb">
+                <div class="vt-content">
+                  <div class="vt-waveform">
+                    <div class="vt-bar"></div>
+                    <div class="vt-bar"></div>
+                    <div class="vt-bar"></div>
+                    <div class="vt-bar"></div>
+                    <div class="vt-bar"></div>
+                    <div class="vt-bar"></div>
+                    <div class="vt-bar"></div>
+                  </div>
+                  <div class="vt-filename">wonderworld_reel_04.mp4</div>
+                </div>
+                <div class="play-overlay">
+                  <div class="play-btn-fake">▶</div>
+                </div>
+                <div class="video-duration">0:47</div>
+              </div>
+              <div class="video-thumb-label">
+                <span class="vt-name">wonderworld_reel_04.mp4</span>
+                <span class="badge badge-cyan" style="font-size:10px; padding:2px 6px;">Selected</span>
+              </div>
+            </div>
+
+            <button class="btn btn-outline btn-sm" style="width:100%;">+ Choose different video</button>
+          </div>
+
+          <!-- MAIN: caption + tags + schedule -->
+          <div class="create-main">
+            <div style="display:flex; align-items:center; justify-content:space-between;">
+              <h2 style="font-size:18px; font-weight:700;">Create Post</h2>
+              <span class="badge badge-cyan" style="font-size:11px;">Content Posting API</span>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Caption</label>
+              <textarea class="form-textarea" id="captionInput" rows="3"
+                oninput="updateCounter()"
+                style="font-size:14px; line-height:1.5;"
+              >🌍 Exploring the world one post at a time ✨ Drop a 💙 if you want more! #WonderWorld #travel #explore #viral</textarea>
+              <div class="char-counter" id="charCounter">102 / 2,200</div>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Hashtags</label>
+              <div class="tags-input">
+                <span class="tag">#WonderWorld</span>
+                <span class="tag">#travel</span>
+                <span class="tag">#explore</span>
+                <span class="tag">#viral</span>
+                <span class="tag">#fyp</span>
+                <span style="font-size:12px; color:var(--text-muted); padding:3px 6px; cursor:text;">+ add tag</span>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Privacy</label>
+              <select class="form-input" style="cursor:pointer;">
+                <option>🌍  Public — visible to everyone</option>
+                <option>👥  Friends only</option>
+                <option>🔒  Private — only me</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Schedule Date &amp; Time</label>
+              <div class="schedule-row">
+                <input class="form-input" type="date" id="schedDate" value="">
+                <input class="form-input" type="time" value="09:00" style="max-width:130px;">
+              </div>
+            </div>
+
+            <div style="display:flex; gap:10px; margin-top:4px;">
+              <button class="btn btn-outline btn-sm">Save Draft</button>
+              <button class="btn btn-primary" onclick="nextScreen()" style="flex:1; font-size:15px;">
+                Schedule &amp; Post to TikTok →
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ══════ SCREEN 4: POSTING ══════ -->
+      <div class="screen" id="screen4">
+        <header class="site-header">
+          <div class="logo">
+            <div class="logo-icon">🌍</div>
+            WonderWorld
+          </div>
+          <span class="badge badge-cyan" style="font-size:11px;">Content Posting API</span>
+        </header>
+
+        <div class="posting-body">
+          <div class="posting-icon">
+            <div class="posting-spin"></div>
+            📡
+          </div>
+
+          <div>
+            <h2>Posting to TikTok…</h2>
+            <p>Your video is being uploaded and published via the TikTok Content Posting API.</p>
+          </div>
+
+          <div class="progress-track">
+            <div class="progress-steps" id="postingSteps">
+              <div class="progress-step">
+                <div class="step-icon done">✓</div>
+                <span class="step-label done">Authenticated with TikTok API</span>
+              </div>
+              <div class="progress-step">
+                <div class="step-icon done">✓</div>
+                <span class="step-label done">Initialising video upload (video.upload)</span>
+              </div>
+              <div class="progress-step" id="ps3">
+                <div class="step-icon active" id="ps3icon">↻</div>
+                <span class="step-label active" id="ps3label">Uploading video chunks…</span>
+              </div>
+              <div class="progress-step" id="ps4">
+                <div class="step-icon pending" id="ps4icon">4</div>
+                <span class="step-label pending" id="ps4label">Publishing via video.publish scope</span>
+              </div>
+              <div class="progress-step" id="ps5">
+                <div class="step-icon pending" id="ps5icon">5</div>
+                <span class="step-label pending" id="ps5label">Confirming post live</span>
+              </div>
+            </div>
+
+            <div class="progress-bar-wrap" style="margin-top:16px;">
+              <div class="progress-bar" id="postProgress"></div>
+            </div>
+            <div class="progress-pct" id="postPct">38%</div>
+          </div>
+
+          <div class="api-call-box">
+            <div><span class="api-method">POST</span> <span class="api-url">open.tiktokapis.com/v2/post/publish/video/init/</span></div>
+            <div style="margin-top:4px; color:#94a3b8; font-size:11px;">scope: video.upload, video.publish · account: @swarm_agent_2026</div>
+            <div class="api-status" id="apiStatus">⟳ Uploading chunk 2/3…</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ══════ SCREEN 5: SUCCESS ══════ -->
+      <div class="screen" id="screen5">
+        <header class="site-header">
+          <div class="logo">
+            <div class="logo-icon">🌍</div>
+            WonderWorld
+          </div>
+          <div style="display:flex; align-items:center; gap:12px;">
+            <span class="badge badge-green" style="font-size:11px;">✓ TikTok Connected</span>
+          </div>
+        </header>
+
+        <div class="success-body">
+          <div class="success-icon">✅</div>
+
+          <div>
+            <h2>Video posted via<br><span>Content Posting API</span></h2>
+            <p style="margin-top:8px;">Your TikTok post is now live and visible to your followers. All done — no manual steps needed.</p>
+          </div>
+
+          <div class="success-card">
+            <div class="success-row">
+              <span class="sr-label">Status</span>
+              <span class="sr-val green">✓ Published</span>
+            </div>
+            <div class="success-row">
+              <span class="sr-label">Account</span>
+              <span class="sr-val cyan">@swarm_agent_2026</span>
+            </div>
+            <div class="success-row">
+              <span class="sr-label">Video</span>
+              <span class="sr-val">wonderworld_reel_04.mp4</span>
+            </div>
+            <div class="success-row">
+              <span class="sr-label">Scopes used</span>
+              <span class="sr-val code">video.upload · video.publish</span>
+            </div>
+            <div class="success-row">
+              <span class="sr-label">Post ID</span>
+              <span class="sr-val code">7380924571034829060</span>
+            </div>
+            <div class="success-row">
+              <span class="sr-label">Visibility</span>
+              <span class="sr-val">Public</span>
+            </div>
+            <div class="success-row">
+              <span class="sr-label">API Endpoint</span>
+              <span class="sr-val code" style="font-size:10px;">POST /v2/post/publish/video/init/</span>
+            </div>
+          </div>
+
+          <div style="display:flex; gap:12px; align-items:center; flex-wrap:wrap; justify-content:center;">
+            <span class="confetti">🎉</span>
+            <button class="btn btn-outline btn-sm" onclick="restart()">Restart Demo</button>
+            <button class="btn btn-success btn-sm" onclick="restart()">Schedule Another →</button>
+            <span class="confetti" style="animation-delay:0.4s">✨</span>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /browser-content -->
+
+    <!-- ── CONTROL ROW ── -->
+    <div class="control-row">
+      <div class="control-left">
+        <span>Auto-advancing in</span>
+        <span class="timer-countdown" id="timerCountdown">3s</span>
+        <span style="color:var(--border);">|</span>
+        <span>Step <span id="currentStep">1</span> of 5</span>
+      </div>
+      <div class="control-right">
+        <button class="btn btn-outline btn-sm" onclick="prevScreen()" id="prevBtn" disabled>← Back</button>
+        <button class="btn btn-primary btn-sm" onclick="nextScreen()" id="nextBtn">Next →</button>
+      </div>
+    </div>
+
+  </div><!-- /browser -->
+
+</div><!-- /demo-wrapper -->
+
+<script>
+/* ── STATE ── */
+let currentScreen = 1;
+const TOTAL = 5;
+let autoTimer = null;
+let countdown = 3;
+let postingInterval = null;
+let postProgress = 0;
+let postStep = 2;
+
+/* ── INIT ── */
+document.addEventListener('DOMContentLoaded', () => {
+  setTomorrowDate();
+  updateStepUI();
+  startAutoTimer();
+  updateCounter();
+});
+
+function setTomorrowDate() {
+  const d = new Date();
+  d.setDate(d.getDate() + 1);
+  const iso = d.toISOString().split('T')[0];
+  const el = document.getElementById('schedDate');
+  if (el) el.value = iso;
+}
+
+/* ── NAVIGATION ── */
+function nextScreen() {
+  if (currentScreen >= TOTAL) return;
+  goTo(currentScreen + 1);
+}
+
+function prevScreen() {
+  if (currentScreen <= 1) return;
+  goTo(currentScreen - 1);
+}
+
+function goTo(n) {
+  clearAutoTimer();
+  clearPostingAnimation();
+
+  const prev = document.getElementById('screen' + currentScreen);
+  const next = document.getElementById('screen' + n);
+
+  prev.classList.remove('active');
+  prev.classList.add('exit');
+  setTimeout(() => prev.classList.remove('exit'), 500);
+
+  next.classList.add('active');
+
+  currentScreen = n;
+  updateStepUI();
+  updateButtons();
+
+  if (n === 4) startPostingAnimation();
+  if (n < TOTAL) startAutoTimer();
+  if (n === TOTAL) stopAutoTimer();
+}
+
+function restart() {
+  clearAutoTimer();
+  clearPostingAnimation();
+  for (let i = 1; i <= TOTAL; i++) {
+    const s = document.getElementById('screen' + i);
+    s.classList.remove('active', 'exit');
+  }
+  currentScreen = 1;
+  postProgress = 0;
+  postStep = 2;
+  document.getElementById('screen1').classList.add('active');
+  updateStepUI();
+  updateButtons();
+  startAutoTimer();
+}
+
+/* ── STEP INDICATOR ── */
+function updateStepUI() {
+  document.getElementById('currentStep').textContent = currentScreen;
+  for (let i = 1; i <= TOTAL; i++) {
+    const dot = document.getElementById('sd' + i);
+    dot.classList.remove('done', 'active');
+    if (i < currentScreen) { dot.classList.add('done'); dot.textContent = '✓'; }
+    else if (i === currentScreen) { dot.classList.add('active'); dot.textContent = i; }
+    else { dot.textContent = i; }
+
+    if (i < TOTAL) {
+      const line = document.getElementById('sl' + i);
+      line.classList.toggle('done', i < currentScreen);
+    }
+  }
+}
+
+function updateButtons() {
+  document.getElementById('prevBtn').disabled = currentScreen === 1;
+  const nb = document.getElementById('nextBtn');
+  nb.textContent = currentScreen === TOTAL ? '↺ Restart' : 'Next →';
+  nb.onclick = currentScreen === TOTAL ? restart : nextScreen;
+}
+
+/* ── AUTO TIMER ── */
+function startAutoTimer() {
+  countdown = 3;
+  document.getElementById('timerCountdown').textContent = countdown + 's';
+
+  // reset and animate timer bar
+  const bar = document.getElementById('timerBar');
+  bar.classList.remove('running');
+  void bar.offsetWidth; // reflow
+  bar.classList.add('running');
+
+  autoTimer = setInterval(() => {
+    countdown--;
+    document.getElementById('timerCountdown').textContent = Math.max(0, countdown) + 's';
+    if (countdown <= 0) {
+      clearAutoTimer();
+      nextScreen();
+    }
+  }, 1000);
+}
+
+function clearAutoTimer() {
+  if (autoTimer) { clearInterval(autoTimer); autoTimer = null; }
+  const bar = document.getElementById('timerBar');
+  bar.classList.remove('running');
+}
+
+function stopAutoTimer() {
+  clearAutoTimer();
+  document.getElementById('timerCountdown').textContent = '—';
+}
+
+/* ── POSTING ANIMATION ── */
+const postingSteps = [
+  { pct: 55, status: 'Uploading chunk 3/3…', step: 3 },
+  { pct: 72, status: '⟳ Processing video on TikTok servers…', step: 3 },
+  { pct: 85, status: '⟳ Publishing via video.publish scope…', step: 4 },
+  { pct: 95, status: '⟳ Confirming post status…', step: 5 },
+  { pct: 100, status: '✓ 200 OK — Post published', step: 5 },
+];
+let postIdx = 0;
+
+function startPostingAnimation() {
+  postProgress = 38;
+  postIdx = 0;
+  applyPostingState(38, '⟳ Uploading chunk 2/3…', 3);
+
+  postingInterval = setInterval(() => {
+    if (postIdx >= postingSteps.length) {
+      clearPostingAnimation();
+      return;
+    }
+    const s = postingSteps[postIdx];
+    applyPostingState(s.pct, s.status, s.step);
+    postIdx++;
+  }, 520);
+}
+
+function applyPostingState(pct, status, activeStep) {
+  document.getElementById('postProgress').style.width = pct + '%';
+  document.getElementById('postPct').textContent = pct + '%';
+  document.getElementById('apiStatus').textContent = status;
+
+  // Update step icons
+  const icons = [null, null, 'ps3icon', 'ps4icon', 'ps5icon'];
+  const labels = [null, null, 'ps3label', 'ps4label', 'ps5label'];
+  const names = [null, null, 'Uploading video chunks…', 'Publishing via video.publish scope', 'Confirming post live'];
+
+  for (let i = 3; i <= 5; i++) {
+    const icon = document.getElementById(icons[i]);
+    const label = document.getElementById(labels[i]);
+    if (!icon) continue;
+    if (i < activeStep) {
+      icon.className = 'step-icon done'; icon.textContent = '✓';
+      label.className = 'step-label done';
+    } else if (i === activeStep) {
+      icon.className = 'step-icon active'; icon.textContent = '↻';
+      label.className = 'step-label active';
+    } else {
+      icon.className = 'step-icon pending'; icon.textContent = i;
+      label.className = 'step-label pending';
+    }
+  }
+}
+
+function clearPostingAnimation() {
+  if (postingInterval) { clearInterval(postingInterval); postingInterval = null; }
+}
+
+/* ── CAPTION COUNTER ── */
+function updateCounter() {
+  const txt = document.getElementById('captionInput');
+  const ctr = document.getElementById('charCounter');
+  if (!txt || !ctr) return;
+  const len = txt.value.length;
+  ctr.textContent = len.toLocaleString() + ' / 2,200';
+  ctr.classList.toggle('warn', len > 1800);
+}
+</script>
+</body>
+</html>
