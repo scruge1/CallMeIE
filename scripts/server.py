@@ -597,19 +597,45 @@ async def send_reminder(request: Request):
     date = body.get("date", "")
     time = body.get("time", "")
     business = body.get("business", "the practice")
-    from_num = body.get("from_number", TWILIO_FROM)
+    assistant_id = body.get("assistant_id", "")
+    call_id = body.get("call_id", "")
+    client = get_client(assistant_id) if assistant_id else {"owner": OWNER_NUMBER, "from": TWILIO_FROM, "name": business}
+    from_num = body.get("from_number", client.get("from", TWILIO_FROM))
+    owner = client.get("owner", OWNER_NUMBER)
 
     if not phone:
         return JSONResponse({"error": "phone required"}, status_code=400)
 
-    await send_sms(
+    sms_result = await send_sms(
         phone,
         f"Hi {name}! Reminder: appointment at {business} "
         f"tomorrow ({date}) at {time}. Please arrive 10 min early. "
         f"Reply CANCEL to cancel or STOP to opt out.",
         from_number=from_num,
     )
-    return JSONResponse({"status": "sent"})
+    sms_status = sms_result.get("status", "") if isinstance(sms_result, dict) else ""
+    log_event(
+        call_id,
+        "reminder",
+        assistant_id or business,
+        f"{phone} | {date} {time} | {sms_status or 'sent'}",
+        {
+            "phone": phone,
+            "name": name,
+            "business": business,
+            "date": date,
+            "time": time,
+            "twilio_status": sms_status or "sent",
+        },
+    )
+    if sms_status in ("failed", "undelivered") and owner:
+        await send_sms(
+            owner,
+            f"[CallMeIE] Reminder SMS FAILED for {name or 'unknown'} ({phone}) at {business} "
+            f"for {date} {time}. Ring them manually.",
+            from_number=from_num,
+        )
+    return JSONResponse({"status": "sent", "twilio_status": sms_status or "sent"})
 
 
 # --- No-show follow-up ---
@@ -620,18 +646,42 @@ async def no_show(request: Request):
     phone = body.get("phone", "")
     name = body.get("name", "")
     business = body.get("business", "the practice")
-    from_num = body.get("from_number", TWILIO_FROM)
+    assistant_id = body.get("assistant_id", "")
+    call_id = body.get("call_id", "")
+    client = get_client(assistant_id) if assistant_id else {"owner": OWNER_NUMBER, "from": TWILIO_FROM, "name": business}
+    from_num = body.get("from_number", client.get("from", TWILIO_FROM))
+    owner = client.get("owner", OWNER_NUMBER)
 
     if not phone:
         return JSONResponse({"error": "phone required"}, status_code=400)
 
-    await send_sms(
+    sms_result = await send_sms(
         phone,
         f"Hi {name}! We missed you at {business} today. "
         f"No worries — reply to reschedule. Reply STOP to opt out.",
         from_number=from_num,
     )
-    return JSONResponse({"status": "sent"})
+    sms_status = sms_result.get("status", "") if isinstance(sms_result, dict) else ""
+    log_event(
+        call_id,
+        "no-show",
+        assistant_id or business,
+        f"{phone} | {sms_status or 'sent'}",
+        {
+            "phone": phone,
+            "name": name,
+            "business": business,
+            "twilio_status": sms_status or "sent",
+        },
+    )
+    if sms_status in ("failed", "undelivered") and owner:
+        await send_sms(
+            owner,
+            f"[CallMeIE] No-show follow-up SMS FAILED for {name or 'unknown'} ({phone}) at {business}. "
+            f"Ring them manually.",
+            from_number=from_num,
+        )
+    return JSONResponse({"status": "sent", "twilio_status": sms_status or "sent"})
 
 
 # --- Inventory sync ---
