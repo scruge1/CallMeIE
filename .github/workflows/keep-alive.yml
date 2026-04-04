@@ -11,9 +11,15 @@ jobs:
     steps:
       - name: Ping health endpoint
         run: |
-          STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://callmeie.onrender.com/health)
-          echo "Health check status: $STATUS"
-          if [ "$STATUS" != "200" ]; then
-            echo "WARNING: health check returned $STATUS"
-            exit 1
-          fi
+          for i in 1 2 3; do
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 30 https://callmeie.onrender.com/health)
+            echo "Attempt $i: health check status $STATUS"
+            if [ "$STATUS" = "200" ]; then
+              echo "Service is healthy"
+              exit 0
+            fi
+            echo "Non-200 response, waiting 30s before retry..."
+            sleep 30
+          done
+          echo "WARNING: health check failed after 3 attempts (last status: $STATUS)"
+          exit 1
