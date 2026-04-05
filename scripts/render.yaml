@@ -24,4 +24,14 @@ services:
         sync: false
       - key: GOOGLE_SA_EMAIL
         sync: false
+      - key: DB_PATH
+        sync: false
+      - key: CALLMEIE_BACKUP_SHEET_ID
+        sync: false
+      - key: CALLMEIE_BACKUP_SHEET_TAB
+        sync: false
     plan: free
+    disk:
+      name: callmeie-data
+      mountPath: /var/data
+      sizeGB: 1
