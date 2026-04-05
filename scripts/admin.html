@@ -4,6 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>CallMeIE Admin</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="alternate icon" href="/favicon.ico">
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
@@ -103,6 +105,7 @@
 <div id="main">
   <h1>CallMeIE Admin</h1>
   <div class="subtitle" id="subtitle">Loading...</div>
+  <div id="backupStatus" style="font-size:0.8rem;color:#94a3b8;margin-bottom:18px;"></div>
 
   <div class="tabs">
     <button class="tab active" onclick="switchTab('pending')">
@@ -176,7 +179,7 @@ function switchTab(tab) {
 }
 
 async function loadAll() {
-  await Promise.all([loadSubmissions(), loadClients()]);
+  await Promise.all([loadSubmissions(), loadClients(), loadBackupStatus()]);
 }
 
 // ── Call Log ──────────────────────────────────────────────────────────────────
@@ -427,6 +430,36 @@ async function loadClients() {
       </div>
     </div>`;
   }).join('');
+}
+
+async function loadBackupStatus() {
+  const el = document.getElementById('backupStatus');
+  const res = await fetch(`${BASE}/admin/api/backup-sheet/status?token=${TOKEN}`);
+  if (!res.ok) {
+    el.textContent = 'Google backup status unavailable.';
+    return;
+  }
+  const data = await res.json();
+  if (data.configured) {
+    el.innerHTML = `Google backup: <span style="color:#4ade80">configured</span> · <span style="font-family:monospace">${esc(data.sheet_tab || 'submissions')}</span>`;
+  } else {
+    el.innerHTML = `Google backup: <span style="color:#fbbf24">not configured</span> · <button class="btn btn-sms" style="margin-left:8px" onclick="bootstrapBackupSheet()">Bootstrap sheet</button>`;
+  }
+}
+
+async function bootstrapBackupSheet() {
+  try {
+    const res = await fetch(`${BASE}/admin/api/backup-sheet/bootstrap?token=${TOKEN}`, { method: 'POST' });
+    const data = await res.json();
+    if (res.ok) {
+      showToast('Backup sheet created', 'success');
+      await loadBackupStatus();
+    } else {
+      showToast(data.detail || 'Unable to bootstrap backup sheet', 'error');
+    }
+  } catch (e) {
+    showToast('Network error', 'error');
+  }
 }
 
 async function provision(id) {
