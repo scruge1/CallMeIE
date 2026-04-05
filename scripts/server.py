@@ -31,7 +31,7 @@ from zoneinfo import ZoneInfo
 import httpx
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
@@ -39,6 +39,35 @@ from googleapiclient.discovery import build
 sys.path.insert(0, os.path.dirname(__file__))
 
 app = FastAPI(title="CallMeIE — AI Receptionist Server")
+ADMIN_HTML_PATH = os.path.join(os.path.dirname(__file__), "admin.html")
+FAVICON_SVG = b"""<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'>
+  <rect width='64' height='64' rx='16' fill='#0f172a'/>
+  <path d='M19 41V23h6.5c4.6 0 8 2.9 8 9s-3.4 9-8 9H19Zm5.2-4h1c2.9 0 4.3-1.8 4.3-5s-1.4-5-4.3-5h-1v10Z' fill='#22d3ee'/>
+  <path d='M34.5 34.2c0-5.4 3.3-8.8 8.2-8.8 4.8 0 7.4 2.7 7.6 6.5h-4.7c-.2-1.7-1.3-2.7-3-2.7-2.7 0-4.1 2.2-4.1 5s1.4 5 4.1 5c1.9 0 3.1-1.1 3.3-2.9h4.7c-.2 4-3 6.8-7.9 6.8-4.9 0-8.2-3.3-8.2-8.9Z' fill='#ffffff'/>
+</svg>"""
+ADMIN_HTML_FALLBACK = """<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CallMeIE Admin</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 40px; color: #0f172a; background: #f8fafc; }
+    .card { max-width: 640px; background: #fff; border: 1px solid #e2e8f0; border-radius: 16px; padding: 24px; box-shadow: 0 8px 32px rgba(15, 23, 42, 0.08); }
+    h1 { margin: 0 0 12px; }
+    p { line-height: 1.6; color: #475569; }
+    code { background: #e2e8f0; padding: 2px 6px; border-radius: 6px; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>CallMeIE Admin</h1>
+    <p>The full admin portal asset was not packaged into this deployment, but the authenticated admin API is still available.</p>
+    <p>Use <code>/admin/api/submissions?token=...</code>, <code>/admin/api/clients?token=...</code>, and the other admin endpoints to inspect or provision clients.</p>
+  </div>
+</body>
+</html>
+"""
 
 # CORS — allow the onboarding form and landing page to POST to this server
 app.add_middleware(
@@ -51,6 +80,16 @@ app.add_middleware(
     allow_methods=["GET", "POST"],
     allow_headers=["Content-Type"],
 )
+
+
+@app.get("/favicon.svg")
+async def favicon_svg():
+    return Response(content=FAVICON_SVG, media_type="image/svg+xml")
+
+
+@app.get("/favicon.ico")
+async def favicon_ico():
+    return Response(content=FAVICON_SVG, media_type="image/svg+xml")
 
 # --- Global Twilio fallback ---
 TWILIO_SID = os.environ.get("TWILIO_ACCOUNT_SID", "")
@@ -71,6 +110,24 @@ GOOGLE_SA_EMAIL = os.environ.get("GOOGLE_SA_EMAIL", "callmeie-receptionist@callm
 GOOGLE_SERVICE_ACCOUNT_JSON = os.environ.get("GOOGLE_SERVICE_ACCOUNT_JSON", "")
 CALLMEIE_CALLBACK_CALENDAR_ID = os.environ.get("CALLMEIE_CALLBACK_CALENDAR_ID", "primary")
 CALLMEIE_TIMEZONE = os.environ.get("CALLMEIE_TIMEZONE", "Europe/Dublin")
+CALLMEIE_BACKUP_SHEET_ID = os.environ.get("CALLMEIE_BACKUP_SHEET_ID", "")
+CALLMEIE_BACKUP_SHEET_TAB = os.environ.get("CALLMEIE_BACKUP_SHEET_TAB", "submissions")
+BACKUP_SHEET_HEADERS = [
+    "submitted_at_utc",
+    "business_name",
+    "contact_name",
+    "contact_phone",
+    "contact_email",
+    "business_type",
+    "address",
+    "hours",
+    "services",
+    "emergency_number",
+    "calendar_email",
+    "plan",
+    "ai_name",
+    "notes",
+]
 
 # --- Client registry (env var fallback for manually-configured clients) ---
 _raw = os.environ.get("CLIENTS_JSON", "{}")
@@ -89,10 +146,13 @@ DEMO_ASSISTANT_IDS = {
 }
 
 # --- SQLite DB ---
-DB_PATH = os.environ.get("DB_PATH", "/tmp/callmeie.db")
+DB_PATH = os.environ.get("DB_PATH", "/var/data/callmeie.db")
 
 
 def get_db() -> sqlite3.Connection:
+    db_dir = os.path.dirname(DB_PATH)
+    if db_dir:
+        os.makedirs(db_dir, exist_ok=True)
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     return conn
@@ -109,6 +169,131 @@ def _load_google_credentials():
     except Exception as e:
         print(f"[Calendar] Failed to load service account credentials: {e}")
         return None
+
+
+def _load_sheets_service(require_sheet_id: bool = True):
+    if not GOOGLE_SERVICE_ACCOUNT_JSON:
+        return None
+    if require_sheet_id and not CALLMEIE_BACKUP_SHEET_ID:
+        return None
+    try:
+        info = json.loads(GOOGLE_SERVICE_ACCOUNT_JSON)
+        credentials = service_account.Credentials.from_service_account_info(
+            info,
+            scopes=["https://www.googleapis.com/auth/spreadsheets"],
+        )
+        return build("sheets", "v4", credentials=credentials, cache_discovery=False)
+    except Exception as e:
+        print(f"[Sheets] Failed to load service account credentials: {e}")
+        return None
+
+
+def backup_sheet_status() -> dict:
+    """Summarize the current Google Sheets backup configuration."""
+    return {
+        "configured": bool(GOOGLE_SERVICE_ACCOUNT_JSON and CALLMEIE_BACKUP_SHEET_ID),
+        "has_service_account": bool(GOOGLE_SERVICE_ACCOUNT_JSON),
+        "has_sheet_id": bool(CALLMEIE_BACKUP_SHEET_ID),
+        "sheet_tab": CALLMEIE_BACKUP_SHEET_TAB,
+    }
+
+
+def bootstrap_backup_sheet() -> dict | None:
+    """
+    Create a new Google Sheet for onboarding backups and initialize the header row.
+
+    Returns a small metadata payload with the sheet ID and URL, or None if the
+    service account is unavailable.
+    """
+    service = _load_sheets_service(require_sheet_id=False)
+    if service is None:
+        return None
+
+    try:
+        spreadsheet = service.spreadsheets().create(
+            body={
+                "properties": {"title": "CallMeIE Onboarding Backups"},
+            }
+        ).execute()
+        spreadsheet_id = spreadsheet["spreadsheetId"]
+        sheets = spreadsheet.get("sheets", [])
+        first_sheet = sheets[0].get("properties", {}) if sheets else {}
+        default_sheet_id = first_sheet.get("sheetId")
+        default_sheet_title = first_sheet.get("title", "Sheet1")
+        tab_title = CALLMEIE_BACKUP_SHEET_TAB or default_sheet_title
+
+        if default_sheet_id and tab_title != default_sheet_title:
+            service.spreadsheets().batchUpdate(
+                spreadsheetId=spreadsheet_id,
+                body={
+                    "requests": [
+                        {
+                            "updateSheetProperties": {
+                                "properties": {
+                                    "sheetId": default_sheet_id,
+                                    "title": tab_title,
+                                },
+                                "fields": "title",
+                            }
+                        }
+                    ]
+                },
+            ).execute()
+        else:
+            tab_title = default_sheet_title
+
+        service.spreadsheets().values().update(
+            spreadsheetId=spreadsheet_id,
+            range=f"{tab_title}!A1:N1",
+            valueInputOption="RAW",
+            body={"values": [BACKUP_SHEET_HEADERS]},
+        ).execute()
+
+        return {
+            "spreadsheet_id": spreadsheet_id,
+            "spreadsheet_url": f"https://docs.google.com/spreadsheets/d/{spreadsheet_id}",
+            "sheet_tab": tab_title,
+        }
+    except Exception as e:
+        print(f"[Sheets] Failed to bootstrap backup sheet: {e}")
+        return None
+
+
+def backup_submission_to_sheet(submission: dict) -> bool:
+    """Append an onboarding submission to Google Sheets as an external backup."""
+    service = _load_sheets_service()
+    if service is None:
+        return False
+
+    row = [
+        datetime.utcnow().isoformat(),
+        submission.get("business_name", ""),
+        submission.get("contact_name", ""),
+        submission.get("contact_phone", ""),
+        submission.get("contact_email", ""),
+        submission.get("business_type", ""),
+        submission.get("address", ""),
+        submission.get("hours", ""),
+        submission.get("services", ""),
+        submission.get("emergency_number", ""),
+        submission.get("calendar_email", ""),
+        submission.get("plan", ""),
+        submission.get("ai_name", ""),
+        submission.get("notes", ""),
+    ]
+
+    try:
+        service.spreadsheets().values().append(
+            spreadsheetId=CALLMEIE_BACKUP_SHEET_ID,
+            range=f"{CALLMEIE_BACKUP_SHEET_TAB}!A:N",
+            valueInputOption="USER_ENTERED",
+            insertDataOption="INSERT_ROWS",
+            body={"values": [row]},
+        ).execute()
+        return True
+    except Exception as e:
+        print(f"[Sheets] Failed to back up submission: {e}")
+        return False
 
 
 def _next_business_callback(interest: str) -> datetime:
@@ -484,17 +669,28 @@ async def send_sms(to: str, body: str, from_number: str = "") -> dict:
     sender = from_number or TWILIO_FROM
     if not all([TWILIO_SID, TWILIO_TOKEN, sender]):
         print(f"[SMS MOCK] To: {to} | {body[:80]}...")
-        return {"status": "mocked"}
+        return {"status": "mocked", "ok": True, "http_status": 200}
     async with httpx.AsyncClient() as client:
         resp = await client.post(
             f"https://api.twilio.com/2010-04-01/Accounts/{TWILIO_SID}/Messages.json",
             auth=(TWILIO_SID, TWILIO_TOKEN),
             data={"To": to, "From": sender, "Body": body},
         )
-        result = resp.json()
+        try:
+            result = resp.json()
+        except Exception:
+            result = {"status": "failed", "message": resp.text[:200]}
         if resp.status_code not in (200, 201):
             print(f"[SMS ERROR] {resp.status_code}: {result}")
-        return result
+        status = result.get("status", "") if isinstance(result, dict) else ""
+        ok = resp.status_code in (200, 201) and status not in ("failed", "undelivered")
+        if not ok and isinstance(result, dict):
+            result.setdefault("status", "failed")
+        return {
+            **(result if isinstance(result, dict) else {"result": result}),
+            "ok": ok,
+            "http_status": resp.status_code,
+        }
 
 
 # --- Vapi post-call webhook ---
@@ -509,6 +705,19 @@ async def call_ended(request: Request, background_tasks: BackgroundTasks):
     caller = call.get("customer", {}).get("number", "")
     duration = call.get("duration", 0)
     call_id = call.get("id", "")
+
+    if call_id:
+        try:
+            with get_db() as conn:
+                duplicate = conn.execute(
+                    "SELECT 1 FROM call_events WHERE call_id=? AND event_type='call-ended' LIMIT 1",
+                    (call_id,),
+                ).fetchone()
+            if duplicate:
+                print(f"[Call] duplicate call-ended webhook ignored for {call_id}")
+                return JSONResponse({"status": "ok", "duplicate": True})
+        except Exception as e:
+            print(f"[Call] dedupe check failed: {e}")
 
     client = get_client(assistant_id)
     business = client["name"]
@@ -614,6 +823,7 @@ async def send_reminder(request: Request):
         from_number=from_num,
     )
     sms_status = sms_result.get("status", "") if isinstance(sms_result, dict) else ""
+    sms_ok = sms_result.get("ok", True) if isinstance(sms_result, dict) else True
     log_event(
         call_id,
         "reminder",
@@ -628,12 +838,12 @@ async def send_reminder(request: Request):
             "twilio_status": sms_status or "sent",
         },
     )
-    if sms_status in ("failed", "undelivered") and owner:
+    if (not sms_ok or sms_status in ("failed", "undelivered")) and owner:
         await send_sms(
             owner,
             f"[CallMeIE] Reminder SMS FAILED for {name or 'unknown'} ({phone}) at {business} "
             f"for {date} {time}. Ring them manually.",
-            from_number=from_num,
+            from_number=TWILIO_FROM,
         )
     return JSONResponse({"status": "sent", "twilio_status": sms_status or "sent"})
 
@@ -662,6 +872,7 @@ async def no_show(request: Request):
         from_number=from_num,
     )
     sms_status = sms_result.get("status", "") if isinstance(sms_result, dict) else ""
+    sms_ok = sms_result.get("ok", True) if isinstance(sms_result, dict) else True
     log_event(
         call_id,
         "no-show",
@@ -674,12 +885,12 @@ async def no_show(request: Request):
             "twilio_status": sms_status or "sent",
         },
     )
-    if sms_status in ("failed", "undelivered") and owner:
+    if (not sms_ok or sms_status in ("failed", "undelivered")) and owner:
         await send_sms(
             owner,
             f"[CallMeIE] No-show follow-up SMS FAILED for {name or 'unknown'} ({phone}) at {business}. "
             f"Ring them manually.",
-            from_number=from_num,
+            from_number=TWILIO_FROM,
         )
     return JSONResponse({"status": "sent", "twilio_status": sms_status or "sent"})
 
@@ -890,7 +1101,7 @@ async def book_appointment_endpoint(request: Request):
                         owner,
                         f"[CallMeIE] SMS confirmation FAILED for {customer_name} ({customer_phone}) "
                         f"at {business} — {readable}. Ring them to confirm manually.",
-                        from_number=from_num,
+                        from_number=TWILIO_FROM,
                     )
             else:
                 log_event(call_id, "sms-booking-confirmation", assistant_id,
@@ -926,6 +1137,7 @@ async def book_appointment_endpoint(request: Request):
         await send_sms(
             OWNER_NUMBER,
             f"[CallMeIE] Booking failed for {get_client(assistant_id)['name']} because calendar_api could not load.",
+            from_number=TWILIO_FROM,
         )
         return _vapi_result(tool_call_id, "Calendar system is temporarily unavailable. Please call us to reschedule.")
     except Exception as e:
@@ -936,6 +1148,7 @@ async def book_appointment_endpoint(request: Request):
             f"[CallMeIE] Booking failed for {get_client(assistant_id)['name']}.\n"
             f"Caller: {customer_name or 'Unknown'} ({customer_phone or 'Unknown'})\n"
             f"Error: {str(e)[:120]}",
+            from_number=TWILIO_FROM,
         )
         return _vapi_result(tool_call_id, f"I wasn't able to complete the booking right now. Please call us back and we'll sort it out.")
 
@@ -1196,6 +1409,22 @@ async def submit_onboarding(request: Request):
     except Exception as e:
         print(f"[DB] Failed to save submission: {e}")
 
+    backup_submission_to_sheet({
+        "business_name": business_name,
+        "contact_name": contact_name,
+        "contact_phone": contact_phone,
+        "contact_email": contact_email,
+        "business_type": business_type,
+        "address": address,
+        "hours": hours,
+        "services": services,
+        "emergency_number": emergency_number,
+        "calendar_email": calendar_email,
+        "plan": plan,
+        "ai_name": ai_name,
+        "notes": notes,
+    })
+
     # SMS 1: headline alert
     alert = (
         f"[CallMeIE] NEW CLIENT: {business_name} ({business_type})\n"
@@ -1350,7 +1579,9 @@ async def provision_client(sub: dict) -> str:
 async def admin_portal(token: str = Query("")):
     if not token or token != ADMIN_TOKEN:
         raise HTTPException(status_code=401, detail="Unauthorized")
-    return FileResponse(os.path.join(os.path.dirname(__file__), "admin.html"))
+    if os.path.exists(ADMIN_HTML_PATH):
+        return FileResponse(ADMIN_HTML_PATH)
+    return HTMLResponse(ADMIN_HTML_FALLBACK)
 
 
 @app.get("/admin/api/submissions")
@@ -1371,6 +1602,21 @@ async def list_clients(token: str = Query("")):
             "SELECT * FROM clients ORDER BY created_at DESC"
         ).fetchall()
     return [dict(r) for r in rows]
+
+
+@app.get("/admin/api/backup-sheet/status")
+async def backup_sheet_status_endpoint(token: str = Query("")):
+    check_admin(token)
+    return backup_sheet_status()
+
+
+@app.post("/admin/api/backup-sheet/bootstrap")
+async def bootstrap_backup_sheet_endpoint(token: str = Query("")):
+    check_admin(token)
+    result = bootstrap_backup_sheet()
+    if not result:
+        raise HTTPException(status_code=500, detail="Unable to bootstrap backup sheet")
+    return result
 
 
 @app.post("/admin/api/provision/{submission_id}")
@@ -1545,6 +1791,7 @@ async def health():
         "clients_loaded": len(CLIENTS),
         "twilio_configured": bool(TWILIO_SID),
         "global_owner_notifications": bool(OWNER_NUMBER),
+        "google_backup": backup_sheet_status(),
     }
 
 
