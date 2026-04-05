@@ -39,7 +39,13 @@ from googleapiclient.discovery import build
 sys.path.insert(0, os.path.dirname(__file__))
 
 app = FastAPI(title="CallMeIE — AI Receptionist Server")
-ADMIN_HTML_PATH = os.path.join(os.path.dirname(__file__), "admin.html")
+_SCRIPTS_DIR = os.path.dirname(os.path.abspath(__file__))
+_REPO_ROOT = os.path.dirname(_SCRIPTS_DIR)
+ADMIN_HTML_PATH = os.path.join(_SCRIPTS_DIR, "admin.html")
+INDEX_HTML_PATH = os.path.join(_REPO_ROOT, "index.html")
+ONBOARD_HTML_PATH = os.path.join(_REPO_ROOT, "onboard.html")
+PRIVACY_HTML_PATH = os.path.join(_REPO_ROOT, "privacy.html")
+TERMS_HTML_PATH = os.path.join(_REPO_ROOT, "terms.html")
 FAVICON_SVG = b"""<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'>
   <rect width='64' height='64' rx='16' fill='#0f172a'/>
   <path d='M19 41V23h6.5c4.6 0 8 2.9 8 9s-3.4 9-8 9H19Zm5.2-4h1c2.9 0 4.3-1.8 4.3-5s-1.4-5-4.3-5h-1v10Z' fill='#22d3ee'/>
@@ -255,8 +261,7 @@ def bootstrap_backup_sheet() -> dict | None:
             "sheet_tab": tab_title,
         }
     except Exception as e:
-        print(f"[Sheets] Failed to bootstrap backup sheet: {e}")
-        return None
+        raise RuntimeError(f"{type(e).__name__}: {e}") from e
 
 
 def backup_submission_to_sheet(submission: dict) -> bool:
@@ -480,14 +485,14 @@ def log_event(call_id: str, event_type: str, assistant: str, summary: str, detai
 
 def score_anomaly(status: str, duration: int, is_demo: bool) -> float:
     """
-    Score how anomalous a call-ended event is (0.0–1.0).
+    Score how anomalous a call-ended event is (0.0â1.0).
     Anything >= ANOMALY_THRESHOLD gets queued for Claude diagnosis.
 
     Thresholds based on industry benchmarks:
-    - Dental/salon average call duration for booking: 60–180s
+    - Dental/salon average call duration for booking: 60â180s
     - <10s = almost certainly a technical failure (not a real interaction)
     - <30s = dropped or AI confused (too short for any real booking conversation)
-    - missed/no-answer: standard SMB miss rate is 30–35%; individual events are normal
+    - missed/no-answer: standard SMB miss rate is 30â35%; individual events are normal
       but combined with very short duration they signal infrastructure failure
     """
     score = 0.0
@@ -497,7 +502,7 @@ def score_anomaly(status: str, duration: int, is_demo: bool) -> float:
         score += 0.6
     if not is_demo:
         if duration < 10:
-            score += 0.5   # almost certainly technical failure — not a real interaction
+            score += 0.5   # almost certainly technical failure â not a real interaction
         elif duration < 30:
             score += 0.2   # too short for any real booking conversation
     return min(score, 1.0)
@@ -519,7 +524,7 @@ async def diagnose_call_anomaly(
     SMS owner if action is required.
     """
     if not ANTHROPIC_API_KEY:
-        print(f"[Diag] No ANTHROPIC_API_KEY — skipping diagnosis for {call_id}")
+        print(f"[Diag] No ANTHROPIC_API_KEY â skipping diagnosis for {call_id}")
         return
 
     # --- Idempotency ---
@@ -641,7 +646,7 @@ def check_admin(token: str = Query("")):
 
 
 def get_client(assistant_id: str) -> dict:
-    """Return client config — DB first, fallback to CLIENTS env var."""
+    """Return client config â DB first, fallback to CLIENTS env var."""
     try:
         with get_db() as conn:
             row = conn.execute(
@@ -763,7 +768,7 @@ async def call_ended(request: Request, background_tasks: BackgroundTasks):
         await send_sms(
             caller,
             f"Hi! We missed your call to {business}. "
-            f"We're here to help — reply to this text or ring us back. "
+            f"We're here to help â reply to this text or ring us back. "
             f"Reply STOP to opt out.",
             from_number=from_num,
         )
@@ -868,7 +873,7 @@ async def no_show(request: Request):
     sms_result = await send_sms(
         phone,
         f"Hi {name}! We missed you at {business} today. "
-        f"No worries — reply to reschedule. Reply STOP to opt out.",
+        f"No worries â reply to reschedule. Reply STOP to opt out.",
         from_number=from_num,
     )
     sms_status = sms_result.get("status", "") if isinstance(sms_result, dict) else ""
@@ -982,13 +987,13 @@ async def check_availability(request: Request):
         business = client["name"]
 
         slots = get_available_slots(calendar_id, date_str, duration)
-        print(f"[Availability] {date_str} — {len(slots)} slots for {business}")
+        print(f"[Availability] {date_str} â {len(slots)} slots for {business}")
         log_event(call_id, "avail-check", assistant_id,
-                  f"{date_str} → {len(slots)} slots",
+                  f"{date_str} â {len(slots)} slots",
                   {"date": date_str, "slots_found": len(slots), "business": business})
 
         # Alert if 3+ avail-checks on this call with no booking yet (calendar full or AI looping)
-        # Industry benchmark: normal booking = 1–2 checks; 3+ = something is wrong
+        # Industry benchmark: normal booking = 1â2 checks; 3+ = something is wrong
         if call_id:
             try:
                 with get_db() as conn:
@@ -1002,7 +1007,7 @@ async def check_availability(request: Request):
                     ).fetchone()
                 if check_count >= 3 and not has_booking:
                     log_event(call_id, "avail-check-loop", assistant_id,
-                              f"{check_count} checks, no booking — calendar full or AI looping",
+                              f"{check_count} checks, no booking â calendar full or AI looping",
                               {"checks": check_count, "business": business})
                     await send_sms(
                         OWNER_NUMBER,
@@ -1026,7 +1031,7 @@ async def check_availability(request: Request):
         print(f"[Calendar Error] {e}")
         log_event(call_id, "avail-check-fail", assistant_id, str(e)[:120],
                   {"error": str(e)})
-        # Alert owner immediately — calendar access broken = silent revenue loss
+        # Alert owner immediately â calendar access broken = silent revenue loss
         await send_sms(
             OWNER_NUMBER,
             f"[CallMeIE] Calendar check failed for {get_client(assistant_id)['name']}.\n"
@@ -1089,7 +1094,7 @@ async def book_appointment_endpoint(request: Request):
                 f"We look forward to seeing you. Reply STOP to opt out.",
                 from_number=from_num,
             )
-            # Every booking confirmation failure is individually significant — a patient
+            # Every booking confirmation failure is individually significant â a patient
             # who didn't get this text is a likely no-show (Twilio benchmark: near 100% delivery expected)
             sms_status = sms_result.get("status", "") if isinstance(sms_result, dict) else ""
             if sms_status in ("failed", "undelivered"):
@@ -1100,7 +1105,7 @@ async def book_appointment_endpoint(request: Request):
                     await send_sms(
                         owner,
                         f"[CallMeIE] SMS confirmation FAILED for {customer_name} ({customer_phone}) "
-                        f"at {business} — {readable}. Ring them to confirm manually.",
+                        f"at {business} â {readable}. Ring them to confirm manually.",
                         from_number=TWILIO_FROM,
                     )
             else:
@@ -1110,11 +1115,11 @@ async def book_appointment_endpoint(request: Request):
         if owner:
             await send_sms(
                 owner,
-                f"[{business}] New booking: {customer_name} ({customer_phone}) — {readable}",
+                f"[{business}] New booking: {customer_name} ({customer_phone}) â {readable}",
                 from_number=from_num,
             )
 
-        print(f"[Booking] {customer_name} at {business} — {readable}")
+        print(f"[Booking] {customer_name} at {business} â {readable}")
         log_event(call_id, "booking", assistant_id,
                   f"{customer_name} | {readable}",
                   {
@@ -1126,7 +1131,7 @@ async def book_appointment_endpoint(request: Request):
                       "event_id": event.get("id", ""),
                       "event_link": event.get("link", ""),
                       "notes": notes,
-                  })
+                  }})
         return _vapi_result(
             tool_call_id,
             f"Perfect, {customer_name}! Your appointment at {business} is confirmed for {readable}. "
@@ -1197,10 +1202,10 @@ async def capture_lead(request: Request):
     if source == "catch_all":
         sms_body = (
             f"[CallMeIE Custom Lead]\n"
-            f"{name} — {phone}\n"
+            f"{name} â {phone}\n"
             f"Business: {business}\n"
             f"Needs: {interest}\n"
-            f"No demo match — build custom. Ring back today."
+            f"No demo match â build custom. Ring back today."
         )
     else:
         msg_parts = ["[CallMeIE Lead]"]
@@ -1209,7 +1214,7 @@ async def capture_lead(request: Request):
         if business: msg_parts.append(business)
         if interest: msg_parts.append(f"Interest: {interest}")
         msg_parts.append("Demo in progress.")
-        sms_body = " — ".join(msg_parts)
+        sms_body = " â ".join(msg_parts)
 
     await send_sms(owner, sms_body)
 
@@ -1229,7 +1234,7 @@ async def capture_lead(request: Request):
     if next_tool:
         instruction = f"Lead saved. Call {next_tool} now. Do not speak."
     else:
-        instruction = "Lead saved. This is a catch-all lead — end the call politely."
+        instruction = "Lead saved. This is a catch-all lead â end the call politely."
 
     return _vapi_result(tool_call_id, instruction)
 
@@ -1328,11 +1333,11 @@ async def demo_complete(request: Request):
             callback_error = str(e)
             print(f"[Calendar] demo_complete callback error: {e}")
 
-    heat = {"very_interested": "🔥 HOT", "curious": "🌡 WARM", "just_browsing": "❄ COLD"}.get(interest, interest)
+    heat = {"very_interested": "ð¥ HOT", "curious": "ð¡ WARM", "just_browsing": "â COLD"}.get(interest, interest)
 
     sms = (
-        f"[CallMeIE Demo Done] {demo_type.upper()} — {heat}\n"
-        f"{name} — {phone}\n"
+        f"[CallMeIE Demo Done] {demo_type.upper()} â {heat}\n"
+        f"{name} â {phone}\n"
         f"Business: {business_type or 'n/a'}\n"
         f"Asked about: {topics or 'n/a'}\n"
         f"Pain point: {pain_point or 'n/a'}\n"
@@ -1454,7 +1459,7 @@ async def submit_onboarding(request: Request):
 
 ASSISTANT_PROMPT = """You are {ai_name}, the receptionist at {business_name} in Ireland.
 
-VOICE RULES — non-negotiable:
+VOICE RULES â non-negotiable:
 - Plain text only. No markdown, bullet points, or numbered lists.
 - 1-2 sentences per turn. Never monologue.
 - Ask ONE question at a time.
@@ -1462,35 +1467,35 @@ VOICE RULES — non-negotiable:
 - Say "ring" not "call". Say "diary" not "calendar". Say "no bother" not "no problem".
 - Never sound American. You work in Ireland, for an Irish business.
 - Phone numbers: read each digit separately with a dash-pause between each one.
-  CORRECT: "zero-eight-five, one-two-three, four-five-six-seven" — pause after every digit group.
+  CORRECT: "zero-eight-five, one-two-three, four-five-six-seven" â pause after every digit group.
   NEVER: continuous strings like "0851234567", plus signs, country codes like "+353", or number words like "one hundred".
-  This is critical — garbled numbers mean lost appointments.
-- Email addresses: spell naturally — "john dot smith at gmail dot com". Never spell individual letters.
+  This is critical â garbled numbers mean lost appointments.
+- Email addresses: spell naturally â "john dot smith at gmail dot com". Never spell individual letters.
 - Dates and times in natural Irish style: "next Tuesday at half ten" not "2026-04-01T10:30".
 
 BOOKING FLOW:
 1. Understand what they need
-2. Preferred day/time → check diary → offer slots naturally: "We have Tuesday morning at half ten or Thursday at three — which suits you better?"
-3. Name: ask, then CONFIRM back — "Just to confirm, that's [name] — is that right?"
-4. Phone: ask, then CONFIRM back using the dash format — "And that's zero-eight-five, one-two-three, four-five-six-seven — is that right?"
+2. Preferred day/time â check diary â offer slots naturally: "We have Tuesday morning at half ten or Thursday at three â which suits you better?"
+3. Name: ask, then CONFIRM back â "Just to confirm, that's [name] â is that right?"
+4. Phone: ask, then CONFIRM back using the dash format â "And that's zero-eight-five, one-two-three, four-five-six-seven â is that right?"
    Read each digit with a pause between groups. Only proceed once caller confirms both. Wrong details = missed appointment.
 5. Book the appointment
 6. Confirmation text fires automatically
-7. Close warmly: "Lovely, you're all booked in! See you then — bye for now!"
+7. Close warmly: "Lovely, you're all booked in! See you then â bye for now!"
    For first-time visitors add: "If it's your first visit, try to arrive about 10 minutes early."
 
-CONFIRMATION RULE — critical:
+CONFIRMATION RULE â critical:
 Never save a name or phone number without reading it back to the caller first.
 If they correct you, update and confirm again before proceeding.
 
 HANDLING EDGE CASES:
-- "Can I speak to someone / a real person": "Of course, let me put you through now." → transfer immediately.
+- "Can I speak to someone / a real person": "Of course, let me put you through now." â transfer immediately.
 - "How much does X cost" / professional advice questions: "The team will go through all of that with you at your appointment."
-- Something you don't know: "Let me get someone from the team to ring you back about that — can I take your number?"
-- Cancellations: take name + appointment date, say "No bother at all — is there another time that would suit you?"
+- Something you don't know: "Let me get someone from the team to ring you back about that â can I take your number?"
+- Cancellations: take name + appointment date, say "No bother at all â is there another time that would suit you?"
 - Cancellation policy: "We just ask for 24 hours notice if you need to cancel or reschedule."
 
-EMERGENCIES: severe pain, bleeding, broken tooth, swelling, trauma → transfer immediately, don't delay.
+EMERGENCIES: severe pain, bleeding, broken tooth, swelling, trauma â transfer immediately, don't delay.
 
 BUSINESS INFO:
 Hours: {hours}
@@ -1520,7 +1525,7 @@ async def provision_client(sub: dict) -> str:
     async with httpx.AsyncClient(timeout=30) as h:
         # 1. Create assistant
         r = await h.post("https://api.vapi.ai/assistant", headers=headers, json={
-            "name": f"{name} — AI Receptionist",
+            "name": f"{name} â AI Receptionist",
             "firstMessage": f"Hi, thanks for ringing {name}! This is {ai_name}. How can I help you today?",
             "model": {
                 "provider": "anthropic",
@@ -1575,6 +1580,36 @@ async def provision_client(sub: dict) -> str:
     return assistant_id
 
 
+@app.get("/")
+async def index():
+    if os.path.exists(INDEX_HTML_PATH):
+        return FileResponse(INDEX_HTML_PATH)
+    return HTMLResponse("<h1>CallMe.ie</h1>")
+
+
+@app.get("/onboard.html")
+async def onboard():
+    if os.path.exists(ONBOARD_HTML_PATH):
+        return FileResponse(ONBOARD_HTML_PATH)
+    return HTMLResponse("<h1>Onboarding coming soon</h1>")
+
+
+@app.get("/privacy")
+@app.get("/privacy.html")
+async def privacy():
+    if os.path.exists(PRIVACY_HTML_PATH):
+        return FileResponse(PRIVACY_HTML_PATH)
+    return HTMLResponse("<h1>Privacy Policy</h1>")
+
+
+@app.get("/terms")
+@app.get("/terms.html")
+async def terms():
+    if os.path.exists(TERMS_HTML_PATH):
+        return FileResponse(TERMS_HTML_PATH)
+    return HTMLResponse("<h1>Terms of Service</h1>")
+
+
 @app.get("/admin")
 async def admin_portal(token: str = Query("")):
     if not token or token != ADMIN_TOKEN:
@@ -1613,10 +1648,13 @@ async def backup_sheet_status_endpoint(token: str = Query("")):
 @app.post("/admin/api/backup-sheet/bootstrap")
 async def bootstrap_backup_sheet_endpoint(token: str = Query("")):
     check_admin(token)
-    result = bootstrap_backup_sheet()
-    if not result:
-        raise HTTPException(status_code=500, detail="Unable to bootstrap backup sheet")
-    return result
+    try:
+        return bootstrap_backup_sheet()
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Unable to bootstrap backup sheet: {e}",
+        ) from e
 
 
 @app.post("/admin/api/provision/{submission_id}")
@@ -1666,7 +1704,7 @@ async def provision(submission_id: int, token: str = Query("")):
             f"Ring us if you need help!"
         )
 
-    print(f"[PROVISIONED] {sub['business_name']} → {assistant_id}")
+    print(f"[PROVISIONED] {sub['business_name']} â {assistant_id}")
     return {"status": "provisioned", "assistant_id": assistant_id}
 
 
@@ -1762,7 +1800,7 @@ async def client_health(token: str = Query("")):
 
 @app.get("/admin/api/diagnoses")
 async def list_diagnoses(token: str = Query(""), limit: int = Query(50)):
-    """Recent anomaly diagnoses — for GM peer and admin portal."""
+    """Recent anomaly diagnoses â for GM peer and admin portal."""
     check_admin(token)
     with get_db() as conn:
         rows = conn.execute(
