@@ -118,6 +118,10 @@ CALLMEIE_CALLBACK_CALENDAR_ID = os.environ.get("CALLMEIE_CALLBACK_CALENDAR_ID", 
 CALLMEIE_TIMEZONE = os.environ.get("CALLMEIE_TIMEZONE", "Europe/Dublin")
 CALLMEIE_BACKUP_SHEET_ID = os.environ.get("CALLMEIE_BACKUP_SHEET_ID", "")
 CALLMEIE_BACKUP_SHEET_TAB = os.environ.get("CALLMEIE_BACKUP_SHEET_TAB", "submissions")
+
+# --- Telegram notifications ---
+TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "")
 BACKUP_SHEET_HEADERS = [
     "submitted_at_utc",
     "business_name",
@@ -715,6 +719,22 @@ async def send_sms(to: str, body: str, from_number: str = "") -> dict:
         }
 
 
+# --- Telegram ---
+async def send_telegram(message: str) -> None:
+    """Send a Telegram message to TELEGRAM_CHAT_ID via the configured bot."""
+    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
+        print(f"[TELEGRAM MOCK] {message[:120]}")
+        return
+    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.post(url, json={"chat_id": TELEGRAM_CHAT_ID, "text": message, "parse_mode": "HTML"})
+            if resp.status_code != 200:
+                print(f"[TELEGRAM ERROR] {resp.status_code}: {resp.text[:200]}")
+    except Exception as e:
+        print(f"[TELEGRAM ERROR] {e}")
+
+
 # --- Vapi post-call webhook ---
 @app.post("/vapi/call-ended")
 async def call_ended(request: Request, background_tasks: BackgroundTasks):
@@ -1235,6 +1255,15 @@ async def capture_lead(request: Request):
 
     await send_sms(owner, sms_body)
 
+    # Telegram alert
+    label = "Custom Lead" if source == "catch_all" else "Demo Lead"
+    tg_parts = [f"📞 <b>{label}: {name or 'Unknown'}</b>", phone]
+    if business:
+        tg_parts.append(f"Business: {business}")
+    if interest:
+        tg_parts.append(f"Needs: {interest}")
+    await send_telegram("\n".join(tg_parts))
+
     # Tell the LLM exactly which handoff tool to call next
     biz = business.lower()
     if any(w in biz for w in ["dental", "dentist", "clinic", "medical", "health"]):
@@ -1465,6 +1494,17 @@ async def submit_onboarding(request: Request):
             f"Hours: {hours[:80] if hours else 'TBC'}"
         )
         await send_sms(OWNER_NUMBER, setup)
+
+    # Telegram alert
+    tg_msg = (
+        f"🆕 <b>New onboarding: {business_name}</b>\n"
+        f"Type: {business_type} | Plan: {plan}\n"
+        f"Contact: {contact_name} · {contact_phone}\n"
+        f"Email: {contact_email}"
+    )
+    if ai_name:
+        tg_msg += f"\nAI name: {ai_name}"
+    await send_telegram(tg_msg)
 
     return JSONResponse({
         "status": "received",
