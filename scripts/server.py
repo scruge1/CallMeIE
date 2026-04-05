@@ -1131,7 +1131,7 @@ async def book_appointment_endpoint(request: Request):
                       "event_id": event.get("id", ""),
                       "event_link": event.get("link", ""),
                       "notes": notes,
-                  }})
+                  })
         return _vapi_result(
             tool_call_id,
             f"Perfect, {customer_name}! Your appointment at {business} is confirmed for {readable}. "
