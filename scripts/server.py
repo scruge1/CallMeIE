@@ -206,7 +206,11 @@ def backup_sheet_status() -> dict:
 
 def bootstrap_backup_sheet() -> dict | None:
     """
-    Create a new Google Sheet for onboarding backups and initialize the header row.
+    Initialize the backup Google Sheet with headers.
+
+    If CALLMEIE_BACKUP_SHEET_ID is already set, writes headers to the existing
+    sheet (requires the sheet to be shared with the service account). Otherwise
+    attempts to create a new sheet.
 
     Returns a small metadata payload with the sheet ID and URL, or None if the
     service account is unavailable.
@@ -216,37 +220,50 @@ def bootstrap_backup_sheet() -> dict | None:
         return None
 
     try:
-        spreadsheet = service.spreadsheets().create(
-            body={
-                "properties": {"title": "CallMeIE Onboarding Backups"},
-            }
-        ).execute()
-        spreadsheet_id = spreadsheet["spreadsheetId"]
-        sheets = spreadsheet.get("sheets", [])
-        first_sheet = sheets[0].get("properties", {}) if sheets else {}
-        default_sheet_id = first_sheet.get("sheetId")
-        default_sheet_title = first_sheet.get("title", "Sheet1")
-        tab_title = CALLMEIE_BACKUP_SHEET_TAB or default_sheet_title
+        if CALLMEIE_BACKUP_SHEET_ID:
+            # Use the existing sheet — just ensure the tab exists and write headers.
+            spreadsheet_id = CALLMEIE_BACKUP_SHEET_ID
+            meta = service.spreadsheets().get(spreadsheetId=spreadsheet_id).execute()
+            existing_titles = [
+                s["properties"]["title"] for s in meta.get("sheets", [])
+            ]
+            tab_title = CALLMEIE_BACKUP_SHEET_TAB or "submissions"
 
-        if default_sheet_id and tab_title != default_sheet_title:
-            service.spreadsheets().batchUpdate(
-                spreadsheetId=spreadsheet_id,
-                body={
-                    "requests": [
-                        {
-                            "updateSheetProperties": {
-                                "properties": {
-                                    "sheetId": default_sheet_id,
-                                    "title": tab_title,
-                                },
-                                "fields": "title",
-                            }
-                        }
-                    ]
-                },
-            ).execute()
+            if tab_title not in existing_titles:
+                service.spreadsheets().batchUpdate(
+                    spreadsheetId=spreadsheet_id,
+                    body={"requests": [{"addSheet": {"properties": {"title": tab_title}}}]},
+                ).execute()
         else:
-            tab_title = default_sheet_title
+            spreadsheet = service.spreadsheets().create(
+                body={"properties": {"title": "CallMeIE Onboarding Backups"}}
+            ).execute()
+            spreadsheet_id = spreadsheet["spreadsheetId"]
+            sheets = spreadsheet.get("sheets", [])
+            first_sheet = sheets[0].get("properties", {}) if sheets else {}
+            default_sheet_id = first_sheet.get("sheetId")
+            default_sheet_title = first_sheet.get("title", "Sheet1")
+            tab_title = CALLMEIE_BACKUP_SHEET_TAB or default_sheet_title
+
+            if default_sheet_id and tab_title != default_sheet_title:
+                service.spreadsheets().batchUpdate(
+                    spreadsheetId=spreadsheet_id,
+                    body={
+                        "requests": [
+                            {
+                                "updateSheetProperties": {
+                                    "properties": {
+                                        "sheetId": default_sheet_id,
+                                        "title": tab_title,
+                                    },
+                                    "fields": "title",
+                                }
+                            }
+                        ]
+                    },
+                ).execute()
+            else:
+                tab_title = default_sheet_title
 
         service.spreadsheets().values().update(
             spreadsheetId=spreadsheet_id,
