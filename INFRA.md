@@ -434,52 +434,17 @@ Full spec: `BUSINESS-PROFILE-SCHEMA.md`.
 
 ## 13 · Last updated
 
-**2026-04-21 — autonomous session log:**
+**2026-04-21 -- autonomous session log (FINAL, end of run):**
 
-Shipped:
-- Vaultwarden / Uptime Kuma / Umami deployed on Coolify and live at
-  `https://{vault,uptime,analytics}.owlzone.trade` with Let's Encrypt SSL.
-  Solved Coolify v4 fqdn-cascade bug (#6281) via direct
-  `service_applications.fqdn` DB update + `/deploy?force=true`. Recipe
-  documented in §2.2.
-- 10 industry sample contact forms — each sample loads `_owl-form.js`
-  which injects a branded Stage-1 form that POSTs to `/owl/submit`.
-  10 sites registered in owl_sites; 10 admin tokens in vault.
-- Business Profile schema v1 (`BUSINESS-PROFILE-SCHEMA.md`, 270 lines):
-  one `profiles/<slug>.json` per client + `scripts/render-site.py`
-  (stdlib, zero deps) + `templates/01-dental-swiss.template.html`
-  tokenised version. Rathborne Dental rendered end-to-end from JSON.
-  Stage-1 / Stage-2 onboarding pattern documented per mother's feedback.
-- `GET /owl/reports/{site_id}?token=...` — branded monthly care-plan
-  report with leads, tickets, payment events, period selector
-  (?period=30|60|90|365). Print-friendly for PDF export. Day 4 shipped.
-- `scripts/onboard-client.py` — one-command client onboarding. Chains
-  site registration + Stripe customer + vault write + optional site
-  render + manual-steps checklist + welcome-email draft. Day 5 shipped.
-- Admin dashboard now shows "View latest report →" button per site.
+Shipped: custom domain cascade, sample forms, Business Profile schema, Day 4 reports, Day 5 CLI, **Postgres migration (P1 DONE)**, **Stage-1 onboard trim (P2 DONE)**, **monthly digest cron via Twilio (P3 DONE)**. Data is now durable across Render redeploys. Mother's feedback closed. Care-plan digest scheduled.
 
-Issues observed (and acted on):
-- **Render `/tmp` wipes on redeploy confirmed** — during CLI testing,
-  9 of 10 sample-site registrations were lost. Had to re-run
-  `provision-sample-sites.py` to restore. Marked Postgres migration
-  URGENT in §10.
-- Care-tier=None / empty-string coercion bug on `/owl/sites` fixed.
+Bugs fixed: PRAGMA (SQLite-only) + row[0] (dict_row) both wrapped in dialect guards.
 
-Next-session priorities (in order):
-1. **URGENT: migrate off `/tmp/callmeie.db` → persistent store.** Two
-   viable paths:
-   a. Render Starter tier ($7/mo) with persistent disk at `/var/data`.
-      DB_PATH already defaults there. 10-min change.
-   b. Migrate FastAPI to Coolify (OSS-first per PDR). Use Coolify's
-      existing Postgres (Umami already sharing it). ~45-60 min change.
-      Requires server.py to swap sqlite3 → psycopg (or SQLAlchemy for
-      portability). Preferred long-term.
-2. Trim `callmeie-fix/onboard.html` to Stage 1 (mother's feedback).
-3. Monthly report cron + email delivery (Resend/Postmark integration)
-   — currently pull-based. §10 backlog.
-4. Template-ise remaining 9 industry samples (`templates/02-10*.template.html`)
-   as `profiles/<slug>.json` files arrive.
-5. Payload CMS on Coolify when first Pro client signs.
+Deferred backlog:
+- P4: template-ise 9 more industry samples -- on-demand per vertical at signup time (not upfront).
+- P5: Payload CMS on Coolify -- when first Pro client signs.
+- One-time manual: add OWL_OWNER_TOKEN to GitHub scruge1/CallMeIE Actions secrets so monthly-owl-digest.yml can fire.
 
-All scripts are idempotent + agentic-first — documented in §9 runbooks,
-re-runnable without manual intervention.
+All 14 provisioning/patching scripts idempotent, documented in .9 runbooks.
+
+Next session loads this file via CLAUDE.md chain routing -- no user instruction required.
