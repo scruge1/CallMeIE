@@ -1,0 +1,38 @@
+name: Monthly Owl Studio digest
+
+# Fires at 08:00 UTC on the 1st of every month. Hits /owl/reports/run-digest
+# which iterates every active site, computes 30-day stats, and SMSes the
+# owner a digest line per client + admin report URL (Twilio via existing
+# CallMeIE send_sms helper — no Resend dependency required).
+#
+# Manual trigger available via "Run workflow" button on the Actions tab.
+
+on:
+  schedule:
+    - cron: "0 8 1 * *"
+  workflow_dispatch: {}
+
+jobs:
+  run-digest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: POST /owl/reports/run-digest
+        env:
+          OWL_OWNER_TOKEN: ${{ secrets.OWL_OWNER_TOKEN }}
+        run: |
+          if [ -z "$OWL_OWNER_TOKEN" ]; then
+            echo "::error::OWL_OWNER_TOKEN secret not set. Add it at"
+            echo "  https://github.com/scruge1/CallMeIE/settings/secrets/actions"
+            exit 1
+          fi
+          response=$(curl -sS -w "\nHTTP_STATUS:%{http_code}" -X POST \
+            "https://callmeie.onrender.com/owl/reports/run-digest?token=$OWL_OWNER_TOKEN")
+          body=$(echo "$response" | sed '$d')
+          status=$(echo "$response" | tail -1 | sed 's/HTTP_STATUS://')
+          echo "status: $status"
+          echo "body: $body"
+          if [ "$status" -ne 200 ]; then
+            echo "::error::digest endpoint returned $status"
+            exit 1
+          fi

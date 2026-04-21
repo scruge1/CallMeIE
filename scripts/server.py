@@ -2490,6 +2490,48 @@ td.mono{{font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--grey)
     return HTMLResponse(html)
 
 
+@app.post("/owl/reports/run-digest")
+async def owl_run_digest(background_tasks: BackgroundTasks, token: str = Query("")) -> JSONResponse:
+    """Owner-only: iterate every active site, compute stats, SMS the owner
+    a per-site digest line + admin URL. Triggered by GitHub Actions cron
+    (monthly-owl-digest.yml) on the 1st of each month at 08:00 UTC.
+    Idempotent — safe to call ad-hoc too (e.g. to preview the digest)."""
+    if not _owl_check_owner(token):
+        raise HTTPException(status_code=401, detail="owner token required")
+
+    with get_db() as conn:
+        sites = [dict(r) for r in conn.execute(
+            "SELECT site_id, display_name, tier, care_tier, admin_token, live_url FROM owl_sites WHERE status = 'active'"
+        ).fetchall()]
+
+    lines: list[str] = []
+    for s in sites:
+        stats = _owl_report_stats(s["site_id"], period_days=30)
+        delta_sign = "+" if stats["leads_delta"] > 0 else ""
+        lines.append(
+            f"{s['display_name']}: {stats['leads_now']} leads ({delta_sign}{stats['leads_delta']}), "
+            f"{stats['tickets_opened']} tickets. "
+            f"https://callmeie.onrender.com/owl/reports/{s['site_id']}?token={s['admin_token']}"
+        )
+
+    digest = "OwlStudio monthly digest · " + datetime.now().strftime("%b %Y") + "\n\n" + "\n\n".join(lines) if lines else "OwlStudio: no active sites."
+
+    # Twilio caps SMS at 1600 chars — chunk if needed
+    owner = OWNER_NUMBER
+    if owner:
+        remaining = digest
+        while remaining:
+            chunk, remaining = remaining[:1500], remaining[1500:]
+            background_tasks.add_task(send_sms, owner, chunk)
+
+    return JSONResponse({
+        "ok": True,
+        "sites_reported": len(sites),
+        "digest_length": len(digest),
+        "preview": digest[:800],
+    })
+
+
 # ---------------- Stripe webhook -----------------------------------------
 # Handles: checkout.session.completed, customer.subscription.*,
 # invoice.paid, invoice.payment_failed. Signature verified against
