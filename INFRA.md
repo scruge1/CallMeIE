@@ -398,6 +398,8 @@ Full spec: `BUSINESS-PROFILE-SCHEMA.md`.
 
 ### Remaining
 
+- [ ] **Trim `onboard.html` to Stage 1 (mother's feedback 2026-04-21)** — signup form currently asks ~15 fields + 3 FAQ repeaters before commit. Trim to 6: business_name, contact_name, contact_phone, contact_email, business_type (dropdown), plan tier. Move address/hours/services/insurance/FAQ to a post-payment welcome-call capture. Preserve full form as `onboard-details.html` for stage-2 use. Backend unchanged — `/submit-onboarding` already defaults missing fields to empty. Full rationale in `owl-studio-website-directions/BUSINESS-PROFILE-SCHEMA.md` §2.5.
+
 - [ ] **Cascade SERVICE_FQDN_* to app sub-resource** — manual Coolify dashboard step OR SSH DB update for vault / uptime / analytics domains to go live via HTTPS
 - [ ] **Weekly/monthly PDF report cron** (Day 4) — leads + uptime + tickets per site
 - [ ] **Full onboarding CLI** (Day 5) — `python onboard.py --site X …` chains site registration + UptimeRobot/Uptime-Kuma monitor creation + Stripe customer + Vaultwarden vault folder + admin-URL email
