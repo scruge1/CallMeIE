@@ -2332,23 +2332,32 @@ def _owl_report_stats(site_id: str, period_days: int = 30) -> dict:
     """Stats a monthly care-plan report shows for one site."""
     cutoff = (datetime.utcnow() - timedelta(days=period_days)).isoformat()
     prev_cutoff = (datetime.utcnow() - timedelta(days=period_days * 2)).isoformat()
+
+    def _count(conn, row) -> int:
+        # psycopg dict_row rows use column keys; sqlite3.Row supports both.
+        # Aliasing to 'n' makes both backends work identically.
+        try:
+            return int(row["n"])
+        except (TypeError, KeyError):
+            return int(row[0])
+
     with get_db() as conn:
-        leads_now = conn.execute(
-            "SELECT COUNT(*) FROM owl_leads WHERE site_id = ? AND ts >= ?",
+        leads_now = _count(conn, conn.execute(
+            "SELECT COUNT(*) AS n FROM owl_leads WHERE site_id = ? AND ts >= ?",
             (site_id, cutoff),
-        ).fetchone()[0]
-        leads_prev = conn.execute(
-            "SELECT COUNT(*) FROM owl_leads WHERE site_id = ? AND ts >= ? AND ts < ?",
+        ).fetchone())
+        leads_prev = _count(conn, conn.execute(
+            "SELECT COUNT(*) AS n FROM owl_leads WHERE site_id = ? AND ts >= ? AND ts < ?",
             (site_id, prev_cutoff, cutoff),
-        ).fetchone()[0]
-        tickets_opened = conn.execute(
-            "SELECT COUNT(*) FROM owl_tickets WHERE site_id = ? AND ts >= ?",
+        ).fetchone())
+        tickets_opened = _count(conn, conn.execute(
+            "SELECT COUNT(*) AS n FROM owl_tickets WHERE site_id = ? AND ts >= ?",
             (site_id, cutoff),
-        ).fetchone()[0]
-        tickets_closed = conn.execute(
-            "SELECT COUNT(*) FROM owl_tickets WHERE site_id = ? AND ts >= ? AND status = 'done'",
+        ).fetchone())
+        tickets_closed = _count(conn, conn.execute(
+            "SELECT COUNT(*) AS n FROM owl_tickets WHERE site_id = ? AND ts >= ? AND status = 'done'",
             (site_id, cutoff),
-        ).fetchone()[0]
+        ).fetchone())
         form_types = [dict(r) for r in conn.execute(
             "SELECT form_type, COUNT(*) AS n FROM owl_leads WHERE site_id = ? AND ts >= ? GROUP BY form_type ORDER BY n DESC",
             (site_id, cutoff),
