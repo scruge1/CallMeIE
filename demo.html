@@ -1,1352 +1,920 @@
-<!DOCTYPE html>
-<html lang="en">
+<!doctype html>
+<html lang="en-IE">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>WonderWorld — TikTok Content Scheduler</title>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Hear a Call — CallMeIE Demo · Limerick</title>
+<meta name="description" content="Ring the CallMeIE demo line. Claire qualifies you, transfers to the vertical AI that fits your business, and you experience what your own customers would hear. Built in Limerick." />
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,700;1,9..144,400;1,9..144,500&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+
 <style>
-  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  /* CallMeIE — Hear a Call page.
+     Matches the homepage style: paper cream + deep ink + burgundy accent.
+     Archivo Black display · Fraunces body · JetBrains Mono for numbers, timestamps, kickers.
+     No emoji. No shadows. No rounded corners. No gradients. */
 
   :root {
-    --bg:        #0f172a;
-    --surface:   #1e293b;
-    --surface2:  #334155;
-    --border:    #475569;
-    --accent:    #22d3ee;
-    --accent2:   #06b6d4;
-    --accent-dim:#164e63;
-    --text:      #f8fafc;
-    --text-muted:#94a3b8;
-    --success:   #10b981;
-    --radius:    12px;
-    --radius-lg: 20px;
-    --shadow:    0 25px 50px rgba(0,0,0,0.5);
+    --paper: #F5F1E8;
+    --paper-deep: #ECE7D9;
+    --ink: #0b0a08;
+    --ink-soft: #2a2622;
+    --ink-muted: #545454;
+    --burgundy: #5A1420;
+    --measure: 640px;
+    --section-gap: clamp(56px, 8vw, 112px);
+    --rule-heavy: 3px;
+    --rule-thick: 4px;
   }
 
-  html, body {
-    height: 100%;
-    background: var(--bg);
-    color: var(--text);
-    font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-    font-size: 16px;
-    line-height: 1.5;
+  *, *::before, *::after { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0; background: var(--paper); color: var(--ink);
+    font-family: 'Fraunces', Georgia, 'Times New Roman', serif;
+    font-optical-sizing: auto;
+    font-variation-settings: "opsz" 36, "SOFT" 30;
+    font-size: 18px; line-height: 1.58;
+    -webkit-font-smoothing: antialiased;
   }
 
-  /* ── LAYOUT ─────────────────────────────────────────────── */
-  .demo-wrapper {
-    min-height: 100vh;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: flex-start;
-    padding: 0 0 60px;
-  }
+  a { color: inherit; }
+  a:hover { text-decoration-thickness: 2px; }
+  ::selection { background: var(--burgundy); color: var(--paper); }
 
-  /* ── BROWSER CHROME ─────────────────────────────────────── */
-  .browser {
-    width: 100%;
-    max-width: 900px;
-    margin: 40px auto 0;
-    border-radius: var(--radius-lg);
-    overflow: hidden;
-    box-shadow: var(--shadow);
-    border: 1px solid var(--border);
-  }
+  /* Layout scaffold */
+  .page { max-width: 1280px; margin: 0 auto; padding: 0 clamp(20px, 4vw, 48px); position: relative; }
 
-  .browser-bar {
-    background: #1e293b;
-    padding: 12px 16px;
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    border-bottom: 1px solid var(--border);
-  }
-
-  .browser-dots {
-    display: flex;
-    gap: 6px;
-    flex-shrink: 0;
-  }
-  .dot { width: 12px; height: 12px; border-radius: 50%; }
-  .dot-r { background: #ef4444; }
-  .dot-y { background: #f59e0b; }
-  .dot-g { background: #10b981; }
-
-  .browser-url {
-    flex: 1;
-    background: var(--bg);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 6px 12px;
-    font-size: 13px;
-    color: var(--text-muted);
-    display: flex;
-    align-items: center;
-    gap: 6px;
-  }
-  .browser-url .lock { color: var(--success); font-size: 11px; }
-  .browser-url .url-text { color: var(--text); }
-  .browser-url .url-path { color: var(--text-muted); }
-
-  .browser-content {
-    background: var(--bg);
-    position: relative;
-    min-height: 580px;
-    overflow: hidden;
-  }
-
-  /* ── SCREENS ────────────────────────────────────────────── */
-  .screen {
-    position: absolute;
-    inset: 0;
-    display: flex;
-    flex-direction: column;
-    opacity: 0;
-    transform: translateX(60px);
-    pointer-events: none;
-    transition: opacity 0.45s ease, transform 0.45s ease;
-  }
-  .screen.active {
-    opacity: 1;
-    transform: translateX(0);
-    pointer-events: auto;
-  }
-  .screen.exit {
-    opacity: 0;
-    transform: translateX(-60px);
-  }
-
-  /* ── SITE HEADER ────────────────────────────────────────── */
-  .site-header {
-    background: #0f172a;
-    border-bottom: 1px solid var(--border);
-    padding: 0 32px;
-    height: 60px;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    flex-shrink: 0;
-  }
-  .logo {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    font-weight: 700;
-    font-size: 18px;
-    letter-spacing: -0.3px;
-  }
-  .logo-icon {
-    width: 32px; height: 32px;
-    background: linear-gradient(135deg, var(--accent), #818cf8);
-    border-radius: 8px;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 16px;
-  }
-  .header-nav {
-    display: flex; gap: 24px;
-    font-size: 14px;
-    color: var(--text-muted);
-  }
-
-  /* ── COMMON COMPONENTS ──────────────────────────────────── */
-  .btn {
-    display: inline-flex; align-items: center; justify-content: center; gap: 8px;
-    padding: 12px 24px;
-    border-radius: 10px;
-    font-size: 15px;
-    font-weight: 600;
-    cursor: pointer;
-    border: none;
-    transition: transform 0.15s, opacity 0.15s, box-shadow 0.15s;
-    text-decoration: none;
-  }
-  .btn:hover { transform: translateY(-1px); box-shadow: 0 8px 20px rgba(0,0,0,0.3); }
-  .btn:active { transform: translateY(0); }
-  .btn-primary { background: var(--accent); color: #0f172a; }
-  .btn-primary:hover { background: #38bdf8; }
-  .btn-outline {
-    background: transparent;
-    border: 1px solid var(--border);
-    color: var(--text);
-  }
-  .btn-sm { padding: 8px 16px; font-size: 13px; border-radius: 8px; }
-  .btn-success { background: var(--success); color: white; }
-
-  .badge {
-    display: inline-flex; align-items: center; gap: 5px;
-    padding: 4px 10px;
-    border-radius: 20px;
-    font-size: 12px;
-    font-weight: 600;
-  }
-  .badge-cyan { background: rgba(34,211,238,0.15); color: var(--accent); border: 1px solid rgba(34,211,238,0.3); }
-  .badge-green { background: rgba(16,185,129,0.15); color: var(--success); border: 1px solid rgba(16,185,129,0.3); }
-  .badge-purple { background: rgba(129,140,248,0.15); color: #818cf8; border: 1px solid rgba(129,140,248,0.3); }
-
-  .card {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    padding: 24px;
-  }
-
-  /* ── SCREEN 1: LANDING ──────────────────────────────────── */
-  #screen1 .hero {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    text-align: center;
-    padding: 48px 32px;
-    gap: 24px;
-  }
-  .hero-eyebrow {
-    display: flex; gap: 8px; flex-wrap: wrap; justify-content: center;
-  }
-  .hero h1 {
-    font-size: clamp(28px, 4vw, 42px);
-    font-weight: 800;
-    letter-spacing: -1px;
-    line-height: 1.15;
-  }
-  .hero h1 span { color: var(--accent); }
-  .hero p {
-    font-size: 17px;
-    color: var(--text-muted);
-    max-width: 480px;
-    line-height: 1.6;
-  }
-  .hero-features {
-    display: flex; gap: 12px; flex-wrap: wrap; justify-content: center;
-    margin-top: 4px;
-  }
-  .feature-chip {
-    display: flex; align-items: center; gap: 6px;
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 20px;
-    padding: 6px 14px;
-    font-size: 13px;
-    color: var(--text-muted);
-  }
-  .feature-chip .dot2 {
-    width: 7px; height: 7px; border-radius: 50%;
-    background: var(--accent);
-  }
-  .scopes-note {
-    background: rgba(34,211,238,0.07);
-    border: 1px solid rgba(34,211,238,0.2);
-    border-radius: 10px;
-    padding: 14px 20px;
-    font-size: 13px;
-    color: var(--text-muted);
-    display: flex; align-items: center; gap: 10px;
-    max-width: 480px;
-  }
-  .scopes-note code {
-    background: rgba(34,211,238,0.15);
-    color: var(--accent);
-    border-radius: 4px;
-    padding: 2px 6px;
-    font-family: 'SF Mono', 'Fira Code', monospace;
-    font-size: 12px;
-  }
-
-  /* ── SCREEN 2: OAUTH ────────────────────────────────────── */
-  #screen2 .oauth-wrap {
-    flex: 1;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 32px;
-    position: relative;
-  }
-  /* Dimmed background effect */
-  #screen2 .oauth-wrap::before {
-    content: '';
-    position: absolute; inset: 0;
-    background: rgba(0,0,0,0.6);
-    backdrop-filter: blur(2px);
-  }
-  #screen2 .bg-site {
-    position: absolute; inset: 0;
-    display: flex; flex-direction: column;
-    pointer-events: none;
-  }
-  #screen2 .oauth-popup {
-    position: relative;
-    z-index: 2;
-    width: 100%;
-    max-width: 380px;
-    background: white;
-    border-radius: 16px;
-    overflow: hidden;
-    box-shadow: 0 40px 80px rgba(0,0,0,0.6);
-    color: #1a1a1a;
-  }
-  .oauth-tt-header {
-    background: #010101;
-    padding: 20px 24px 16px;
-    display: flex; align-items: center; gap: 12px;
-  }
-  .tt-logo {
-    width: 36px; height: 36px;
-    background: #010101;
-    border-radius: 8px;
-    display: flex; align-items: center; justify-content: center;
-    position: relative;
-  }
-  /* TikTok logo built from CSS */
-  .tt-logo::before {
-    content: '';
-    position: absolute;
-    width: 22px; height: 26px;
-    background: white;
-    clip-path: path('M16 0 C16 6 21 10 21 10 L21 15 C21 15 18 14 16 12 L16 20 C16 24 13 27 9 27 C5 27 2 24 2 20 C2 16 5 13 9 13 C10 13 10 13 10 13 L10 18 C8 18 7 19 7 20 C7 21 8 22 9 22 C10 22 11 21 11 20 L11 0 Z');
-  }
-  .tt-logo::after {
-    content: '';
-    position: absolute;
-    width: 22px; height: 26px;
-    background: #fe2c55;
-    opacity: 0.9;
-    clip-path: path('M14 0 C14 6 19 10 19 10 L19 15 C19 15 16 14 14 12 L14 20 C14 24 11 27 7 27 C3 27 0 24 0 20 C0 16 3 13 7 13 C8 13 8 13 8 13 L8 18 C6 18 5 19 5 20 C5 21 6 22 7 22 C8 22 9 21 9 20 L9 0 Z');
-  }
-
-  .oauth-tt-header h3 { color: white; font-size: 16px; font-weight: 700; }
-  .oauth-tt-header p { color: #94a3b8; font-size: 12px; margin-top: 2px; }
-
-  .oauth-body { padding: 24px; }
-  .oauth-body h4 { font-size: 15px; font-weight: 700; color: #0f172a; margin-bottom: 4px; }
-  .oauth-app-name { color: #0ea5e9; font-weight: 700; }
-  .oauth-body .oauth-sub { font-size: 13px; color: #64748b; margin-bottom: 16px; }
-
-  .oauth-scopes {
-    background: #f8fafc;
-    border: 1px solid #e2e8f0;
-    border-radius: 10px;
-    padding: 14px 16px;
-    margin-bottom: 16px;
-  }
-  .oauth-scopes-title { font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 10px; }
-  .scope-item {
-    display: flex; align-items: flex-start; gap: 10px;
-    padding: 8px 0;
-    border-bottom: 1px solid #e2e8f0;
-  }
-  .scope-item:last-child { border-bottom: none; padding-bottom: 0; }
-  .scope-icon { font-size: 16px; flex-shrink: 0; margin-top: 1px; }
-  .scope-label { font-size: 13px; font-weight: 600; color: #1e293b; }
-  .scope-desc { font-size: 12px; color: #64748b; }
-
-  .oauth-btns { display: flex; gap: 10px; }
-  .oauth-btn {
-    flex: 1; padding: 11px; border-radius: 8px;
-    font-size: 14px; font-weight: 600; cursor: pointer; border: none;
-    transition: opacity 0.15s;
-  }
-  .oauth-btn:hover { opacity: 0.85; }
-  .oauth-deny { background: #f1f5f9; color: #475569; }
-  .oauth-allow { background: #fe2c55; color: white; }
-
-  .oauth-footer { padding: 12px 24px; background: #f8fafc; border-top: 1px solid #e2e8f0; font-size: 11px; color: #94a3b8; text-align: center; }
-
-  /* ── SCREEN 3: CONTENT CREATION ─────────────────────────── */
-  #screen3 .create-body {
-    flex: 1;
-    padding: 24px 32px;
-    overflow-y: auto;
-    display: flex;
-    gap: 24px;
-  }
-  .create-sidebar {
-    width: 220px;
-    flex-shrink: 0;
-    display: flex;
-    flex-direction: column;
+  /* Topbar */
+  .topbar {
+    position: relative; z-index: 5;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 22px 0 18px; border-bottom: var(--rule-heavy) solid var(--ink);
     gap: 16px;
   }
-  .create-main { flex: 1; display: flex; flex-direction: column; gap: 16px; }
-
-  /* Connected account pill */
-  .account-pill {
-    background: var(--surface);
-    border: 1px solid rgba(34,211,238,0.3);
-    border-radius: 10px;
-    padding: 12px 14px;
-    display: flex; align-items: center; gap: 10px;
+  .wordmark {
+    font-family: 'Archivo Black', 'Arial Black', sans-serif;
+    font-size: clamp(18px, 1.6vw, 22px); letter-spacing: 0.01em;
+    text-transform: uppercase; color: var(--ink); text-decoration: none;
   }
-  .account-avatar {
-    width: 36px; height: 36px;
-    background: linear-gradient(135deg, var(--accent), #818cf8);
-    border-radius: 50%;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 14px; font-weight: 700; color: #0f172a;
-    flex-shrink: 0;
+  .wordmark__dot {
+    display: inline-block; width: 8px; height: 8px;
+    background: var(--burgundy); margin: 0 6px 2px 0; vertical-align: middle;
   }
-  .account-info .account-name { font-size: 13px; font-weight: 600; }
-  .account-info .account-sub { font-size: 11px; color: var(--text-muted); display: flex; align-items: center; gap: 4px; }
-  .account-info .account-sub .online-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--success); }
+  .topbar__right { display: flex; align-items: center; gap: 24px; flex-wrap: wrap; justify-content: flex-end; }
+  .topbar__meta {
+    font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace;
+    font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-muted);
+  }
+  @media (max-width: 720px) { .topbar__meta { display: none; } }
+  .topbar__cta {
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-size: 12px; font-weight: 600; letter-spacing: 0.04em;
+    color: var(--ink); text-decoration: none;
+    padding: 10px 14px; border: 2px solid var(--ink);
+    transition: background 0.15s ease, color 0.15s ease;
+    white-space: nowrap;
+  }
+  .topbar__cta:hover { background: var(--ink); color: var(--paper); }
 
-  /* Video thumbnail picker */
-  .video-picker {
-    background: var(--surface);
-    border: 2px dashed var(--border);
-    border-radius: var(--radius);
-    padding: 0;
-    overflow: hidden;
-    cursor: pointer;
-    transition: border-color 0.2s;
+  /* Masthead strip */
+  .masthead-strip {
+    display: flex; justify-content: space-between; align-items: baseline;
+    padding: 14px 0; border-bottom: 1px solid var(--ink);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-soft);
+    gap: 18px; flex-wrap: wrap;
+  }
+  @media (max-width: 720px) {
+    .masthead-strip { flex-direction: column; gap: 4px; align-items: flex-start; }
+  }
+
+  /* HERO */
+  .hero {
     position: relative;
+    padding: clamp(44px, 8vw, 96px) 0 clamp(56px, 9vw, 120px);
+    border-bottom: var(--rule-thick) solid var(--ink);
   }
-  .video-picker.selected { border-style: solid; border-color: var(--accent); }
-  .video-thumb {
-    width: 100%;
-    aspect-ratio: 9/16;
-    background: linear-gradient(160deg, #1a1a2e 0%, #16213e 40%, #0f3460 100%);
-    display: flex; align-items: center; justify-content: center;
-    position: relative;
-    overflow: hidden;
+  .hero__kicker {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px; letter-spacing: 0.22em; text-transform: uppercase;
+    color: var(--burgundy); margin-bottom: 28px;
+    display: flex; align-items: center; gap: 14px;
   }
-  /* Fake video content */
-  .video-thumb .vt-content {
-    position: absolute; inset: 0;
-    display: flex; flex-direction: column;
-    align-items: center; justify-content: center;
-    gap: 8px;
+  .hero__kicker::before {
+    content: ""; display: inline-block; width: 48px; height: 2px; background: var(--burgundy);
   }
-  .vt-waveform {
-    display: flex; align-items: flex-end; gap: 3px;
-    height: 40px;
+  .hero__headline {
+    font-family: 'Archivo Black', 'Arial Black', sans-serif;
+    font-size: clamp(44px, 8vw, 120px); line-height: 0.94;
+    letter-spacing: -0.02em; text-transform: uppercase;
+    margin: 0 0 28px; color: var(--ink); max-width: 12ch;
   }
-  .vt-bar {
-    width: 4px;
-    border-radius: 2px;
-    background: rgba(34,211,238,0.7);
-    animation: wave 1.2s ease-in-out infinite;
+  .hero__sub {
+    font-family: 'Fraunces', Georgia, serif;
+    font-style: italic; font-weight: 400;
+    font-size: clamp(18px, 2vw, 24px); line-height: 1.42;
+    color: var(--ink-soft); max-width: 640px; margin: 0 0 clamp(36px, 5vw, 56px);
   }
-  .vt-bar:nth-child(1) { height: 60%; animation-delay: 0s; }
-  .vt-bar:nth-child(2) { height: 90%; animation-delay: 0.1s; }
-  .vt-bar:nth-child(3) { height: 45%; animation-delay: 0.2s; }
-  .vt-bar:nth-child(4) { height: 100%; animation-delay: 0.3s; }
-  .vt-bar:nth-child(5) { height: 70%; animation-delay: 0.4s; }
-  .vt-bar:nth-child(6) { height: 55%; animation-delay: 0.15s; }
-  .vt-bar:nth-child(7) { height: 80%; animation-delay: 0.25s; }
-  @keyframes wave {
-    0%, 100% { transform: scaleY(1); opacity: 0.7; }
-    50% { transform: scaleY(0.4); opacity: 1; }
+  .hero__sub em { font-style: normal; font-weight: 500; color: var(--ink); }
+
+  .demo-number__label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px; font-weight: 500; letter-spacing: 0.22em; text-transform: uppercase;
+    color: var(--ink-muted);
+    display: block; margin-bottom: 10px;
   }
-  .vt-filename { font-size: 11px; color: rgba(255,255,255,0.5); text-align: center; padding: 0 8px; }
-  .video-duration {
-    position: absolute; bottom: 8px; right: 8px;
-    background: rgba(0,0,0,0.7);
-    border-radius: 4px;
-    padding: 2px 6px;
-    font-size: 11px; font-weight: 600;
+  .demo-number {
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-weight: 700;
+    font-size: clamp(44px, 12vw, 128px);
+    line-height: 1.0; letter-spacing: -0.03em;
+    color: var(--ink);
+    display: block;
+    margin: 0 0 16px;
+    word-break: break-all;
+    font-variant-numeric: tabular-nums;
+    text-decoration: none;
   }
-  .play-overlay {
-    position: absolute; inset: 0;
-    display: flex; align-items: center; justify-content: center;
-  }
-  .play-btn-fake {
-    width: 44px; height: 44px;
-    background: rgba(255,255,255,0.15);
-    border: 2px solid rgba(255,255,255,0.4);
-    border-radius: 50%;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 16px;
-    backdrop-filter: blur(4px);
+  .demo-number:hover { color: var(--burgundy); }
+  .demo-number__caption {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px; letter-spacing: 0.1em; text-transform: uppercase;
+    color: var(--ink-muted); margin-top: 8px;
   }
 
-  .video-thumb-label {
-    padding: 10px 12px;
-    font-size: 12px; font-weight: 600;
-    display: flex; align-items: center; justify-content: space-between;
-    color: var(--text-muted);
+  .hero__actions {
+    margin-top: clamp(28px, 4vw, 44px);
+    display: flex; gap: 28px; align-items: center; flex-wrap: wrap;
   }
-  .video-thumb-label .vt-name { color: var(--text); font-size: 12px; }
+  .btn-primary {
+    font-family: 'Archivo Black', sans-serif;
+    font-size: 13px; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--paper); background: var(--ink);
+    padding: 16px 22px; text-decoration: none;
+    border: 2px solid var(--ink);
+    transition: background 0.15s ease, color 0.15s ease;
+    display: inline-block;
+  }
+  .btn-primary:hover { background: var(--burgundy); border-color: var(--burgundy); color: var(--paper); }
+  .btn-secondary {
+    font-family: 'Fraunces', serif; font-style: italic;
+    font-size: 16px; color: var(--ink);
+    text-decoration: none; border-bottom: 2px solid var(--ink);
+    padding-bottom: 2px;
+  }
+  .btn-secondary:hover { color: var(--burgundy); border-bottom-color: var(--burgundy); }
 
-  /* Form elements */
-  .form-group { display: flex; flex-direction: column; gap: 6px; }
-  .form-label { font-size: 13px; font-weight: 600; color: var(--text-muted); }
-  .form-input, .form-textarea {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 10px 14px;
-    color: var(--text);
-    font-size: 14px;
-    font-family: inherit;
-    transition: border-color 0.15s;
-    width: 100%;
-    resize: none;
+  /* Section scaffolding */
+  section.editorial {
+    padding: var(--section-gap) 0;
+    border-bottom: var(--rule-thick) solid var(--ink);
+    position: relative; z-index: 2;
   }
-  .form-input:focus, .form-textarea:focus {
-    outline: none;
-    border-color: var(--accent);
+  section.editorial:last-of-type { border-bottom: 0; }
+  .section-head {
+    display: grid; grid-template-columns: 80px 1fr;
+    gap: 22px; align-items: baseline; margin-bottom: 40px;
   }
-  .char-counter {
-    font-size: 11px;
-    color: var(--text-muted);
-    text-align: right;
-    margin-top: -2px;
+  @media (max-width: 640px) { .section-head { grid-template-columns: 56px 1fr; gap: 14px; } }
+  .section-num {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px; letter-spacing: 0.16em; color: var(--ink-muted);
+    padding-top: 0.6em; border-top: 2px solid var(--ink);
   }
-  .char-counter.warn { color: #f59e0b; }
+  .section-title {
+    font-family: 'Archivo Black', sans-serif;
+    font-size: clamp(30px, 4.6vw, 62px); line-height: 0.95;
+    letter-spacing: -0.015em; text-transform: uppercase; margin: 0; color: var(--ink);
+  }
+  .section-dek {
+    font-family: 'Fraunces', serif; font-style: italic;
+    font-size: clamp(17px, 1.6vw, 20px); line-height: 1.5;
+    color: var(--ink-soft); max-width: var(--measure); margin: 20px 0 0 102px;
+  }
+  @media (max-width: 640px) { .section-dek { margin-left: 70px; } }
 
-  .tags-input {
-    display: flex; flex-wrap: wrap; gap: 6px;
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 8px;
-    min-height: 42px;
+  /* TIMELINE — editorial monospace/serif transcript */
+  .timeline {
+    border-top: 2px solid var(--ink); border-bottom: 2px solid var(--ink);
+    padding: 12px 0; margin: 16px 0 0;
   }
-  .tag {
-    background: rgba(34,211,238,0.12);
-    border: 1px solid rgba(34,211,238,0.25);
-    color: var(--accent);
-    border-radius: 6px;
-    padding: 3px 9px;
-    font-size: 12px; font-weight: 500;
+  .timeline__row {
+    display: grid; grid-template-columns: 96px 130px 1fr;
+    gap: 18px; align-items: baseline;
+    padding: 12px 0; border-bottom: 1px solid var(--ink);
   }
+  .timeline__row:last-child { border-bottom: 0; }
+  @media (max-width: 720px) {
+    .timeline__row { grid-template-columns: 76px 1fr; gap: 10px; padding: 14px 0; }
+    .timeline__who { grid-column: 1 / -1; margin-left: 86px; margin-top: -4px; }
+  }
+  .timeline__time {
+    font-family: 'JetBrains Mono', monospace;
+    font-weight: 600; font-size: 13px; letter-spacing: 0.04em;
+    color: var(--ink-muted); padding-top: 3px;
+    font-variant-numeric: tabular-nums;
+  }
+  .timeline__who {
+    font-family: 'Archivo Black', sans-serif;
+    font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--burgundy); padding-top: 4px;
+    font-weight: 400;
+  }
+  .timeline__who--ai { color: var(--ink); }
+  .timeline__text {
+    font-family: 'Fraunces', serif; font-size: 17px; line-height: 1.5;
+    color: var(--ink); font-style: italic;
+  }
+  .timeline__text--plain { font-style: normal; color: var(--ink-soft); }
+  .timeline__row--marker {
+    grid-template-columns: 96px 1fr;
+    background: var(--paper-deep);
+  }
+  @media (max-width: 720px) {
+    .timeline__row--marker { grid-template-columns: 76px 1fr; }
+  }
+  .timeline__marker {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px; font-weight: 600; letter-spacing: 0.22em; text-transform: uppercase;
+    color: var(--burgundy);
+  }
+  .timeline__ellipsis {
+    text-align: center; font-family: 'JetBrains Mono', monospace;
+    color: var(--ink-muted); letter-spacing: 0.4em; padding: 10px 0;
+    grid-column: 1 / -1;
+  }
+  .timeline__caption {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--ink-muted);
+    padding: 12px 0 4px; border-bottom: 1px solid var(--ink);
+    margin-bottom: 4px;
+    display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap;
+  }
+  .timeline__caption b { color: var(--burgundy); font-family: 'Archivo Black', sans-serif; font-weight: 400; letter-spacing: 0.18em; }
 
-  .schedule-row {
-    display: flex; gap: 10px;
+  /* Verticals — editorial ruled blocks */
+  .vertical {
+    display: grid; grid-template-columns: 220px 1fr; gap: 48px;
+    padding: 48px 0; border-top: 1px solid var(--ink); align-items: start;
   }
-  .schedule-row .form-input { flex: 1; }
+  .vertical:last-of-type { border-bottom: 1px solid var(--ink); }
+  @media (max-width: 860px) { .vertical { grid-template-columns: 1fr; gap: 18px; padding: 40px 0; } }
+  .vertical__label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px; letter-spacing: 0.2em; text-transform: uppercase;
+    color: var(--ink-muted); padding-top: 6px;
+  }
+  .vertical__label b {
+    display: block; font-family: 'Archivo Black', sans-serif;
+    font-size: clamp(22px, 2.2vw, 28px); letter-spacing: -0.005em; color: var(--burgundy);
+    margin-bottom: 6px; font-weight: 400; line-height: 1.05;
+    text-transform: uppercase;
+  }
+  .vertical__body { max-width: var(--measure); }
+  .vertical__head {
+    font-family: 'Archivo Black', sans-serif;
+    font-size: clamp(20px, 2.2vw, 26px); line-height: 1.1;
+    text-transform: uppercase; letter-spacing: -0.005em;
+    margin: 0 0 14px; color: var(--ink);
+  }
+  .vertical__body > p {
+    font-family: 'Fraunces', serif; font-size: 17px; line-height: 1.6;
+    margin: 0 0 14px; color: var(--ink-soft);
+  }
+  .vertical__try {
+    border-top: 1px solid var(--ink); border-bottom: 1px solid var(--ink);
+    padding: 14px 0; margin-top: 18px;
+    display: grid; grid-template-columns: 92px 1fr; gap: 14px; align-items: baseline;
+  }
+  @media (max-width: 520px) { .vertical__try { grid-template-columns: 1fr; gap: 4px; } }
+  .vertical__try-tag {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px; letter-spacing: 0.22em; text-transform: uppercase;
+    color: var(--burgundy); padding-top: 4px;
+  }
+  .vertical__try-text {
+    font-family: 'Fraunces', serif; font-style: italic; font-size: 16px;
+    line-height: 1.5; color: var(--ink);
+  }
+  .vertical__try-text b { font-style: normal; font-weight: 600; color: var(--burgundy); }
 
-  /* ── SCREEN 4: POSTING ───────────────────────────────────── */
-  #screen4 .posting-body {
-    flex: 1;
-    display: flex; flex-direction: column;
-    align-items: center; justify-content: center;
-    gap: 32px;
-    padding: 48px 32px;
-    text-align: center;
+  /* Stack prose section */
+  .prose-block {
+    display: grid; grid-template-columns: 1.1fr 1fr; gap: clamp(32px, 5vw, 72px);
+    align-items: start; border-top: 1px solid var(--ink); padding-top: 40px;
   }
-  .posting-icon {
-    width: 96px; height: 96px;
-    background: var(--surface);
-    border: 2px solid var(--accent-dim);
-    border-radius: 50%;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 40px;
-    position: relative;
-    animation: posting-pulse 2s ease-in-out infinite;
+  @media (max-width: 860px) { .prose-block { grid-template-columns: 1fr; gap: 28px; } }
+  .prose-block p {
+    font-family: 'Fraunces', serif; font-size: 18px; line-height: 1.62;
+    margin: 0 0 16px; color: var(--ink-soft); max-width: 560px;
   }
-  @keyframes posting-pulse {
-    0%, 100% { box-shadow: 0 0 0 0 rgba(34,211,238,0.3); }
-    50% { box-shadow: 0 0 0 20px rgba(34,211,238,0); }
-  }
-  .posting-spin {
-    position: absolute; inset: -6px;
-    border-radius: 50%;
-    border: 2px solid transparent;
-    border-top-color: var(--accent);
-    border-right-color: var(--accent);
-    animation: spin 1.5s linear infinite;
-  }
-  @keyframes spin { to { transform: rotate(360deg); } }
+  .prose-block p strong { color: var(--ink); font-weight: 600; }
 
-  .posting-body h2 { font-size: 24px; font-weight: 700; }
-  .posting-body p { color: var(--text-muted); font-size: 15px; max-width: 400px; }
+  .stack-list {
+    list-style: none; padding: 0; margin: 0;
+    border-top: 1px solid var(--ink);
+  }
+  .stack-list li {
+    display: grid; grid-template-columns: 170px 1fr;
+    padding: 16px 0; border-bottom: 1px solid var(--ink);
+    gap: 20px; align-items: baseline;
+  }
+  @media (max-width: 640px) { .stack-list li { grid-template-columns: 1fr; gap: 2px; padding: 14px 0; } }
+  .stack-list li > span:first-child {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase;
+    color: var(--burgundy); font-weight: 500;
+  }
+  .stack-list li > span:last-child {
+    font-family: 'Fraunces', serif; font-size: 16px; color: var(--ink-soft); line-height: 1.5;
+  }
+  .stack-list li > span:last-child b { color: var(--ink); font-weight: 600; }
 
-  .progress-track {
-    width: 100%; max-width: 440px;
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    overflow: hidden;
-    padding: 20px;
+  /* Failure-honesty block */
+  .honesty {
+    border-top: 2px solid var(--ink); border-bottom: 2px solid var(--ink);
+    padding: 36px clamp(20px, 3vw, 36px); margin-top: 8px;
+    background: var(--paper-deep);
   }
-  .progress-steps { display: flex; flex-direction: column; gap: 14px; }
-  .progress-step {
-    display: flex; align-items: center; gap: 12px;
-    font-size: 14px;
+  .honesty__kicker {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px; letter-spacing: 0.22em; text-transform: uppercase;
+    color: var(--burgundy); margin-bottom: 14px;
   }
-  .step-icon {
-    width: 28px; height: 28px;
-    border-radius: 50%;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 13px;
-    flex-shrink: 0;
-    transition: all 0.3s;
+  .honesty p {
+    font-family: 'Fraunces', serif; font-size: clamp(17px, 1.8vw, 20px);
+    line-height: 1.55; color: var(--ink); margin: 0 0 14px; max-width: 720px;
   }
-  .step-icon.done { background: var(--success); color: white; }
-  .step-icon.active { background: var(--accent); color: #0f172a; animation: spin 1.2s linear infinite; }
-  .step-icon.pending { background: var(--surface2); color: var(--text-muted); }
-  .step-label.done { color: var(--text); }
-  .step-label.active { color: var(--accent); font-weight: 600; }
-  .step-label.pending { color: var(--text-muted); }
+  .honesty p:last-child { margin-bottom: 0; }
+  .honesty p em { font-style: italic; font-weight: 500; color: var(--burgundy); }
+  .honesty p strong { color: var(--ink); font-weight: 600; font-style: normal; }
 
-  .progress-bar-wrap {
-    margin-top: 20px;
-    background: var(--surface2);
-    border-radius: 4px;
-    height: 6px;
-    overflow: hidden;
+  /* Next-step row */
+  .next-step {
+    display: grid; grid-template-columns: 1.4fr 1fr;
+    gap: 0; align-items: stretch;
+    border-top: 2px solid var(--ink); border-bottom: 2px solid var(--ink);
   }
-  .progress-bar {
-    height: 100%;
-    background: linear-gradient(90deg, var(--accent), #818cf8);
-    border-radius: 4px;
-    width: 0%;
-    transition: width 0.4s ease;
+  @media (max-width: 860px) { .next-step { grid-template-columns: 1fr; } }
+  .next-step__primary {
+    padding: 44px 36px 44px 0;
+    border-right: 1px solid var(--ink);
   }
-  .progress-pct { margin-top: 6px; font-size: 12px; color: var(--text-muted); text-align: right; }
+  .next-step__secondary {
+    padding: 44px 0 44px 36px;
+    display: flex; flex-direction: column; justify-content: center;
+  }
+  @media (max-width: 860px) {
+    .next-step__primary { border-right: 0; border-bottom: 1px solid var(--ink); padding: 32px 0; }
+    .next-step__secondary { padding: 32px 0; }
+  }
+  .next-step__kicker {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px; letter-spacing: 0.22em; text-transform: uppercase;
+    color: var(--burgundy); margin-bottom: 14px;
+  }
+  .next-step__head {
+    font-family: 'Archivo Black', sans-serif;
+    font-size: clamp(22px, 2.6vw, 32px); line-height: 1.05;
+    text-transform: uppercase; letter-spacing: -0.01em;
+    margin: 0 0 20px; color: var(--ink);
+  }
+  .next-step__number {
+    font-family: 'JetBrains Mono', monospace; font-weight: 700;
+    font-size: clamp(30px, 6vw, 58px);
+    line-height: 1.0; letter-spacing: -0.02em;
+    color: var(--ink); text-decoration: none;
+    display: inline-block; margin: 0 0 18px;
+    word-break: break-all;
+    font-variant-numeric: tabular-nums;
+    border-bottom: 3px solid var(--ink);
+    padding-bottom: 6px;
+  }
+  .next-step__number:hover { color: var(--burgundy); border-bottom-color: var(--burgundy); }
+  .next-step__note {
+    font-family: 'Fraunces', serif; font-style: italic;
+    font-size: 16px; color: var(--ink-soft); line-height: 1.5; margin: 0;
+  }
+  .next-step__secondary p {
+    font-family: 'Fraunces', serif; font-size: 17px; line-height: 1.55;
+    color: var(--ink-soft); margin: 0 0 18px;
+  }
+  .next-step__secondary a.onboard-link {
+    font-family: 'Archivo Black', sans-serif;
+    font-size: 14px; letter-spacing: 0.1em; text-transform: uppercase;
+    color: var(--ink); text-decoration: none;
+    border-bottom: 3px solid var(--ink); padding-bottom: 4px;
+    align-self: flex-start;
+  }
+  .next-step__secondary a.onboard-link:hover { color: var(--burgundy); border-bottom-color: var(--burgundy); }
 
-  /* API call indicator */
-  .api-call-box {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 12px 16px;
-    font-family: 'SF Mono', 'Fira Code', monospace;
-    font-size: 12px;
-    width: 100%; max-width: 440px;
-    text-align: left;
+  /* Footer */
+  footer {
+    background: var(--paper); padding: 56px 0 36px;
+    border-top: var(--rule-thick) solid var(--ink);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-muted);
   }
-  .api-method { color: var(--accent); font-weight: 700; }
-  .api-url { color: var(--text-muted); }
-  .api-status { color: var(--success); font-size: 11px; margin-top: 4px; }
-
-  /* ── SCREEN 5: SUCCESS ───────────────────────────────────── */
-  #screen5 .success-body {
-    flex: 1;
-    display: flex; flex-direction: column;
-    align-items: center; justify-content: center;
-    gap: 24px;
-    padding: 48px 32px;
-    text-align: center;
+  .footer-grid {
+    display: grid; grid-template-columns: 2fr 1fr 1fr 1fr;
+    gap: 40px; margin-bottom: 40px;
   }
-  .success-icon {
-    width: 100px; height: 100px;
-    background: linear-gradient(135deg, rgba(16,185,129,0.2), rgba(34,211,238,0.2));
-    border: 2px solid var(--success);
-    border-radius: 50%;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 44px;
-    animation: pop 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) both;
+  @media (max-width: 860px) { .footer-grid { grid-template-columns: 1fr 1fr; gap: 28px; } }
+  @media (max-width: 520px) { .footer-grid { grid-template-columns: 1fr; } }
+  .footer-col h4 {
+    font-family: 'Archivo Black', sans-serif;
+    font-size: 12px; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--ink); margin: 0 0 14px;
   }
-  @keyframes pop {
-    0% { transform: scale(0.5); opacity: 0; }
-    100% { transform: scale(1); opacity: 1; }
+  .footer-col p, .footer-col li {
+    font-family: 'Fraunces', serif; font-size: 13px; line-height: 1.55;
+    letter-spacing: 0; text-transform: none; color: var(--ink-soft); margin: 0 0 6px;
   }
-  .success-body h2 { font-size: 28px; font-weight: 800; letter-spacing: -0.5px; }
-  .success-body h2 span { color: var(--accent); }
-  .success-body > p { color: var(--text-muted); font-size: 15px; max-width: 420px; }
-
-  .success-card {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    padding: 20px 24px;
-    width: 100%; max-width: 440px;
-    text-align: left;
+  .footer-col ul { list-style: none; padding: 0; margin: 0; }
+  .footer-col a { color: inherit; text-decoration: none; border-bottom: 1px solid rgba(11,10,8,0.25); }
+  .footer-col a:hover { border-bottom-color: var(--ink); }
+  .footer-col .mono-val {
+    font-family: 'JetBrains Mono', monospace; font-size: 12px; letter-spacing: 0.04em;
+    color: var(--ink); text-transform: none;
   }
-  .success-row {
-    display: flex; justify-content: space-between; align-items: center;
-    padding: 8px 0;
-    font-size: 14px;
-    border-bottom: 1px solid var(--border);
+  .footer-legal {
+    border-top: 1px solid var(--ink); padding-top: 22px;
+    display: flex; justify-content: space-between; align-items: baseline;
+    gap: 24px; flex-wrap: wrap;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px; letter-spacing: 0.12em; color: var(--ink-muted);
   }
-  .success-row:last-child { border-bottom: none; }
-  .success-row .sr-label { color: var(--text-muted); }
-  .success-row .sr-val { font-weight: 600; }
-  .success-row .sr-val.green { color: var(--success); }
-  .success-row .sr-val.cyan { color: var(--accent); }
-  .success-row .sr-val.code {
-    font-family: 'SF Mono', 'Fira Code', monospace;
-    font-size: 12px;
-    background: var(--surface2);
-    padding: 3px 8px;
-    border-radius: 4px;
-  }
-
-  .confetti { font-size: 28px; animation: float 3s ease-in-out infinite; }
-  @keyframes float {
-    0%, 100% { transform: translateY(0); }
-    50% { transform: translateY(-8px); }
-  }
-
-  /* ── PROGRESS BAR (STEP INDICATOR) ──────────────────────── */
-  .step-nav {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 0;
-    padding: 16px 32px 0;
-    flex-shrink: 0;
-  }
-  .step-dot {
-    width: 28px; height: 28px;
-    border-radius: 50%;
-    background: var(--surface2);
-    border: 2px solid var(--border);
-    color: var(--text-muted);
-    font-size: 12px; font-weight: 700;
-    display: flex; align-items: center; justify-content: center;
-    transition: all 0.3s;
-    position: relative;
-    z-index: 1;
-    flex-shrink: 0;
-  }
-  .step-dot.done { background: var(--success); border-color: var(--success); color: white; }
-  .step-dot.active { background: var(--accent); border-color: var(--accent); color: #0f172a; box-shadow: 0 0 0 4px rgba(34,211,238,0.2); }
-  .step-line {
-    flex: 1;
-    height: 2px;
-    background: var(--border);
-    max-width: 80px;
-    transition: background 0.3s;
-  }
-  .step-line.done { background: var(--success); }
-
-  /* ── AUTO-TIMER BAR ──────────────────────────────────────── */
-  .timer-bar-wrap {
-    height: 3px;
-    background: var(--surface2);
-    overflow: hidden;
-    flex-shrink: 0;
-  }
-  .timer-bar {
-    height: 100%;
-    background: var(--accent);
-    width: 100%;
-    transform-origin: left;
-    transform: scaleX(1);
-  }
-  .timer-bar.running {
-    animation: drain 3s linear forwards;
-  }
-  @keyframes drain { from { transform: scaleX(1); } to { transform: scaleX(0); } }
-
-  /* ── CONTROL ROW ─────────────────────────────────────────── */
-  .control-row {
-    display: flex; align-items: center; justify-content: space-between;
-    padding: 14px 32px;
-    border-top: 1px solid var(--border);
-    background: var(--bg);
-    flex-shrink: 0;
-  }
-  .control-left { display: flex; align-items: center; gap: 12px; font-size: 13px; color: var(--text-muted); }
-  .timer-countdown { font-variant-numeric: tabular-nums; font-weight: 600; color: var(--accent); }
-  .control-right { display: flex; gap: 10px; }
-
-  /* ── SCREEN 2 BG elements ────────────────────────────────── */
-  .bg-landing-blur {
-    flex: 1;
-    display: flex; flex-direction: column; align-items: center; justify-content: center;
-    gap: 16px; text-align: center; padding: 24px;
-    filter: blur(2px);
-    opacity: 0.3;
-  }
-  .bg-landing-blur h2 { font-size: 28px; font-weight: 800; }
-  .bg-landing-blur p { color: var(--text-muted); font-size: 15px; }
-
-  /* Responsive touch */
-  @media (max-width: 640px) {
-    .browser { margin: 12px; border-radius: var(--radius); }
-    #screen3 .create-body { flex-direction: column; }
-    .create-sidebar { width: 100%; flex-direction: row; overflow-x: auto; }
-    .video-picker { min-width: 160px; }
+  .footer-legal__wordmark {
+    font-family: 'Archivo Black', sans-serif;
+    color: var(--ink); font-size: 11px; letter-spacing: 0.16em;
   }
 </style>
+
+<!-- mobile-fit-safety -->
+<style>
+html { overflow-x: hidden; }
+body { max-width: 100vw; overflow-x: hidden; }
+*, *::before, *::after { box-sizing: border-box; }
+* { min-width: 0; }
+img, video, iframe, svg, canvas { max-width: 100%; height: auto; display: block; }
+@media (max-width: 640px) {
+  [class*="grid"], [class*="cols"], [class*="row"], [class*="columns"] { grid-template-columns: 1fr !important; flex-direction: column !important; }
+  [class*="container"] { max-width: 100% !important; padding-inline: 16px !important; }
+  section, header, main, footer, article, aside, nav { max-width: 100% !important; padding-inline: clamp(12px, 4vw, 24px) !important; }
+  h1 { font-size: clamp(30px, 8vw, 44px) !important; line-height: 1.05 !important; }
+  h2 { font-size: clamp(24px, 6vw, 34px) !important; }
+}
+</style>
 </head>
+
 <body>
-<div class="demo-wrapper">
 
-  <!-- ─── BROWSER CHROME ─────────────────────────────────────── -->
-  <div class="browser">
-    <div class="browser-bar">
-      <div class="browser-dots">
-        <div class="dot dot-r"></div>
-        <div class="dot dot-y"></div>
-        <div class="dot dot-g"></div>
+<div class="page">
+
+  <!-- TOPBAR -->
+  <header class="topbar" role="banner">
+    <a class="wordmark" href="/index.html" aria-label="CallMeIE — home">
+      <span class="wordmark__dot" aria-hidden="true"></span>CallMeIE
+    </a>
+    <div class="topbar__right">
+      <span class="topbar__meta">Hear a call · Demo page</span>
+      <a class="topbar__cta" href="tel:+16617643212">Ring +1 (661) 764-3212</a>
+    </div>
+  </header>
+
+  <div class="masthead-strip" aria-hidden="true">
+    <span>Demo Line</span>
+    <span>Vol. I — MMXXVI</span>
+    <span>Claire · Receptionist</span>
+    <span>Limerick · Ireland</span>
+  </div>
+
+  <!-- HERO -->
+  <section class="hero" id="top" aria-labelledby="hero-title">
+    <div class="hero__kicker">The demo, explained</div>
+    <h1 id="hero-title" class="hero__headline">Hear a call.</h1>
+    <p class="hero__sub">
+      Ring the demo number. <em>Claire qualifies you. She transfers to the vertical
+      AI that fits your business.</em> You experience what your own customers would
+      hear — end to end, on a real phone line, no cassette, no script.
+    </p>
+
+    <span class="demo-number__label">Demo line · Answers 24 hours</span>
+    <a class="demo-number" href="tel:+16617643212" aria-label="Ring the demo on plus one six six one seven six four three two one two">+1 (661) 764-3212</a>
+    <span class="demo-number__caption">One ring. About ninety seconds. Try to confuse it.</span>
+
+    <div class="hero__actions">
+      <a class="btn-primary" href="tel:+16617643212">Ring the demo now</a>
+      <a class="btn-secondary" href="/onboard.html">Prefer to just onboard? &rarr;</a>
+    </div>
+  </section>
+
+  <!-- SECTION 01 — WHAT YOU'LL HEAR -->
+  <section class="editorial" id="script" aria-labelledby="script-title">
+    <div class="section-head">
+      <div class="section-num">&sect; 01</div>
+      <h2 id="script-title" class="section-title">What you&rsquo;ll actually hear</h2>
+    </div>
+    <p class="section-dek">
+      Timestamps on the left, speaker in the middle, dialogue on the right. This
+      is the real flow &mdash; not a marketing mock. Claire opens, qualifies the
+      vertical, takes your name and number, and hands you off to the specialist
+      AI for your trade.
+    </p>
+
+    <div class="timeline__caption">
+      <span>Transcript &mdash; dental route</span>
+      <span><b>Claire</b> &rarr; Dental AI &middot; duration ~2m 14s</span>
+    </div>
+
+    <div class="timeline" role="list" aria-label="Demo call transcript">
+
+      <div class="timeline__row timeline__row--marker" role="listitem">
+        <span class="timeline__time">[00:00]</span>
+        <span class="timeline__marker">Ring &nbsp; Ring</span>
       </div>
-      <div class="browser-url">
-        <span class="lock">🔒</span>
-        <span class="url-text">scruge1.github.io</span><span class="url-path">/CallMeIE</span>
+
+      <div class="timeline__row" role="listitem">
+        <span class="timeline__time">[00:03]</span>
+        <span class="timeline__who timeline__who--ai">Claire</span>
+        <span class="timeline__text">&ldquo;Hello, CallMeIE, this is Claire, how can I help?&rdquo;</span>
+      </div>
+
+      <div class="timeline__row" role="listitem">
+        <span class="timeline__time">[00:07]</span>
+        <span class="timeline__who">You</span>
+        <span class="timeline__text">&ldquo;Hi, I&rsquo;m ringing to try the demo.&rdquo;</span>
+      </div>
+
+      <div class="timeline__row" role="listitem">
+        <span class="timeline__time">[00:10]</span>
+        <span class="timeline__who timeline__who--ai">Claire</span>
+        <span class="timeline__text">&ldquo;Lovely, and are you thinking about it for a specific kind of business?&rdquo;</span>
+      </div>
+
+      <div class="timeline__row" role="listitem">
+        <span class="timeline__time">[00:14]</span>
+        <span class="timeline__who">You</span>
+        <span class="timeline__text">&ldquo;A dental practice.&rdquo;</span>
+      </div>
+
+      <div class="timeline__row" role="listitem">
+        <span class="timeline__time">[00:17]</span>
+        <span class="timeline__who timeline__who--ai">Claire</span>
+        <span class="timeline__text">&ldquo;Brilliant. Just your first name and a phone number so my owner can send you a quick recap after?&rdquo;</span>
+      </div>
+
+      <div class="timeline__row" role="listitem">
+        <span class="timeline__time">[00:22]</span>
+        <span class="timeline__who">You</span>
+        <span class="timeline__text">&ldquo;Cian, 087 555 0000.&rdquo;</span>
+      </div>
+
+      <div class="timeline__row" role="listitem">
+        <span class="timeline__time">[00:27]</span>
+        <span class="timeline__who timeline__who--ai">Claire</span>
+        <span class="timeline__text">&ldquo;Thanks Cian, I&rsquo;ll put you through to Bright Smile Dental now. One moment.&rdquo;</span>
+      </div>
+
+      <div class="timeline__row timeline__row--marker" role="listitem">
+        <span class="timeline__time">[00:30]</span>
+        <span class="timeline__marker">*** transfer ***</span>
+      </div>
+
+      <div class="timeline__row" role="listitem">
+        <span class="timeline__time">[00:33]</span>
+        <span class="timeline__who timeline__who--ai">Dental AI</span>
+        <span class="timeline__text">&ldquo;Bright Smile Dental, this is Sarah &mdash; how can I help you today?&rdquo;</span>
+      </div>
+
+      <div class="timeline__row" role="listitem">
+        <span class="timeline__time">[00:37]</span>
+        <span class="timeline__who">You</span>
+        <span class="timeline__text">&ldquo;Looking for a check-up next Tuesday afternoon.&rdquo;</span>
+      </div>
+
+      <div class="timeline__row" role="listitem">
+        <span class="timeline__time">[00:42]</span>
+        <span class="timeline__who timeline__who--ai">Dental AI</span>
+        <span class="timeline__text">&ldquo;I have Tuesday at 2:15 PM with Dr. Conor or 3:30 PM with Dr. Aoife &mdash; which suits?&rdquo;</span>
+      </div>
+
+      <div class="timeline__row" role="listitem">
+        <span class="timeline__ellipsis">&middot; &middot; &middot;</span>
+      </div>
+
+      <div class="timeline__row timeline__row--marker" role="listitem">
+        <span class="timeline__time">[02:14]</span>
+        <span class="timeline__marker">*** call ends ***</span>
+      </div>
+
+      <div class="timeline__row" role="listitem">
+        <span class="timeline__time">[02:19]</span>
+        <span class="timeline__who timeline__who--ai">SMS &rarr; you</span>
+        <span class="timeline__text timeline__text--plain">&ldquo;Recap from your CallMeIE demo call &mdash; owner will ring back on +353&nbsp;87&hellip;&rdquo;</span>
+      </div>
+
+    </div>
+
+    <p class="section-dek" style="margin-top: 28px;">
+      Real calls vary by vertical, but the shape is the same: qualify &rarr;
+      capture contact &rarr; transfer &rarr; the specialist AI does the actual
+      work &rarr; SMS recap lands on your phone before you&rsquo;ve hung up.
+    </p>
+  </section>
+
+  <!-- SECTION 02 — VERTICALS -->
+  <section class="editorial" id="verticals" aria-labelledby="verticals-title">
+    <div class="section-head">
+      <div class="section-num">&sect; 02</div>
+      <h2 id="verticals-title" class="section-title">Four verticals you can test</h2>
+    </div>
+    <p class="section-dek">
+      Tell Claire which vertical you want. She routes you. Each specialist AI
+      runs on a different knowledge base &mdash; real trade vocabulary, real
+      booking rules, real escalation paths.
+    </p>
+
+    <div class="vertical">
+      <div class="vertical__label">
+        <b>Dental</b>
+        Vertical 01
+      </div>
+      <div class="vertical__body">
+        <h3 class="vertical__head">Appointment desk for a dental practice</h3>
+        <p>
+          The dental AI handles new-patient intake, routine check-ups,
+          hygienist slots, emergency triage, and PRSI Treatment Benefit
+          questions. It checks the practice calendar live and offers two
+          real slots &mdash; never &ldquo;we&rsquo;ll ring you back&rdquo; unless the case
+          actually warrants a human.
+        </p>
+        <div class="vertical__try">
+          <span class="vertical__try-tag">Try this</span>
+          <span class="vertical__try-text">
+            Ask Claire for <b>dental</b>. Then ask the receptionist if they take
+            PRSI Treatment Benefit.
+          </span>
+        </div>
       </div>
     </div>
 
-    <!-- ── TIMER BAR ── -->
-    <div class="timer-bar-wrap">
-      <div class="timer-bar" id="timerBar"></div>
-    </div>
-
-    <!-- ── STEP INDICATOR ── -->
-    <div class="step-nav" id="stepNav">
-      <div class="step-dot active" id="sd1">1</div>
-      <div class="step-line" id="sl1"></div>
-      <div class="step-dot" id="sd2">2</div>
-      <div class="step-line" id="sl2"></div>
-      <div class="step-dot" id="sd3">3</div>
-      <div class="step-line" id="sl3"></div>
-      <div class="step-dot" id="sd4">4</div>
-      <div class="step-line" id="sl4"></div>
-      <div class="step-dot" id="sd5">5</div>
-    </div>
-
-    <!-- ────────────────── SCREEN CONTAINER ─────────────────── -->
-    <div class="browser-content" id="screenContainer">
-
-      <!-- ══════ SCREEN 1: LANDING ══════ -->
-      <div class="screen active" id="screen1">
-        <header class="site-header">
-          <div class="logo">
-            <div class="logo-icon">🌍</div>
-            WonderWorld
-          </div>
-          <nav class="header-nav">
-            <span>Features</span>
-            <span>Pricing</span>
-            <span>Docs</span>
-          </nav>
-        </header>
-
-        <div class="hero">
-          <div class="hero-eyebrow">
-            <span class="badge badge-cyan">✦ TikTok Content Scheduler</span>
-            <span class="badge badge-purple">Content Posting API</span>
-          </div>
-
-          <h1>Schedule &amp; post to<br><span>TikTok automatically</span></h1>
-
-          <p>WonderWorld lets creators plan, caption, and schedule TikTok videos — all without leaving the app. Connect once, post forever.</p>
-
-          <div class="hero-features">
-            <div class="feature-chip"><span class="dot2"></span>Video scheduling</div>
-            <div class="feature-chip"><span class="dot2"></span>Caption editor</div>
-            <div class="feature-chip"><span class="dot2"></span>Hashtag suggestions</div>
-            <div class="feature-chip"><span class="dot2"></span>Post analytics</div>
-          </div>
-
-          <div class="scopes-note">
-            <span style="font-size:18px">🔑</span>
-            <span>Uses TikTok scopes <code>video.upload</code> and <code>video.publish</code> via the Content Posting API.</span>
-          </div>
-
-          <button class="btn btn-primary" style="font-size:16px; padding:14px 32px;" onclick="nextScreen()">
-            <span>Connect TikTok Account</span>
-            <span>→</span>
-          </button>
-          <p style="font-size:12px; color:var(--text-muted); margin-top:-8px;">Secure OAuth 2.0 · No password shared</p>
+    <div class="vertical">
+      <div class="vertical__label">
+        <b>Motor Factors</b>
+        Vertical 02
+      </div>
+      <div class="vertical__body">
+        <h3 class="vertical__head">Parts counter for a motor factors</h3>
+        <p>
+          The motor-factors AI handles part lookups by make / model / year /
+          engine, stock checks, trade-account pricing, delivery windows, and
+          fitment questions. It understands that &ldquo;the timing kit&rdquo; is
+          not the same thing as &ldquo;the timing belt&rdquo; and asks accordingly.
+        </p>
+        <div class="vertical__try">
+          <span class="vertical__try-tag">Try this</span>
+          <span class="vertical__try-text">
+            Ask Claire for <b>motor factors</b>. Ask if they stock a timing belt
+            for a 2016 Ford Focus diesel.
+          </span>
         </div>
-      </div>
-
-      <!-- ══════ SCREEN 2: TIKTOK OAUTH ══════ -->
-      <div class="screen" id="screen2">
-        <header class="site-header">
-          <div class="logo">
-            <div class="logo-icon">🌍</div>
-            WonderWorld
-          </div>
-          <nav class="header-nav">
-            <span>Features</span><span>Pricing</span><span>Docs</span>
-          </nav>
-        </header>
-
-        <div class="oauth-wrap">
-          <!-- blurred background content -->
-          <div class="bg-site">
-            <div class="bg-landing-blur">
-              <h2>Schedule &amp; post to TikTok automatically</h2>
-              <p>WonderWorld lets creators plan, caption, and schedule TikTok videos.</p>
-            </div>
-          </div>
-
-          <!-- OAuth popup -->
-          <div class="oauth-popup">
-            <div class="oauth-tt-header">
-              <div class="tt-logo"></div>
-              <div>
-                <h3>TikTok</h3>
-                <p>Login to authorize</p>
-              </div>
-            </div>
-
-            <div class="oauth-body">
-              <h4><span class="oauth-app-name">WonderWorld</span> wants to access your TikTok account</h4>
-              <p class="oauth-sub">@swarm_agent_2026 · swarm_agent_2026@gmail.com</p>
-
-              <div class="oauth-scopes">
-                <div class="oauth-scopes-title">Permissions requested</div>
-
-                <div class="scope-item">
-                  <div class="scope-icon">📤</div>
-                  <div>
-                    <div class="scope-label">video.upload</div>
-                    <div class="scope-desc">Upload video files to your TikTok draft library</div>
-                  </div>
-                </div>
-
-                <div class="scope-item">
-                  <div class="scope-icon">📢</div>
-                  <div>
-                    <div class="scope-label">video.publish</div>
-                    <div class="scope-desc">Publish videos to your TikTok profile publicly or privately</div>
-                  </div>
-                </div>
-              </div>
-
-              <div class="oauth-btns">
-                <button class="oauth-btn oauth-deny">Deny</button>
-                <button class="oauth-btn oauth-allow" onclick="nextScreen()">Allow</button>
-              </div>
-            </div>
-
-            <div class="oauth-footer">
-              By authorizing, you agree to TikTok's Terms of Service and Privacy Policy.
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- ══════ SCREEN 3: CONTENT CREATION ══════ -->
-      <div class="screen" id="screen3">
-        <header class="site-header">
-          <div class="logo">
-            <div class="logo-icon">🌍</div>
-            WonderWorld
-          </div>
-          <div style="display:flex; align-items:center; gap:12px;">
-            <span class="badge badge-green" style="font-size:11px;">✓ TikTok Connected</span>
-            <div class="account-avatar" style="width:30px;height:30px;font-size:12px;">S</div>
-          </div>
-        </header>
-
-        <div class="create-body">
-          <!-- LEFT SIDEBAR: account + video picker -->
-          <div class="create-sidebar">
-            <div class="account-pill">
-              <div class="account-avatar">S</div>
-              <div class="account-info">
-                <div class="account-name">@swarm_agent_2026</div>
-                <div class="account-sub"><span class="online-dot"></span> Connected via TikTok</div>
-              </div>
-            </div>
-
-            <div class="video-picker selected">
-              <div class="video-thumb">
-                <div class="vt-content">
-                  <div class="vt-waveform">
-                    <div class="vt-bar"></div>
-                    <div class="vt-bar"></div>
-                    <div class="vt-bar"></div>
-                    <div class="vt-bar"></div>
-                    <div class="vt-bar"></div>
-                    <div class="vt-bar"></div>
-                    <div class="vt-bar"></div>
-                  </div>
-                  <div class="vt-filename">wonderworld_reel_04.mp4</div>
-                </div>
-                <div class="play-overlay">
-                  <div class="play-btn-fake">▶</div>
-                </div>
-                <div class="video-duration">0:47</div>
-              </div>
-              <div class="video-thumb-label">
-                <span class="vt-name">wonderworld_reel_04.mp4</span>
-                <span class="badge badge-cyan" style="font-size:10px; padding:2px 6px;">Selected</span>
-              </div>
-            </div>
-
-            <button class="btn btn-outline btn-sm" style="width:100%;">+ Choose different video</button>
-          </div>
-
-          <!-- MAIN: caption + tags + schedule -->
-          <div class="create-main">
-            <div style="display:flex; align-items:center; justify-content:space-between;">
-              <h2 style="font-size:18px; font-weight:700;">Create Post</h2>
-              <span class="badge badge-cyan" style="font-size:11px;">Content Posting API</span>
-            </div>
-
-            <div class="form-group">
-              <label class="form-label">Caption</label>
-              <textarea class="form-textarea" id="captionInput" rows="3"
-                oninput="updateCounter()"
-                style="font-size:14px; line-height:1.5;"
-              >🌍 Exploring the world one post at a time ✨ Drop a 💙 if you want more! #WonderWorld #travel #explore #viral</textarea>
-              <div class="char-counter" id="charCounter">102 / 2,200</div>
-            </div>
-
-            <div class="form-group">
-              <label class="form-label">Hashtags</label>
-              <div class="tags-input">
-                <span class="tag">#WonderWorld</span>
-                <span class="tag">#travel</span>
-                <span class="tag">#explore</span>
-                <span class="tag">#viral</span>
-                <span class="tag">#fyp</span>
-                <span style="font-size:12px; color:var(--text-muted); padding:3px 6px; cursor:text;">+ add tag</span>
-              </div>
-            </div>
-
-            <div class="form-group">
-              <label class="form-label">Privacy</label>
-              <select class="form-input" style="cursor:pointer;">
-                <option>🌍  Public — visible to everyone</option>
-                <option>👥  Friends only</option>
-                <option>🔒  Private — only me</option>
-              </select>
-            </div>
-
-            <div class="form-group">
-              <label class="form-label">Schedule Date &amp; Time</label>
-              <div class="schedule-row">
-                <input class="form-input" type="date" id="schedDate" value="">
-                <input class="form-input" type="time" value="09:00" style="max-width:130px;">
-              </div>
-            </div>
-
-            <div style="display:flex; gap:10px; margin-top:4px;">
-              <button class="btn btn-outline btn-sm">Save Draft</button>
-              <button class="btn btn-primary" onclick="nextScreen()" style="flex:1; font-size:15px;">
-                Schedule &amp; Post to TikTok →
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- ══════ SCREEN 4: POSTING ══════ -->
-      <div class="screen" id="screen4">
-        <header class="site-header">
-          <div class="logo">
-            <div class="logo-icon">🌍</div>
-            WonderWorld
-          </div>
-          <span class="badge badge-cyan" style="font-size:11px;">Content Posting API</span>
-        </header>
-
-        <div class="posting-body">
-          <div class="posting-icon">
-            <div class="posting-spin"></div>
-            📡
-          </div>
-
-          <div>
-            <h2>Posting to TikTok…</h2>
-            <p>Your video is being uploaded and published via the TikTok Content Posting API.</p>
-          </div>
-
-          <div class="progress-track">
-            <div class="progress-steps" id="postingSteps">
-              <div class="progress-step">
-                <div class="step-icon done">✓</div>
-                <span class="step-label done">Authenticated with TikTok API</span>
-              </div>
-              <div class="progress-step">
-                <div class="step-icon done">✓</div>
-                <span class="step-label done">Initialising video upload (video.upload)</span>
-              </div>
-              <div class="progress-step" id="ps3">
-                <div class="step-icon active" id="ps3icon">↻</div>
-                <span class="step-label active" id="ps3label">Uploading video chunks…</span>
-              </div>
-              <div class="progress-step" id="ps4">
-                <div class="step-icon pending" id="ps4icon">4</div>
-                <span class="step-label pending" id="ps4label">Publishing via video.publish scope</span>
-              </div>
-              <div class="progress-step" id="ps5">
-                <div class="step-icon pending" id="ps5icon">5</div>
-                <span class="step-label pending" id="ps5label">Confirming post live</span>
-              </div>
-            </div>
-
-            <div class="progress-bar-wrap" style="margin-top:16px;">
-              <div class="progress-bar" id="postProgress"></div>
-            </div>
-            <div class="progress-pct" id="postPct">38%</div>
-          </div>
-
-          <div class="api-call-box">
-            <div><span class="api-method">POST</span> <span class="api-url">open.tiktokapis.com/v2/post/publish/video/init/</span></div>
-            <div style="margin-top:4px; color:#94a3b8; font-size:11px;">scope: video.upload, video.publish · account: @swarm_agent_2026</div>
-            <div class="api-status" id="apiStatus">⟳ Uploading chunk 2/3…</div>
-          </div>
-        </div>
-      </div>
-
-      <!-- ══════ SCREEN 5: SUCCESS ══════ -->
-      <div class="screen" id="screen5">
-        <header class="site-header">
-          <div class="logo">
-            <div class="logo-icon">🌍</div>
-            WonderWorld
-          </div>
-          <div style="display:flex; align-items:center; gap:12px;">
-            <span class="badge badge-green" style="font-size:11px;">✓ TikTok Connected</span>
-          </div>
-        </header>
-
-        <div class="success-body">
-          <div class="success-icon">✅</div>
-
-          <div>
-            <h2>Video posted via<br><span>Content Posting API</span></h2>
-            <p style="margin-top:8px;">Your TikTok post is now live and visible to your followers. All done — no manual steps needed.</p>
-          </div>
-
-          <div class="success-card">
-            <div class="success-row">
-              <span class="sr-label">Status</span>
-              <span class="sr-val green">✓ Published</span>
-            </div>
-            <div class="success-row">
-              <span class="sr-label">Account</span>
-              <span class="sr-val cyan">@swarm_agent_2026</span>
-            </div>
-            <div class="success-row">
-              <span class="sr-label">Video</span>
-              <span class="sr-val">wonderworld_reel_04.mp4</span>
-            </div>
-            <div class="success-row">
-              <span class="sr-label">Scopes used</span>
-              <span class="sr-val code">video.upload · video.publish</span>
-            </div>
-            <div class="success-row">
-              <span class="sr-label">Post ID</span>
-              <span class="sr-val code">7380924571034829060</span>
-            </div>
-            <div class="success-row">
-              <span class="sr-label">Visibility</span>
-              <span class="sr-val">Public</span>
-            </div>
-            <div class="success-row">
-              <span class="sr-label">API Endpoint</span>
-              <span class="sr-val code" style="font-size:10px;">POST /v2/post/publish/video/init/</span>
-            </div>
-          </div>
-
-          <div style="display:flex; gap:12px; align-items:center; flex-wrap:wrap; justify-content:center;">
-            <span class="confetti">🎉</span>
-            <button class="btn btn-outline btn-sm" onclick="restart()">Restart Demo</button>
-            <button class="btn btn-success btn-sm" onclick="restart()">Schedule Another →</button>
-            <span class="confetti" style="animation-delay:0.4s">✨</span>
-          </div>
-        </div>
-      </div>
-
-    </div><!-- /browser-content -->
-
-    <!-- ── CONTROL ROW ── -->
-    <div class="control-row">
-      <div class="control-left">
-        <span>Auto-advancing in</span>
-        <span class="timer-countdown" id="timerCountdown">3s</span>
-        <span style="color:var(--border);">|</span>
-        <span>Step <span id="currentStep">1</span> of 5</span>
-      </div>
-      <div class="control-right">
-        <button class="btn btn-outline btn-sm" onclick="prevScreen()" id="prevBtn" disabled>← Back</button>
-        <button class="btn btn-primary btn-sm" onclick="nextScreen()" id="nextBtn">Next →</button>
       </div>
     </div>
 
-  </div><!-- /browser -->
+    <div class="vertical">
+      <div class="vertical__label">
+        <b>Salon</b>
+        Vertical 03
+      </div>
+      <div class="vertical__body">
+        <h3 class="vertical__head">Booking desk for a hair salon</h3>
+        <p>
+          The salon AI handles stylist-specific bookings, colour services,
+          deposit policy, patch-test rules for first-time colour, and
+          rescheduling. It knows which stylists do balayage versus which are
+          blow-dry only, and it takes a deposit when the service type
+          requires one.
+        </p>
+        <div class="vertical__try">
+          <span class="vertical__try-tag">Try this</span>
+          <span class="vertical__try-text">
+            Ask Claire for <b>a hair salon</b>. Ask for a balayage with your
+            usual stylist and whether they take a deposit.
+          </span>
+        </div>
+      </div>
+    </div>
 
-</div><!-- /demo-wrapper -->
+    <div class="vertical">
+      <div class="vertical__label">
+        <b>Solicitor</b>
+        Vertical 04
+      </div>
+      <div class="vertical__body">
+        <h3 class="vertical__head">Front desk for a solicitor&rsquo;s office</h3>
+        <p>
+          The solicitor AI handles conveyancing enquiries, wills &amp; probate
+          intake, consultation booking, and quote requests by matter type. It
+          knows the difference between a first-time buyer Help-to-Buy purchase
+          and an investment buy-to-let, and it quotes within the firm&rsquo;s
+          published bands or escalates to the partner.
+        </p>
+        <div class="vertical__try">
+          <span class="vertical__try-tag">Try this</span>
+          <span class="vertical__try-text">
+            Ask Claire for <b>a solicitor</b>. Ask about a first-time buyer
+            mortgage conveyancing quote.
+          </span>
+        </div>
+      </div>
+    </div>
+  </section>
 
-<script>
-/* ── STATE ── */
-let currentScreen = 1;
-const TOTAL = 5;
-let autoTimer = null;
-let countdown = 3;
-let postingInterval = null;
-let postProgress = 0;
-let postStep = 2;
+  <!-- SECTION 03 — WHAT'S REALLY HAPPENING -->
+  <section class="editorial" id="stack" aria-labelledby="stack-title">
+    <div class="section-head">
+      <div class="section-num">&sect; 03</div>
+      <h2 id="stack-title" class="section-title">What&rsquo;s really happening behind the call</h2>
+    </div>
+    <p class="section-dek">
+      Plainspoken, no hype. Four commodity services, wired together carefully,
+      running on a small server in Limerick. That&rsquo;s the whole trick.
+    </p>
 
-/* ── INIT ── */
-document.addEventListener('DOMContentLoaded', () => {
-  setTomorrowDate();
-  updateStepUI();
-  startAutoTimer();
-  updateCounter();
-});
+    <div class="prose-block">
+      <div>
+        <p>
+          When you ring the demo line, <strong>Twilio</strong> answers the call
+          on the PSTN &mdash; the same phone network your landline uses. Twilio
+          hands the audio stream to <strong>Vapi</strong>, which runs the voice
+          pipeline: OpenAI speech-to-text on the way in, a language model in the
+          middle, and OpenAI voice on the way out.
+        </p>
+        <p>
+          The language model &mdash; <strong>Claude or GPT</strong>, depending
+          on the vertical &mdash; reads each turn of the conversation, checks
+          the relevant knowledge base or calendar, and writes the next line.
+          When the vertical AI needs to book an appointment, it calls
+          <strong>Google Calendar</strong> directly, checks real availability,
+          and writes the event against the practice&rsquo;s own calendar.
+        </p>
+        <p>
+          End-to-end, a turn takes <strong>under 800ms on average</strong>
+          &mdash; close enough to human timing that most callers don&rsquo;t
+          notice until they ask something only a human would know, at which
+          point the AI says so and escalates.
+        </p>
+      </div>
 
-function setTomorrowDate() {
-  const d = new Date();
-  d.setDate(d.getDate() + 1);
-  const iso = d.toISOString().split('T')[0];
-  const el = document.getElementById('schedDate');
-  if (el) el.value = iso;
-}
+      <ul class="stack-list" aria-label="Stack components">
+        <li>
+          <span>Voice pipeline</span>
+          <span><b>Vapi</b> &mdash; OpenAI speech-to-text in, OpenAI voice out, barge-in handling, turn-taking.</span>
+        </li>
+        <li>
+          <span>Telephony</span>
+          <span><b>Twilio</b> &mdash; PSTN termination, number provisioning, transfer bridging, SMS recap.</span>
+        </li>
+        <li>
+          <span>Reasoning</span>
+          <span><b>Claude / GPT</b> &mdash; generates each reply in real time against the vertical&rsquo;s knowledge base.</span>
+        </li>
+        <li>
+          <span>Scheduling</span>
+          <span><b>Google Calendar</b> &mdash; checks live availability and writes the event on the practice calendar.</span>
+        </li>
+        <li>
+          <span>Turn latency</span>
+          <span><b>&lt; 800ms avg</b> &mdash; measured end to end, end-of-speech to start-of-reply, on the demo line.</span>
+        </li>
+      </ul>
+    </div>
+  </section>
 
-/* ── NAVIGATION ── */
-function nextScreen() {
-  if (currentScreen >= TOTAL) return;
-  goTo(currentScreen + 1);
-}
+  <!-- SECTION 04 — HONESTY -->
+  <section class="editorial" id="honesty" aria-labelledby="honesty-title">
+    <div class="section-head">
+      <div class="section-num">&sect; 04</div>
+      <h2 id="honesty-title" class="section-title">What it sounds like if it fails</h2>
+    </div>
+    <p class="section-dek">
+      Because you will try to confuse it, and sometimes you&rsquo;ll succeed.
+      Here&rsquo;s what happens when you do.
+    </p>
 
-function prevScreen() {
-  if (currentScreen <= 1) return;
-  goTo(currentScreen - 1);
-}
+    <div class="honesty">
+      <div class="honesty__kicker">Failure modes &mdash; on the record</div>
+      <p>
+        Sometimes Claire doesn&rsquo;t catch the vertical on the first try and
+        asks once more. Background noise eats the first word, or you name a
+        trade she doesn&rsquo;t route for yet. She asks again. She doesn&rsquo;t
+        guess.
+      </p>
+      <p>
+        Sometimes the vertical AI hits a question it genuinely can&rsquo;t
+        answer &mdash; a pricing edge case, a clinical judgement, a legal
+        opinion. In that case it says so: <em>&ldquo;let me check that with the
+        owner and ring you back today.&rdquo;</em> The call ends, an SMS goes to
+        the owner with the full transcript, and the human rings back on the
+        number you gave Claire. That&rsquo;s the escalation path &mdash; not a
+        failure.
+      </p>
+      <p>
+        <strong>We&rsquo;d rather an honest &ldquo;let me check&rdquo; than a
+        confident wrong answer.</strong> A receptionist who makes things up
+        costs you customers. A receptionist who says &ldquo;I&rsquo;ll find
+        out&rdquo; keeps them.
+      </p>
+    </div>
+  </section>
 
-function goTo(n) {
-  clearAutoTimer();
-  clearPostingAnimation();
+  <!-- SECTION 05 — NEXT STEP -->
+  <section class="editorial" id="next" aria-labelledby="next-title">
+    <div class="section-head">
+      <div class="section-num">&sect; 05</div>
+      <h2 id="next-title" class="section-title">Next step</h2>
+    </div>
+    <p class="section-dek">
+      Two ways in. Ring the demo and hear it work, or skip the demo and start
+      the onboarding form &mdash; we do both every week.
+    </p>
 
-  const prev = document.getElementById('screen' + currentScreen);
-  const next = document.getElementById('screen' + n);
+    <div class="next-step">
+      <div class="next-step__primary">
+        <div class="next-step__kicker">Primary &mdash; 90 seconds</div>
+        <h3 class="next-step__head">Ring the demo now</h3>
+        <a class="next-step__number" href="tel:+16617643212">+1 (661) 764-3212</a>
+        <p class="next-step__note">
+          One real call. Claire answers, qualifies, transfers. Try the vertical
+          that matches your business. You&rsquo;ll get an SMS recap after.
+        </p>
+      </div>
 
-  prev.classList.remove('active');
-  prev.classList.add('exit');
-  setTimeout(() => prev.classList.remove('exit'), 500);
+      <div class="next-step__secondary">
+        <div class="next-step__kicker">Or skip the demo</div>
+        <p>
+          You&rsquo;ve heard enough. You run the kind of business we build for,
+          and you&rsquo;d rather just tell us what to set up.
+        </p>
+        <a class="onboard-link" href="/onboard.html">Prefer to just onboard? &rarr;</a>
+      </div>
+    </div>
+  </section>
 
-  next.classList.add('active');
+</div><!-- /.page -->
 
-  currentScreen = n;
-  updateStepUI();
-  updateButtons();
+<!-- FOOTER -->
+<footer role="contentinfo">
+  <div class="page">
+    <div class="footer-grid">
+      <div class="footer-col">
+        <h4>CallMeIE</h4>
+        <p>AI phone receptionist for Irish SMBs. Built &amp; operated from Limerick, Ireland.</p>
+        <p>Stack: Vapi &middot; Twilio &middot; Google Calendar &middot; FastAPI on Render.</p>
+        <p>Email: <a href="mailto:callmeie@proton.me" class="mono-val">callmeie@proton.me</a></p>
+        <p>Demo line: <span class="mono-val">+1 (661) 764-3212</span></p>
+      </div>
+      <div class="footer-col">
+        <h4>This page</h4>
+        <ul>
+          <li><a href="#script">What you&rsquo;ll hear</a></li>
+          <li><a href="#verticals">Four verticals</a></li>
+          <li><a href="#stack">The stack</a></li>
+          <li><a href="#honesty">Failure modes</a></li>
+          <li><a href="#next">Next step</a></li>
+        </ul>
+      </div>
+      <div class="footer-col">
+        <h4>Elsewhere</h4>
+        <ul>
+          <li><a href="/index.html">Home</a></li>
+          <li><a href="/onboard.html">Onboarding form</a></li>
+          <li><a href="/index.html#pricing">Pricing</a></li>
+          <li><a href="/index.html#faq">FAQ</a></li>
+        </ul>
+      </div>
+      <div class="footer-col">
+        <h4>Legal</h4>
+        <ul>
+          <li><a href="/privacy.html">Privacy notice</a></li>
+          <li><a href="/terms.html">Terms of service</a></li>
+          <li><a href="mailto:callmeie@proton.me?subject=GDPR%20data%20request">GDPR request</a></li>
+          <li><a href="mailto:callmeie@proton.me?subject=DPA%20request">DPA on request</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="footer-legal">
+      <span class="footer-legal__wordmark">CALLMEIE &mdash; LIMERICK</span>
+      <span>&copy; 2026 CallMeIE. All rights reserved.</span>
+      <span>Built in Limerick &nbsp;&middot;&nbsp; Ring +1 (661) 764-3212</span>
+    </div>
+  </div>
+</footer>
 
-  if (n === 4) startPostingAnimation();
-  if (n < TOTAL) startAutoTimer();
-  if (n === TOTAL) stopAutoTimer();
-}
-
-function restart() {
-  clearAutoTimer();
-  clearPostingAnimation();
-  for (let i = 1; i <= TOTAL; i++) {
-    const s = document.getElementById('screen' + i);
-    s.classList.remove('active', 'exit');
-  }
-  currentScreen = 1;
-  postProgress = 0;
-  postStep = 2;
-  document.getElementById('screen1').classList.add('active');
-  updateStepUI();
-  updateButtons();
-  startAutoTimer();
-}
-
-/* ── STEP INDICATOR ── */
-function updateStepUI() {
-  document.getElementById('currentStep').textContent = currentScreen;
-  for (let i = 1; i <= TOTAL; i++) {
-    const dot = document.getElementById('sd' + i);
-    dot.classList.remove('done', 'active');
-    if (i < currentScreen) { dot.classList.add('done'); dot.textContent = '✓'; }
-    else if (i === currentScreen) { dot.classList.add('active'); dot.textContent = i; }
-    else { dot.textContent = i; }
-
-    if (i < TOTAL) {
-      const line = document.getElementById('sl' + i);
-      line.classList.toggle('done', i < currentScreen);
-    }
-  }
-}
-
-function updateButtons() {
-  document.getElementById('prevBtn').disabled = currentScreen === 1;
-  const nb = document.getElementById('nextBtn');
-  nb.textContent = currentScreen === TOTAL ? '↺ Restart' : 'Next →';
-  nb.onclick = currentScreen === TOTAL ? restart : nextScreen;
-}
-
-/* ── AUTO TIMER ── */
-function startAutoTimer() {
-  countdown = 3;
-  document.getElementById('timerCountdown').textContent = countdown + 's';
-
-  // reset and animate timer bar
-  const bar = document.getElementById('timerBar');
-  bar.classList.remove('running');
-  void bar.offsetWidth; // reflow
-  bar.classList.add('running');
-
-  autoTimer = setInterval(() => {
-    countdown--;
-    document.getElementById('timerCountdown').textContent = Math.max(0, countdown) + 's';
-    if (countdown <= 0) {
-      clearAutoTimer();
-      nextScreen();
-    }
-  }, 1000);
-}
-
-function clearAutoTimer() {
-  if (autoTimer) { clearInterval(autoTimer); autoTimer = null; }
-  const bar = document.getElementById('timerBar');
-  bar.classList.remove('running');
-}
-
-function stopAutoTimer() {
-  clearAutoTimer();
-  document.getElementById('timerCountdown').textContent = '—';
-}
-
-/* ── POSTING ANIMATION ── */
-const postingSteps = [
-  { pct: 55, status: 'Uploading chunk 3/3…', step: 3 },
-  { pct: 72, status: '⟳ Processing video on TikTok servers…', step: 3 },
-  { pct: 85, status: '⟳ Publishing via video.publish scope…', step: 4 },
-  { pct: 95, status: '⟳ Confirming post status…', step: 5 },
-  { pct: 100, status: '✓ 200 OK — Post published', step: 5 },
-];
-let postIdx = 0;
-
-function startPostingAnimation() {
-  postProgress = 38;
-  postIdx = 0;
-  applyPostingState(38, '⟳ Uploading chunk 2/3…', 3);
-
-  postingInterval = setInterval(() => {
-    if (postIdx >= postingSteps.length) {
-      clearPostingAnimation();
-      return;
-    }
-    const s = postingSteps[postIdx];
-    applyPostingState(s.pct, s.status, s.step);
-    postIdx++;
-  }, 520);
-}
-
-function applyPostingState(pct, status, activeStep) {
-  document.getElementById('postProgress').style.width = pct + '%';
-  document.getElementById('postPct').textContent = pct + '%';
-  document.getElementById('apiStatus').textContent = status;
-
-  // Update step icons
-  const icons = [null, null, 'ps3icon', 'ps4icon', 'ps5icon'];
-  const labels = [null, null, 'ps3label', 'ps4label', 'ps5label'];
-  const names = [null, null, 'Uploading video chunks…', 'Publishing via video.publish scope', 'Confirming post live'];
-
-  for (let i = 3; i <= 5; i++) {
-    const icon = document.getElementById(icons[i]);
-    const label = document.getElementById(labels[i]);
-    if (!icon) continue;
-    if (i < activeStep) {
-      icon.className = 'step-icon done'; icon.textContent = '✓';
-      label.className = 'step-label done';
-    } else if (i === activeStep) {
-      icon.className = 'step-icon active'; icon.textContent = '↻';
-      label.className = 'step-label active';
-    } else {
-      icon.className = 'step-icon pending'; icon.textContent = i;
-      label.className = 'step-label pending';
-    }
-  }
-}
-
-function clearPostingAnimation() {
-  if (postingInterval) { clearInterval(postingInterval); postingInterval = null; }
-}
-
-/* ── CAPTION COUNTER ── */
-function updateCounter() {
-  const txt = document.getElementById('captionInput');
-  const ctr = document.getElementById('charCounter');
-  if (!txt || !ctr) return;
-  const len = txt.value.length;
-  ctr.textContent = len.toLocaleString() + ' / 2,200';
-  ctr.classList.toggle('warn', len > 1800);
-}
-</script>
 </body>
 </html>

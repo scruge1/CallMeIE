@@ -1,715 +1,1188 @@
-<!DOCTYPE html>
-<html lang="en">
+<!doctype html>
+<html lang="en-IE">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Get Started — CallMe.ie</title>
-<meta name="description" content="Set up your AI receptionist. Takes 5 minutes. We'll have you live within 3-5 business days.">
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Onboard Your Business — CallMeIE</title>
+<meta name="description" content="Onboarding form for CallMeIE — AI phone receptionist. Five minutes. Live within 3-5 business days. No credit card now — you pay after setup." />
+
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <link rel="alternate icon" href="/favicon.ico">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,700;1,9..144,400;1,9..144,500&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+
 <style>
+  /* CallMeIE — Onboarding
+     Paper cream, deep ink, single burgundy accent.
+     Archivo Black display · Fraunces body · JetBrains Mono for labels, numbers, IDs.
+     Matches the homepage exactly. */
+
+  :root {
+    --paper: #F5F1E8;
+    --paper-deep: #ECE7D9;
+    --ink: #0b0a08;
+    --ink-soft: #2a2622;
+    --ink-muted: #545454;
+    --burgundy: #5A1420;
+    --measure: 640px;
+    --section-gap: clamp(48px, 7vw, 96px);
+    --rule-heavy: 3px;
+    --rule-thick: 4px;
+    --field-border: 2px;
+  }
+
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
+  html { -webkit-text-size-adjust: 100%; }
   body {
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
-    background: #f8fafc;
-    color: #1e293b;
-    line-height: 1.6;
-    min-height: 100vh;
+    background: var(--paper); color: var(--ink);
+    font-family: 'Fraunces', Georgia, 'Times New Roman', serif;
+    font-optical-sizing: auto;
+    font-variation-settings: "opsz" 36, "SOFT" 30;
+    font-size: 18px; line-height: 1.58;
+    -webkit-font-smoothing: antialiased;
   }
 
-  .header {
-    background: #0f172a;
-    padding: 20px 24px;
-    display: flex;
-    align-items: center;
-    gap: 12px;
+  a { color: inherit; }
+  a:hover { text-decoration-thickness: 2px; }
+  ::selection { background: var(--burgundy); color: var(--paper); }
+
+  /* Layout scaffold */
+  .page { max-width: 1280px; margin: 0 auto; padding: 0 clamp(20px, 4vw, 48px); position: relative; }
+
+  /* Topbar */
+  .topbar {
+    position: relative; z-index: 5;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 22px 0 18px; border-bottom: var(--rule-heavy) solid var(--ink);
+    gap: 16px;
   }
-  .header .logo {
-    color: #22d3ee;
-    font-weight: 800;
-    font-size: 1.2rem;
-    letter-spacing: -0.3px;
-    text-decoration: none;
+  .wordmark {
+    font-family: 'Archivo Black', 'Arial Black', sans-serif;
+    font-size: clamp(18px, 1.6vw, 22px); letter-spacing: 0.01em;
+    text-transform: uppercase; color: var(--ink); text-decoration: none;
   }
-  .header .tagline {
-    color: #64748b;
-    font-size: 0.85rem;
-    margin-left: auto;
+  .wordmark__dot {
+    display: inline-block; width: 8px; height: 8px;
+    background: var(--burgundy); margin: 0 6px 2px 0; vertical-align: middle;
+  }
+  .topbar__right { display: flex; align-items: center; gap: 24px; flex-wrap: wrap; justify-content: flex-end; }
+  .topbar__meta {
+    font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace;
+    font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-muted);
+  }
+  @media (max-width: 720px) { .topbar__meta { display: none; } }
+  .topbar__cta {
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-size: 12px; font-weight: 600; letter-spacing: 0.04em;
+    color: var(--ink); text-decoration: none;
+    padding: 10px 14px; border: 2px solid var(--ink);
+    transition: background 0.15s ease, color 0.15s ease;
+    white-space: nowrap;
+  }
+  .topbar__cta:hover { background: var(--ink); color: var(--paper); }
+
+  /* Masthead strip */
+  .masthead-strip {
+    display: flex; justify-content: space-between; align-items: baseline;
+    padding: 14px 0; border-bottom: 1px solid var(--ink);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-soft);
+    gap: 18px; flex-wrap: wrap;
+  }
+  @media (max-width: 720px) {
+    .masthead-strip { flex-direction: column; gap: 4px; align-items: flex-start; }
   }
 
+  /* HERO */
   .hero {
-    background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
-    color: #fff;
-    padding: 48px 24px 56px;
-    text-align: center;
+    position: relative;
+    padding: clamp(40px, 7vw, 80px) 0 clamp(44px, 7vw, 80px);
+    border-bottom: var(--rule-thick) solid var(--ink);
   }
-  .hero h1 {
-    font-size: clamp(1.6rem, 4vw, 2.4rem);
-    font-weight: 800;
-    margin-bottom: 12px;
-    letter-spacing: -0.5px;
+  .hero__kicker {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px; letter-spacing: 0.22em; text-transform: uppercase;
+    color: var(--burgundy); margin-bottom: 28px;
+    display: flex; align-items: center; gap: 14px;
   }
-  .hero h1 span { color: #22d3ee; }
-  .hero p {
-    color: #94a3b8;
-    font-size: 1rem;
-    max-width: 480px;
-    margin: 0 auto;
+  .hero__kicker::before {
+    content: ""; display: inline-block; width: 48px; height: 2px; background: var(--burgundy);
   }
-  .steps {
-    display: flex;
-    justify-content: center;
-    gap: 32px;
-    margin-top: 32px;
-    flex-wrap: wrap;
+  .hero__headline {
+    font-family: 'Archivo Black', 'Arial Black', sans-serif;
+    font-size: clamp(36px, 6vw, 80px); line-height: 0.96;
+    letter-spacing: -0.015em; text-transform: uppercase;
+    margin: 0 0 22px; color: var(--ink); max-width: 16ch;
   }
-  .step {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    font-size: 0.85rem;
-    color: #cbd5e1;
+  .hero__sub {
+    font-family: 'Fraunces', Georgia, serif;
+    font-style: italic; font-weight: 400;
+    font-size: clamp(18px, 1.9vw, 22px); line-height: 1.42;
+    color: var(--ink-soft); max-width: 640px;
   }
-  .step .num {
-    width: 24px;
-    height: 24px;
-    background: #22d3ee;
-    color: #0f172a;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-weight: 700;
-    font-size: 0.75rem;
-    flex-shrink: 0;
-  }
+  .hero__sub em { font-style: normal; font-weight: 500; color: var(--ink); }
 
-  .container {
-    max-width: 680px;
-    margin: -24px auto 48px;
-    padding: 0 16px;
+  /* Progress strip — 4 steps */
+  .progress {
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 0;
+    border-top: 1px solid var(--ink); border-bottom: var(--rule-heavy) solid var(--ink);
+    background: var(--paper);
   }
-
-  .card {
-    background: #fff;
-    border: 1px solid #e2e8f0;
-    border-radius: 16px;
-    padding: 36px;
-    margin-bottom: 16px;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
-  }
-
-  .section-label {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    margin-bottom: 24px;
-  }
-  .section-label .badge {
-    background: #eff6ff;
-    color: #2563eb;
-    font-size: 0.7rem;
-    font-weight: 700;
-    padding: 3px 10px;
-    border-radius: 20px;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-  }
-  .section-label h2 {
-    font-size: 1.1rem;
-    font-weight: 700;
-    color: #0f172a;
-  }
-
-  .field {
-    margin-bottom: 20px;
-  }
-  .field label {
-    display: block;
-    font-size: 0.85rem;
-    font-weight: 600;
-    color: #374151;
-    margin-bottom: 6px;
-  }
-  .field label .req { color: #ef4444; margin-left: 2px; }
-  .field label .hint {
-    font-weight: 400;
-    color: #9ca3af;
-    font-size: 0.8rem;
-    margin-left: 6px;
-  }
-  .field input,
-  .field select,
-  .field textarea {
-    width: 100%;
-    padding: 10px 14px;
-    border: 1.5px solid #e2e8f0;
-    border-radius: 8px;
-    font-size: 0.95rem;
-    color: #1e293b;
-    background: #fff;
-    transition: border-color 0.15s;
-    font-family: inherit;
-  }
-  .field input:focus,
-  .field select:focus,
-  .field textarea:focus {
-    outline: none;
-    border-color: #22d3ee;
-    box-shadow: 0 0 0 3px rgba(34,211,238,0.1);
-  }
-  .field textarea { resize: vertical; min-height: 80px; }
-  .field .example {
-    margin-top: 5px;
-    font-size: 0.78rem;
-    color: #94a3b8;
-  }
-
-  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-  @media (max-width: 500px) { .row { grid-template-columns: 1fr; } }
-
-  .plan-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-    gap: 12px;
-    margin-top: 4px;
-  }
-  .plan-option {
-    border: 2px solid #e2e8f0;
-    border-radius: 10px;
-    padding: 16px;
-    cursor: pointer;
-    transition: border-color 0.15s, background 0.15s;
+  @media (max-width: 860px) { .progress { grid-template-columns: 1fr 1fr; } }
+  @media (max-width: 520px) { .progress { grid-template-columns: 1fr; } }
+  .progress__step {
+    padding: 22px 20px 20px; border-right: 1px solid var(--ink);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--ink-muted); line-height: 1.5;
     position: relative;
   }
-  .plan-option:hover { border-color: #22d3ee; background: #f0fdfe; }
-  .plan-option input[type="radio"] {
-    position: absolute;
-    opacity: 0;
-    width: 0;
-    height: 0;
+  .progress__step:last-child { border-right: 0; }
+  @media (max-width: 860px) {
+    .progress__step:nth-child(2) { border-right: 0; }
+    .progress__step:nth-child(1), .progress__step:nth-child(2) { border-bottom: 1px solid var(--ink); }
   }
-  .plan-option.selected {
-    border-color: #22d3ee;
-    background: #f0fdfe;
+  @media (max-width: 520px) {
+    .progress__step { border-right: 0; border-bottom: 1px solid var(--ink); }
+    .progress__step:last-child { border-bottom: 0; }
   }
-  .plan-option .plan-name {
-    font-weight: 700;
-    font-size: 0.9rem;
-    color: #0f172a;
+  .progress__step b {
+    font-family: 'Archivo Black', sans-serif; font-weight: 400;
+    font-size: 11px; letter-spacing: 0.18em; color: var(--burgundy);
+    display: block; margin-bottom: 6px;
   }
-  .plan-option .plan-price {
-    color: #22d3ee;
-    font-weight: 800;
-    font-size: 1.1rem;
-    margin: 4px 0;
+  .progress__step--active { background: var(--paper-deep); color: var(--ink); }
+  .progress__step--active::after {
+    content: ""; position: absolute; left: 0; right: 0; bottom: 0;
+    height: 3px; background: var(--burgundy);
   }
-  .plan-option .plan-desc {
-    font-size: 0.75rem;
-    color: #64748b;
-    line-height: 1.4;
+  .progress__step--active b { color: var(--burgundy); }
+
+  /* Form sections — editorial field groups */
+  .form-wrap {
+    padding: var(--section-gap) 0 clamp(32px, 5vw, 56px);
   }
 
-  .faq-group { }
+  .field-section {
+    border-top: var(--rule-thick) solid var(--ink);
+    padding: 44px 0 40px;
+  }
+  .field-section:first-of-type { border-top: 0; padding-top: 0; }
+
+  .section-head {
+    display: grid; grid-template-columns: 80px 1fr;
+    gap: 22px; align-items: baseline; margin-bottom: 36px;
+  }
+  @media (max-width: 640px) { .section-head { grid-template-columns: 56px 1fr; gap: 14px; } }
+  .section-num {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px; letter-spacing: 0.16em; color: var(--ink-muted);
+    padding-top: 0.6em; border-top: 2px solid var(--ink);
+  }
+  .section-title {
+    font-family: 'Archivo Black', sans-serif;
+    font-size: clamp(26px, 3.6vw, 44px); line-height: 0.98;
+    letter-spacing: -0.015em; text-transform: uppercase; margin: 0; color: var(--ink);
+  }
+  .section-dek {
+    font-family: 'Fraunces', serif; font-style: italic;
+    font-size: clamp(15px, 1.4vw, 17px); line-height: 1.5;
+    color: var(--ink-soft); max-width: var(--measure); margin: 14px 0 0 102px;
+  }
+  @media (max-width: 640px) { .section-dek { margin-left: 70px; } }
+
+  /* Fields */
+  .fields { display: grid; gap: 24px; margin-top: 8px; }
+  .fields--row2 { grid-template-columns: 1fr 1fr; gap: 24px; }
+  @media (max-width: 640px) { .fields--row2 { grid-template-columns: 1fr; } }
+
+  .field { display: flex; flex-direction: column; }
+  .field__label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--ink); margin-bottom: 8px;
+    display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap;
+  }
+  .field__req { color: var(--burgundy); letter-spacing: 0; }
+  .field__hint {
+    font-family: 'Fraunces', serif; font-style: italic;
+    font-size: 13px; letter-spacing: 0; text-transform: none;
+    color: var(--ink-muted); font-weight: 400;
+  }
+  .field__note {
+    font-family: 'Fraunces', serif; font-style: italic;
+    font-size: 13px; line-height: 1.5; color: var(--ink-muted);
+    margin-top: 8px; max-width: 560px;
+  }
+
+  /* Inputs */
+  .input, .select, .textarea {
+    width: 100%;
+    font-family: 'Fraunces', Georgia, serif;
+    font-size: 16px; line-height: 1.4;
+    color: var(--ink); background: #FFFFFF;
+    border: var(--field-border) solid var(--ink);
+    border-radius: 2px;
+    padding: 12px 14px;
+    transition: border-color 0.15s ease, outline 0.15s ease;
+    -webkit-appearance: none; appearance: none;
+  }
+  .input::placeholder, .textarea::placeholder {
+    color: var(--ink-muted); font-style: italic; opacity: 0.7;
+  }
+  .input:focus, .select:focus, .textarea:focus {
+    outline: 2px solid var(--burgundy);
+    outline-offset: 2px;
+    border-color: var(--ink);
+  }
+  .input:invalid:not(:placeholder-shown), .select:invalid, .textarea:invalid:not(:placeholder-shown) {
+    border-color: var(--burgundy);
+  }
+  .textarea { resize: vertical; min-height: 144px; font-family: 'Fraunces', serif; }
+
+  /* Custom select arrow (mono) */
+  .select {
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'><path fill='none' stroke='%230b0a08' stroke-width='2' d='M2 4 L6 8 L10 4'/></svg>");
+    background-repeat: no-repeat;
+    background-position: right 14px center;
+    background-size: 12px 12px;
+    padding-right: 40px;
+    cursor: pointer;
+  }
+
+  /* Checkbox grid */
+  .check-grid {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 0;
+    border-top: 1px solid var(--ink);
+    border-left: 1px solid var(--ink);
+  }
+  .check-item {
+    display: flex; align-items: center; gap: 12px;
+    padding: 14px 16px;
+    border-right: 1px solid var(--ink);
+    border-bottom: 1px solid var(--ink);
+    cursor: pointer;
+    font-family: 'Fraunces', serif; font-size: 15px;
+    color: var(--ink-soft);
+    background: #FFFFFF;
+    transition: background 0.12s ease, color 0.12s ease;
+  }
+  .check-item:hover { background: var(--paper-deep); color: var(--ink); }
+  .check-item input[type="checkbox"] {
+    appearance: none; -webkit-appearance: none;
+    width: 16px; height: 16px; flex-shrink: 0;
+    border: 2px solid var(--ink);
+    background: #FFFFFF;
+    border-radius: 2px;
+    cursor: pointer;
+    position: relative;
+    transition: background 0.1s ease, border-color 0.1s ease;
+  }
+  .check-item input[type="checkbox"]:checked {
+    background: var(--burgundy); border-color: var(--burgundy);
+  }
+  .check-item input[type="checkbox"]:checked::after {
+    content: ""; position: absolute;
+    left: 3px; top: 0px; width: 5px; height: 9px;
+    border: solid #FFFFFF; border-width: 0 2px 2px 0;
+    transform: rotate(45deg);
+  }
+  .check-item:has(input:checked) { color: var(--ink); font-weight: 500; }
+
+  /* FAQ rows */
+  .faq-group { margin-top: 4px; }
+  .faq-labels {
+    display: grid; grid-template-columns: 1fr 1.2fr;
+    gap: 14px; padding: 10px 0 10px;
+    border-top: 2px solid var(--ink); border-bottom: 1px solid var(--ink);
+    margin-bottom: 14px;
+  }
+  .faq-labels span {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--ink);
+  }
+  @media (max-width: 640px) { .faq-labels { display: none; } }
+
   .faq-row {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 8px;
-    margin-bottom: 8px;
+    display: grid; grid-template-columns: 1fr 1.2fr;
+    gap: 14px; margin-bottom: 12px;
+    align-items: start;
   }
-  .faq-row input { font-size: 0.85rem; }
-  @media (max-width: 500px) { .faq-row { grid-template-columns: 1fr; } }
-  .faq-label-row {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 8px;
-    margin-bottom: 4px;
+  @media (max-width: 640px) { .faq-row { grid-template-columns: 1fr; gap: 8px; } }
+  .faq-row__q-wrap, .faq-row__a-wrap { display: flex; flex-direction: column; }
+  .faq-row__mobile-label {
+    display: none;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--ink-muted); margin-bottom: 4px;
   }
-  .faq-label-row span {
-    font-size: 0.75rem;
-    font-weight: 600;
-    color: #9ca3af;
-    text-transform: uppercase;
-    letter-spacing: 0.3px;
-  }
-  @media (max-width: 500px) { .faq-label-row { display: none; } }
+  @media (max-width: 640px) { .faq-row__mobile-label { display: block; } }
 
-  .checkbox-group {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-    margin-top: 4px;
+  .faq-add {
+    display: inline-flex; align-items: center; gap: 8px;
+    font-family: 'JetBrains Mono', monospace; font-weight: 600;
+    font-size: 12px; letter-spacing: 0.1em; text-transform: uppercase;
+    color: var(--ink); background: transparent; border: 0;
+    border-bottom: 2px solid var(--ink);
+    padding: 8px 0; margin-top: 12px; cursor: pointer;
+    transition: color 0.15s ease, border-color 0.15s ease;
   }
-  .checkbox-item {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    background: #f8fafc;
-    border: 1.5px solid #e2e8f0;
-    border-radius: 6px;
-    padding: 6px 12px;
+  .faq-add:hover { color: var(--burgundy); border-bottom-color: var(--burgundy); }
+  .faq-add__arrow { color: var(--burgundy); }
+
+  /* What happens next */
+  .timeline {
+    list-style: none; padding: 0; margin: 0;
+    border-top: 1px solid var(--ink);
+    counter-reset: timeline;
+  }
+  .timeline li {
+    counter-increment: timeline;
+    display: grid; grid-template-columns: 140px 1fr;
+    gap: 20px; padding: 18px 0; border-bottom: 1px solid var(--ink);
+    align-items: baseline;
+  }
+  @media (max-width: 640px) { .timeline li { grid-template-columns: 1fr; gap: 4px; padding: 14px 0; } }
+  .timeline__day {
+    font-family: 'JetBrains Mono', monospace; font-weight: 600;
+    font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase;
+    color: var(--burgundy);
+  }
+  .timeline__what {
+    font-family: 'Fraunces', serif; font-size: 16px; line-height: 1.5;
+    color: var(--ink-soft);
+  }
+  .timeline__what b {
+    font-family: 'Archivo Black', sans-serif; font-weight: 400;
+    text-transform: uppercase; letter-spacing: 0.02em; font-size: 14px;
+    display: block; margin-bottom: 2px; color: var(--ink);
+  }
+
+  /* Before you submit — editorial paragraph */
+  .disclosure {
+    max-width: 720px;
+    padding: clamp(28px, 4vw, 48px) 0 0;
+  }
+  .disclosure p {
+    font-family: 'Fraunces', serif;
+    font-size: 17px; line-height: 1.6;
+    color: var(--ink-soft); margin: 0 0 14px;
+  }
+  .disclosure p:last-child { margin-bottom: 0; }
+  .disclosure p strong { color: var(--ink); font-weight: 600; }
+  .disclosure__sign {
+    margin-top: 24px; padding-top: 20px; border-top: 2px solid var(--ink);
+    font-family: 'Fraunces', serif; font-style: italic;
+    font-size: 16px; color: var(--ink);
+  }
+
+  /* GDPR consent row */
+  .consent {
+    display: grid; grid-template-columns: 20px 1fr; gap: 14px;
+    padding: 20px 0; border-top: 2px solid var(--ink); border-bottom: 2px solid var(--ink);
+    margin: 32px 0 28px;
+    font-family: 'Fraunces', serif; font-size: 15px; line-height: 1.55;
+    color: var(--ink-soft); cursor: pointer; align-items: start;
+  }
+  .consent input[type="checkbox"] {
+    appearance: none; -webkit-appearance: none;
+    width: 16px; height: 16px; flex-shrink: 0;
+    border: 2px solid var(--ink);
+    background: #FFFFFF;
+    border-radius: 2px;
     cursor: pointer;
-    transition: border-color 0.15s;
-    font-size: 0.85rem;
+    position: relative; margin-top: 3px;
+    transition: background 0.1s ease, border-color 0.1s ease;
   }
-  .checkbox-item:has(input:checked) {
-    border-color: #22d3ee;
-    background: #f0fdfe;
-    color: #0f172a;
-    font-weight: 600;
+  .consent input[type="checkbox"]:checked {
+    background: var(--burgundy); border-color: var(--burgundy);
   }
-  .checkbox-item input { cursor: pointer; accent-color: #22d3ee; }
+  .consent input[type="checkbox"]:checked::after {
+    content: ""; position: absolute;
+    left: 3px; top: 0px; width: 5px; height: 9px;
+    border: solid #FFFFFF; border-width: 0 2px 2px 0;
+    transform: rotate(45deg);
+  }
+  .consent a { color: var(--ink); border-bottom: 1px solid var(--ink); }
+  .consent a:hover { color: var(--burgundy); border-bottom-color: var(--burgundy); }
 
-  .submit-card {
-    background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
-    border-radius: 16px;
-    padding: 36px;
-    text-align: center;
-    color: #fff;
+  /* Submit row */
+  .submit-row {
+    display: grid; grid-template-columns: auto 1fr;
+    gap: 28px; align-items: center;
+    padding: 32px 0 28px; border-top: 2px solid var(--ink);
   }
-  .submit-card h3 {
-    font-size: 1.3rem;
-    font-weight: 700;
-    margin-bottom: 8px;
-  }
-  .submit-card p {
-    color: #94a3b8;
-    font-size: 0.9rem;
-    margin-bottom: 24px;
-  }
+  @media (max-width: 720px) { .submit-row { grid-template-columns: 1fr; gap: 18px; } }
   .submit-btn {
-    background: #22d3ee;
-    color: #0f172a;
-    border: none;
-    padding: 16px 48px;
-    border-radius: 10px;
-    font-size: 1rem;
-    font-weight: 800;
+    font-family: 'Archivo Black', sans-serif;
+    font-size: 14px; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--paper); background: var(--ink);
+    padding: 20px 30px; text-decoration: none;
+    border: 2px solid var(--ink); border-radius: 2px;
     cursor: pointer;
-    transition: transform 0.15s, box-shadow 0.15s;
-    letter-spacing: -0.2px;
+    transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+    white-space: nowrap;
   }
-  .submit-btn:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 8px 24px rgba(34,211,238,0.35);
+  .submit-btn:hover { background: var(--burgundy); border-color: var(--burgundy); color: var(--paper); }
+  .submit-btn:disabled { opacity: 0.55; cursor: not-allowed; }
+  .submit-note {
+    font-family: 'Fraunces', serif; font-style: italic;
+    font-size: 16px; color: var(--ink-soft); line-height: 1.5;
   }
-  .submit-btn:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
-    transform: none;
-  }
-  .privacy {
-    color: #64748b;
-    font-size: 0.75rem;
-    margin-top: 12px;
+  .submit-note b {
+    font-family: 'JetBrains Mono', monospace; font-style: normal; font-weight: 600;
+    color: var(--ink); letter-spacing: 0.02em;
   }
 
+  /* Error banner */
+  .error-banner {
+    display: none;
+    padding: 16px 18px;
+    border: 2px solid var(--burgundy);
+    background: #FFFFFF;
+    font-family: 'Fraunces', serif;
+    font-size: 15px; line-height: 1.5;
+    color: var(--burgundy);
+    margin-bottom: 28px;
+    border-radius: 2px;
+  }
+  .error-banner b {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase;
+    color: var(--burgundy); display: block; margin-bottom: 4px;
+  }
+
+  /* Success screen */
   .success-screen {
     display: none;
-    text-align: center;
-    padding: 48px 24px;
+    padding: clamp(48px, 8vw, 96px) 0;
+    border-top: var(--rule-thick) solid var(--ink);
+    border-bottom: var(--rule-thick) solid var(--ink);
   }
-  .success-screen .tick {
-    width: 72px;
-    height: 72px;
-    background: #d1fae5;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    margin: 0 auto 24px;
-    font-size: 2rem;
+  .success-screen__kicker {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px; letter-spacing: 0.22em; text-transform: uppercase;
+    color: var(--burgundy); margin-bottom: 20px;
+    display: flex; align-items: center; gap: 14px;
+  }
+  .success-screen__kicker::before {
+    content: ""; display: inline-block; width: 48px; height: 2px; background: var(--burgundy);
   }
   .success-screen h2 {
-    font-size: 1.6rem;
-    font-weight: 800;
-    margin-bottom: 12px;
-    color: #0f172a;
+    font-family: 'Archivo Black', sans-serif;
+    font-size: clamp(32px, 5vw, 60px); line-height: 0.96;
+    letter-spacing: -0.015em; text-transform: uppercase;
+    margin: 0 0 22px; color: var(--ink); max-width: 16ch;
   }
   .success-screen p {
-    color: #64748b;
-    max-width: 400px;
-    margin: 0 auto 8px;
+    font-family: 'Fraunces', serif; font-size: 17px; line-height: 1.6;
+    color: var(--ink-soft); margin: 0 0 14px; max-width: 620px;
+  }
+  .success-screen p b { color: var(--ink); font-weight: 600; }
+  .success-screen .mono-val {
+    font-family: 'JetBrains Mono', monospace; font-weight: 600;
+    letter-spacing: 0.02em; color: var(--ink);
   }
 
-  .error-msg {
-    background: #fef2f2;
-    border: 1px solid #fca5a5;
-    color: #dc2626;
-    border-radius: 8px;
-    padding: 12px 16px;
-    font-size: 0.85rem;
-    margin-bottom: 16px;
-    display: none;
+  /* Final CTA strip */
+  .final-strip {
+    padding: clamp(48px, 8vw, 96px) 0;
+    border-bottom: var(--rule-thick) solid var(--ink);
+    background: var(--ink); color: var(--paper);
+  }
+  .final-strip__kicker {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px; letter-spacing: 0.22em; text-transform: uppercase;
+    color: #c89b9e; margin-bottom: 22px;
+    display: flex; align-items: center; gap: 14px;
+  }
+  .final-strip__kicker::before {
+    content: ""; display: inline-block; width: 48px; height: 2px; background: #c89b9e;
+  }
+  .final-strip__headline {
+    font-family: 'Archivo Black', sans-serif;
+    font-size: clamp(26px, 4vw, 48px); line-height: 1;
+    text-transform: uppercase; letter-spacing: -0.01em;
+    margin: 0 0 22px; color: var(--paper); max-width: 20ch;
+  }
+  .final-strip__number {
+    font-family: 'JetBrains Mono', monospace; font-weight: 700;
+    font-size: clamp(30px, 8vw, 88px);
+    line-height: 1.0; letter-spacing: -0.03em;
+    color: var(--paper); text-decoration: none;
+    display: inline-block; margin: 0 0 18px;
+    word-break: break-all;
+    font-variant-numeric: tabular-nums;
+  }
+  .final-strip__number:hover { color: #c89b9e; }
+  .final-strip__sub {
+    font-family: 'Fraunces', serif; font-style: italic;
+    font-size: clamp(15px, 1.6vw, 18px); color: rgba(245,241,232,0.85);
+    max-width: 540px; margin: 0; line-height: 1.5;
+  }
+
+  /* Footer */
+  footer {
+    background: var(--paper); padding: 56px 0 36px;
+    border-top: var(--rule-thick) solid var(--ink);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-muted);
+  }
+  .footer-grid {
+    display: grid; grid-template-columns: 2fr 1fr 1fr 1fr;
+    gap: 40px; margin-bottom: 40px;
+  }
+  @media (max-width: 860px) { .footer-grid { grid-template-columns: 1fr 1fr; gap: 28px; } }
+  @media (max-width: 520px) { .footer-grid { grid-template-columns: 1fr; } }
+  .footer-col h4 {
+    font-family: 'Archivo Black', sans-serif;
+    font-size: 12px; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--ink); margin: 0 0 14px;
+  }
+  .footer-col p, .footer-col li {
+    font-family: 'Fraunces', serif; font-size: 13px; line-height: 1.55;
+    letter-spacing: 0; text-transform: none; color: var(--ink-soft); margin: 0 0 6px;
+  }
+  .footer-col ul { list-style: none; padding: 0; margin: 0; }
+  .footer-col a { color: inherit; text-decoration: none; border-bottom: 1px solid rgba(11,10,8,0.25); }
+  .footer-col a:hover { border-bottom-color: var(--ink); }
+  .footer-col .mono-val {
+    font-family: 'JetBrains Mono', monospace; font-size: 12px; letter-spacing: 0.04em;
+    color: var(--ink); text-transform: none;
+  }
+  .footer-legal {
+    border-top: 1px solid var(--ink); padding-top: 22px;
+    display: flex; justify-content: space-between; align-items: baseline;
+    gap: 24px; flex-wrap: wrap;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px; letter-spacing: 0.12em; color: var(--ink-muted);
+  }
+  .footer-legal__wordmark {
+    font-family: 'Archivo Black', sans-serif;
+    color: var(--ink); font-size: 11px; letter-spacing: 0.16em;
+  }
+
+  /* Focus-visible polish */
+  button:focus-visible, a:focus-visible {
+    outline: 2px solid var(--burgundy);
+    outline-offset: 3px;
   }
 </style>
+
+<!-- mobile-fit-safety -->
+<style>
+html { overflow-x: hidden; }
+body { max-width: 100vw; overflow-x: hidden; }
+*, *::before, *::after { box-sizing: border-box; }
+* { min-width: 0; }
+img, video, iframe, svg, canvas { max-width: 100%; height: auto; display: block; }
+@media (max-width: 640px) {
+  [class*="grid"], [class*="cols"], [class*="row"], [class*="columns"] { grid-template-columns: 1fr !important; flex-direction: column !important; }
+  [class*="container"] { max-width: 100% !important; padding-inline: 16px !important; }
+  section, header, main, footer, article, aside, nav { max-width: 100% !important; padding-inline: clamp(12px, 4vw, 24px) !important; }
+  h1 { font-size: clamp(30px, 8vw, 44px) !important; line-height: 1.05 !important; }
+  h2 { font-size: clamp(24px, 6vw, 34px) !important; }
+}
+</style>
 </head>
+
 <body>
 
-<div class="header">
-  <a href="/" class="logo">CallMe.ie</a>
-  <span class="tagline">Your AI receptionist is almost ready</span>
-</div>
+<div class="page">
 
-<div class="hero">
-  <h1>Get your <span>AI receptionist</span> live</h1>
-  <p>Fill this in once. We'll build your assistant and have it answering calls within 3–5 business days.</p>
-  <div class="steps">
-    <div class="step"><div class="num">1</div> Fill this form (5 min)</div>
-    <div class="step"><div class="num">2</div> We build your assistant</div>
-    <div class="step"><div class="num">3</div> Test call together</div>
-    <div class="step"><div class="num">4</div> Go live</div>
-  </div>
-</div>
-
-<div class="container">
-
-  <div id="error-msg" class="error-msg"></div>
-
-  <form id="onboard-form">
-
-    <!-- Section 1: Your Details -->
-    <div class="card">
-      <div class="section-label">
-        <div class="badge">Step 1</div>
-        <h2>Your contact details</h2>
-      </div>
-
-      <div class="row">
-        <div class="field">
-          <label>Your name <span class="req">*</span></label>
-          <input type="text" name="contact_name" placeholder="e.g. Ciara Murphy" required>
-        </div>
-        <div class="field">
-          <label>Your phone number <span class="req">*</span></label>
-          <input type="tel" name="contact_phone" placeholder="e.g. 085 123 4567" required>
-        </div>
-      </div>
-      <div class="field">
-        <label>Your email <span class="req">*</span></label>
-        <input type="email" name="contact_email" placeholder="e.g. ciara@brightsmile.ie" required>
-      </div>
+  <!-- TOPBAR -->
+  <header class="topbar" role="banner">
+    <a class="wordmark" href="/" aria-label="CallMeIE — home">
+      <span class="wordmark__dot" aria-hidden="true"></span>CallMeIE
+    </a>
+    <div class="topbar__right">
+      <span class="topbar__meta">Limerick — Est. 2026</span>
+      <a class="topbar__cta" href="tel:+16617643212">Ring +1 (661) 764-3212</a>
     </div>
+  </header>
 
-    <!-- Section 2: Business Info -->
-    <div class="card">
-      <div class="section-label">
-        <div class="badge">Step 2</div>
-        <h2>Your business</h2>
-      </div>
-
-      <div class="row">
-        <div class="field">
-          <label>Business name <span class="req">*</span></label>
-          <input type="text" name="business_name" placeholder="e.g. Bright Smile Dental" required>
-        </div>
-        <div class="field">
-          <label>Business type <span class="req">*</span></label>
-          <select name="business_type" required>
-            <option value="" disabled selected>Select your industry</option>
-            <option value="dental">Dental Practice</option>
-            <option value="medical">Medical / GP Practice</option>
-            <option value="salon">Hair Salon / Barbershop</option>
-            <option value="beauty">Beauty / Spa / Nails</option>
-            <option value="physio">Physiotherapy / Sports Clinic</option>
-            <option value="motor_factors">Motor Factors</option>
-            <option value="garage">Garage / Auto Repair</option>
-            <option value="solicitor">Solicitor / Law Firm</option>
-            <option value="accountant">Accountant</option>
-            <option value="restaurant">Restaurant / Cafe</option>
-            <option value="home_services">Plumber / Electrician / Tradesperson</option>
-            <option value="estate_agent">Estate Agent</option>
-            <option value="other">Other</option>
-          </select>
-        </div>
-      </div>
-
-      <div class="field">
-        <label>Business address <span class="req">*</span></label>
-        <input type="text" name="address" placeholder="e.g. 14 O'Connell Street, Limerick" required>
-      </div>
-
-      <div class="field">
-        <label>Opening hours <span class="req">*</span>
-          <span class="hint">Include all days you're open</span>
-        </label>
-        <textarea name="hours" placeholder="e.g. Monday to Friday 9am–5:30pm, Saturday 9am–1pm, closed Sunday" required></textarea>
-      </div>
-
-      <div class="field">
-        <label>What your AI assistant should be named
-          <span class="hint">Leave blank and we'll suggest one</span>
-        </label>
-        <input type="text" name="ai_name" placeholder="e.g. Sarah, Aoife, Ciara — or leave blank">
-      </div>
-    </div>
-
-    <!-- Section 3: Services & Payment -->
-    <div class="card">
-      <div class="section-label">
-        <div class="badge">Step 3</div>
-        <h2>Services &amp; payment</h2>
-      </div>
-
-      <div class="field">
-        <label>Services you offer <span class="req">*</span>
-          <span class="hint">List everything the AI might be asked about</span>
-        </label>
-        <textarea name="services" placeholder="e.g. Dental check-ups, fillings, root canals, crowns, teeth whitening, Invisalign, emergency dental care" required></textarea>
-      </div>
-
-      <div class="field">
-        <label>Payment &amp; insurance accepted</label>
-        <div class="checkbox-group" id="insurance-checks">
-          <label class="checkbox-item"><input type="checkbox" name="insurance" value="PRSI"> PRSI</label>
-          <label class="checkbox-item"><input type="checkbox" name="insurance" value="Medical Card"> Medical Card</label>
-          <label class="checkbox-item"><input type="checkbox" name="insurance" value="VHI"> VHI</label>
-          <label class="checkbox-item"><input type="checkbox" name="insurance" value="Laya"> Laya Healthcare</label>
-          <label class="checkbox-item"><input type="checkbox" name="insurance" value="Irish Life"> Irish Life Health</label>
-          <label class="checkbox-item"><input type="checkbox" name="insurance" value="Aviva"> Aviva</label>
-          <label class="checkbox-item"><input type="checkbox" name="insurance" value="Cash/Card"> Cash &amp; Card</label>
-          <label class="checkbox-item"><input type="checkbox" name="insurance" value="Payment Plans"> Payment Plans</label>
-        </div>
-      </div>
-
-      <div class="field">
-        <label>Parking &amp; access info
-          <span class="hint">What do callers typically ask?</span>
-        </label>
-        <input type="text" name="parking" placeholder="e.g. Free parking on site / Street parking on O'Connell St / Wheelchair accessible">
-      </div>
-    </div>
-
-    <!-- Section 4: Call Handling -->
-    <div class="card">
-      <div class="section-label">
-        <div class="badge">Step 4</div>
-        <h2>Call handling &amp; emergencies</h2>
-      </div>
-
-      <div class="row">
-        <div class="field">
-          <label>Emergency / on-call number <span class="req">*</span>
-            <span class="hint">Urgent calls transfer here</span>
-          </label>
-          <input type="tel" name="emergency_number" placeholder="e.g. 085 123 4567" required>
-          <div class="example">This is where the AI will transfer calls it can't handle — severe pain, emergencies, or callers who ask for a real person.</div>
-        </div>
-        <div class="field">
-          <label>Existing business phone number
-            <span class="hint">Your current number (we'll set up call forwarding)</span>
-          </label>
-          <input type="tel" name="existing_number" placeholder="e.g. 061 234 567">
-        </div>
-      </div>
-
-      <div class="field">
-        <label>Google Calendar email
-          <span class="hint">So the AI can check availability and book appointments</span>
-        </label>
-        <input type="email" name="calendar_email" placeholder="e.g. brightsmile@gmail.com">
-        <div class="example">We'll share our calendar service with this address. You'll get an email to accept — just click OK.</div>
-      </div>
-    </div>
-
-    <!-- Section 5: Top FAQs -->
-    <div class="card">
-      <div class="section-label">
-        <div class="badge">Step 5</div>
-        <h2>Common questions your callers ask</h2>
-      </div>
-      <p style="font-size:0.85rem; color:#64748b; margin-bottom:16px;">
-        Add the questions your customers ask most often. The AI will answer these from memory — no need to look anything up.
-      </p>
-
-      <div class="faq-label-row">
-        <span>Question</span>
-        <span>Answer</span>
-      </div>
-      <div class="faq-group" id="faq-group">
-        <div class="faq-row">
-          <input type="text" name="faq_q[]" placeholder="e.g. Do you take medical cards?">
-          <input type="text" name="faq_a[]" placeholder="e.g. Yes, we do — bring your card">
-        </div>
-        <div class="faq-row">
-          <input type="text" name="faq_q[]" placeholder="e.g. How long is a check-up?">
-          <input type="text" name="faq_a[]" placeholder="e.g. About 30 minutes">
-        </div>
-        <div class="faq-row">
-          <input type="text" name="faq_q[]" placeholder="e.g. Do you have parking?">
-          <input type="text" name="faq_a[]" placeholder="">
-        </div>
-        <div class="faq-row">
-          <input type="text" name="faq_q[]" placeholder="">
-          <input type="text" name="faq_a[]" placeholder="">
-        </div>
-        <div class="faq-row">
-          <input type="text" name="faq_q[]" placeholder="">
-          <input type="text" name="faq_a[]" placeholder="">
-        </div>
-      </div>
-      <button type="button" onclick="addFaqRow()" style="font-size:0.8rem; color:#22d3ee; background:none; border:none; cursor:pointer; margin-top:8px; padding:0;">+ Add another question</button>
-    </div>
-
-    <!-- Section 6: Plan -->
-    <div class="card">
-      <div class="section-label">
-        <div class="badge">Step 6</div>
-        <h2>Choose your plan</h2>
-      </div>
-
-      <div class="plan-grid" id="plan-grid">
-        <div class="plan-option" onclick="selectPlan(this, 'Starter')">
-          <input type="radio" name="plan" value="Starter">
-          <div class="plan-name">Starter</div>
-          <div class="plan-price">€149<span style="font-size:0.7rem;font-weight:400;color:#64748b">/mo</span></div>
-          <div class="plan-desc">AI answers calls, books appointments, handles FAQs. Business hours only.</div>
-        </div>
-        <div class="plan-option" onclick="selectPlan(this, 'Professional')">
-          <input type="radio" name="plan" value="Professional">
-          <div class="plan-name">Professional</div>
-          <div class="plan-price">€249<span style="font-size:0.7rem;font-weight:400;color:#64748b">/mo</span></div>
-          <div class="plan-desc">+ After-hours, missed call text-back, SMS confirmations, weekly report.</div>
-        </div>
-        <div class="plan-option" onclick="selectPlan(this, 'Growth')">
-          <input type="radio" name="plan" value="Growth">
-          <div class="plan-name">Growth</div>
-          <div class="plan-price">€347<span style="font-size:0.7rem;font-weight:400;color:#64748b">/mo</span></div>
-          <div class="plan-desc">+ Knowledge base, live inventory sync, monthly optimisation call.</div>
-        </div>
-      </div>
-      <p style="font-size:0.8rem; color:#94a3b8; margin-top:12px;">All plans include €297 setup fee. No long-term contract — cancel anytime with 30 days notice.</p>
-    </div>
-
-    <!-- Section 7: Anything else -->
-    <div class="card">
-      <div class="section-label">
-        <div class="badge">Step 7</div>
-        <h2>Anything else we should know?</h2>
-      </div>
-      <div class="field">
-        <label>Notes
-          <span class="hint">Specific scripts, tone preferences, things callers often ask that aren't covered above</span>
-        </label>
-        <textarea name="notes" placeholder="e.g. We never quote prices over the phone. Always say 'the dentist will advise on costs at your appointment.' Our tone is warm but professional — not too casual."></textarea>
-      </div>
-    </div>
-
-    <!-- Submit -->
-    <div class="submit-card">
-      <h3>Ready to go live?</h3>
-      <p>We'll review your details and ring you within 1 business day to confirm everything before we build.</p>
-      <label style="display:flex;align-items:flex-start;gap:10px;font-size:0.9rem;color:#64748b;margin-bottom:20px;cursor:pointer;">
-        <input type="checkbox" id="gdpr-consent" name="gdpr_consent" value="yes" required style="margin-top:3px;flex-shrink:0;">
-        <span>I agree that CallMe.ie may store and use my business details to set up and manage my AI receptionist service, in line with GDPR. I can request deletion of my data at any time by emailing <a href="mailto:callmeie@proton.me" style="color:#0e7490;">callmeie@proton.me</a>.</span>
-      </label>
-      <button type="submit" class="submit-btn" id="submit-btn">Submit &amp; Get Started</button>
-      <div class="privacy">Your details are kept confidential and never shared with third parties.</div>
-    </div>
-
-  </form>
-
-  <div class="success-screen" id="success-screen">
-    <div class="card" style="max-width:480px; margin:0 auto;">
-      <div class="tick">&#10003;</div>
-      <h2>You're all set!</h2>
-      <p>We've received your details and will ring you within 1 business day to get things moving.</p>
-      <p style="margin-top:8px;">Your AI receptionist will be live within <strong>3–5 business days</strong>.</p>
-      <p style="margin-top:16px; font-size:0.85rem; color:#94a3b8;">
-        Questions in the meantime? Email us at <strong>hello@callmeie.ie</strong> and we'll come back to you.
-      </p>
-    </div>
+  <div class="masthead-strip" aria-hidden="true">
+    <span>Onboarding Form</span>
+    <span>Vol. I — MMXXVI</span>
+    <span>Built for Irish SMBs</span>
+    <span>Limerick · Ireland</span>
   </div>
 
-</div>
+  <!-- HERO -->
+  <section class="hero" id="top" aria-labelledby="hero-title">
+    <div class="hero__kicker">Step 01 / 04 · Onboarding form</div>
+    <h1 id="hero-title" class="hero__headline">Onboard your business</h1>
+    <p class="hero__sub">
+      Five minutes. <em>We'll have you live within 3–5 business days.</em>
+      No credit card now — you pay after setup.
+    </p>
+  </section>
 
-<footer style="text-align:center; padding:24px; color:#64748b; font-size:0.85rem; border-top:1px solid #e2e8f0;">
-  &copy; 2026 CallMe.ie &mdash; <a href="/" style="color:#0891b2;text-decoration:none;">Home</a> &middot; <a href="/privacy" style="color:#0891b2;text-decoration:none;">Privacy</a> &middot; <a href="/terms" style="color:#0891b2;text-decoration:none;">Terms</a>
+  <!-- PROGRESS STRIP -->
+  <nav class="progress" aria-label="Onboarding progress">
+    <div class="progress__step progress__step--active">
+      <b>Step 01</b>
+      Tell us about the business
+    </div>
+    <div class="progress__step">
+      <b>Step 02</b>
+      We build your AI (3 days)
+    </div>
+    <div class="progress__step">
+      <b>Step 03</b>
+      Share your calendar
+    </div>
+    <div class="progress__step">
+      <b>Step 04</b>
+      Forward your number
+    </div>
+  </nav>
+
+  <!-- FORM -->
+  <main class="form-wrap" id="form-main">
+
+    <div id="error-msg" class="error-banner" role="alert" aria-live="assertive">
+      <b>Something went wrong</b>
+      <span id="error-text"></span>
+    </div>
+
+    <form id="onboard-form" action="/submit-onboarding" method="POST" novalidate>
+
+      <!-- SECTION 01 · CONTACT -->
+      <section class="field-section" aria-labelledby="sec-contact-title">
+        <div class="section-head">
+          <div class="section-num">§ 01 — Contact</div>
+          <h2 id="sec-contact-title" class="section-title">The person we ring</h2>
+        </div>
+        <p class="section-dek">
+          We ring you personally within 24 hours — no account manager middleman. Direct phone matters.
+        </p>
+
+        <div class="fields fields--row2">
+          <div class="field">
+            <label class="field__label" for="contact_name">
+              Your name
+              <span class="field__req">· required</span>
+            </label>
+            <input class="input" id="contact_name" name="contact_name" type="text" autocomplete="name" required placeholder="e.g. Ciara Murphy">
+          </div>
+          <div class="field">
+            <label class="field__label" for="contact_phone">
+              Your phone number
+              <span class="field__req">· required</span>
+            </label>
+            <input class="input" id="contact_phone" name="contact_phone" type="tel" autocomplete="tel" required placeholder="e.g. 085 123 4567">
+          </div>
+        </div>
+
+        <div class="fields">
+          <div class="field">
+            <label class="field__label" for="contact_email">
+              Your email
+              <span class="field__req">· required</span>
+            </label>
+            <input class="input" id="contact_email" name="contact_email" type="email" autocomplete="email" required placeholder="e.g. ciara@brightsmile.ie">
+          </div>
+        </div>
+      </section>
+
+      <!-- SECTION 02 · BUSINESS -->
+      <section class="field-section" aria-labelledby="sec-business-title">
+        <div class="section-head">
+          <div class="section-num">§ 02 — Business</div>
+          <h2 id="sec-business-title" class="section-title">The business</h2>
+        </div>
+        <p class="section-dek">
+          What callers will hear when the AI answers. Opening hours and address matter — they're in every answer.
+        </p>
+
+        <div class="fields fields--row2">
+          <div class="field">
+            <label class="field__label" for="business_name">
+              Business name
+              <span class="field__req">· required</span>
+            </label>
+            <input class="input" id="business_name" name="business_name" type="text" autocomplete="organization" required placeholder="e.g. Bright Smile Dental">
+          </div>
+          <div class="field">
+            <label class="field__label" for="business_type">
+              Business type
+              <span class="field__req">· required</span>
+            </label>
+            <select class="select" id="business_type" name="business_type" required>
+              <option value="" disabled selected>Select your industry</option>
+              <option value="dental">Dental Practice</option>
+              <option value="medical">Medical / GP Practice</option>
+              <option value="salon">Hair Salon / Barbershop</option>
+              <option value="beauty">Beauty / Spa / Nails</option>
+              <option value="physio">Physiotherapy / Sports Clinic</option>
+              <option value="motor_factors">Motor Factors</option>
+              <option value="garage">Garage / Auto Repair</option>
+              <option value="solicitor">Solicitor / Law Firm</option>
+              <option value="accountant">Accountant</option>
+              <option value="restaurant">Restaurant / Cafe</option>
+              <option value="home_services">Plumber / Electrician / Tradesperson</option>
+              <option value="estate_agent">Estate Agent</option>
+              <option value="other">Other</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="fields">
+          <div class="field">
+            <label class="field__label" for="address">
+              Business address
+              <span class="field__req">· required</span>
+            </label>
+            <input class="input" id="address" name="address" type="text" autocomplete="street-address" required placeholder="e.g. 14 O'Connell Street, Limerick">
+          </div>
+
+          <div class="field">
+            <label class="field__label" for="hours">
+              Opening hours
+              <span class="field__req">· required</span>
+              <span class="field__hint">— include every day you're open</span>
+            </label>
+            <textarea class="textarea" id="hours" name="hours" rows="6" required placeholder="e.g. Monday to Friday 9am–5:30pm, Saturday 9am–1pm, closed Sunday"></textarea>
+          </div>
+
+          <div class="field">
+            <label class="field__label" for="ai_name">
+              What the AI should be called
+              <span class="field__hint">— optional, we'll suggest one if blank</span>
+            </label>
+            <input class="input" id="ai_name" name="ai_name" type="text" placeholder="e.g. Sarah, Aoife, Ciara — or leave blank">
+          </div>
+        </div>
+      </section>
+
+      <!-- SECTION 03 · SERVICES & SPECIFICS -->
+      <section class="field-section" aria-labelledby="sec-services-title">
+        <div class="section-head">
+          <div class="section-num">§ 03 — Services</div>
+          <h2 id="sec-services-title" class="section-title">Services &amp; specifics</h2>
+        </div>
+        <p class="section-dek">
+          Everything the AI might be asked about. Insurance and payment options too — callers ask every day.
+        </p>
+
+        <div class="fields">
+          <div class="field">
+            <label class="field__label" for="services">
+              Services you offer
+              <span class="field__req">· required</span>
+              <span class="field__hint">— list everything the AI might be asked about</span>
+            </label>
+            <textarea class="textarea" id="services" name="services" rows="6" required placeholder="e.g. Dental check-ups, fillings, root canals, crowns, teeth whitening, Invisalign, emergency dental care"></textarea>
+          </div>
+
+          <div class="field">
+            <label class="field__label" id="insurance-label">
+              Payment &amp; insurance accepted
+              <span class="field__hint">— tick all that apply</span>
+            </label>
+            <div class="check-grid" role="group" aria-labelledby="insurance-label">
+              <label class="check-item"><input type="checkbox" name="insurance[]" value="PRSI"> PRSI</label>
+              <label class="check-item"><input type="checkbox" name="insurance[]" value="Medical Card"> Medical Card</label>
+              <label class="check-item"><input type="checkbox" name="insurance[]" value="VHI"> VHI</label>
+              <label class="check-item"><input type="checkbox" name="insurance[]" value="Laya"> Laya Healthcare</label>
+              <label class="check-item"><input type="checkbox" name="insurance[]" value="Irish Life"> Irish Life Health</label>
+              <label class="check-item"><input type="checkbox" name="insurance[]" value="Aviva"> Aviva</label>
+              <label class="check-item"><input type="checkbox" name="insurance[]" value="Cash/Card"> Cash &amp; Card</label>
+              <label class="check-item"><input type="checkbox" name="insurance[]" value="Payment Plans"> Payment Plans</label>
+            </div>
+          </div>
+
+          <div class="field">
+            <label class="field__label" for="parking">
+              Parking &amp; access info
+              <span class="field__hint">— what callers typically ask about</span>
+            </label>
+            <input class="input" id="parking" name="parking" type="text" placeholder="e.g. Free parking on site / Street parking on O'Connell St / Wheelchair accessible">
+          </div>
+        </div>
+      </section>
+
+      <!-- SECTION 04 · PHONE & CALENDAR -->
+      <section class="field-section" aria-labelledby="sec-phone-title">
+        <div class="section-head">
+          <div class="section-num">§ 04 — Phone &amp; Calendar</div>
+          <h2 id="sec-phone-title" class="section-title">Phone &amp; calendar</h2>
+        </div>
+        <p class="section-dek">
+          Where emergencies transfer, and how the AI checks your diary. All covered in setup — we handle the wiring.
+        </p>
+
+        <div class="fields fields--row2">
+          <div class="field">
+            <label class="field__label" for="emergency_number">
+              Emergency / on-call number
+              <span class="field__req">· required</span>
+            </label>
+            <input class="input" id="emergency_number" name="emergency_number" type="tel" required placeholder="e.g. 085 123 4567">
+            <p class="field__note">
+              Where the AI transfers calls it can't handle — severe pain, emergencies, or callers who insist on a real person.
+            </p>
+          </div>
+          <div class="field">
+            <label class="field__label" for="existing_number">
+              Existing business number
+              <span class="field__hint">— optional, we set up forwarding</span>
+            </label>
+            <input class="input" id="existing_number" name="existing_number" type="tel" placeholder="e.g. 061 234 567">
+          </div>
+        </div>
+
+        <div class="fields">
+          <div class="field">
+            <label class="field__label" for="calendar_email">
+              Google Calendar email
+              <span class="field__hint">— optional, so the AI can check availability</span>
+            </label>
+            <input class="input" id="calendar_email" name="calendar_email" type="email" placeholder="e.g. brightsmile@gmail.com">
+            <p class="field__note">
+              We share a Google Calendar invite with <span style="font-family:'JetBrains Mono',monospace;color:var(--ink);">callmeie-receptionist@callme-ie.iam.gserviceaccount.com</span>
+              — you accept the share and the AI can read/write your diary.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <!-- SECTION 05 · FAQs -->
+      <section class="field-section" aria-labelledby="sec-faq-title">
+        <div class="section-head">
+          <div class="section-num">§ 05 — FAQs</div>
+          <h2 id="sec-faq-title" class="section-title">FAQs you want the AI to handle</h2>
+        </div>
+        <p class="section-dek">
+          The questions your callers ask most. The AI answers these from memory — no lookup, no delay. Three rows minimum.
+        </p>
+
+        <div class="faq-group">
+          <div class="faq-labels" aria-hidden="true">
+            <span>Question</span>
+            <span>Answer</span>
+          </div>
+
+          <div class="faq-group" id="faq-group">
+            <div class="faq-row">
+              <div class="faq-row__q-wrap">
+                <span class="faq-row__mobile-label">Question</span>
+                <input class="input" type="text" name="faq_q[]" placeholder="e.g. Do you take medical cards?">
+              </div>
+              <div class="faq-row__a-wrap">
+                <span class="faq-row__mobile-label">Answer</span>
+                <input class="input" type="text" name="faq_a[]" placeholder="e.g. Yes, we do — bring your card">
+              </div>
+            </div>
+            <div class="faq-row">
+              <div class="faq-row__q-wrap">
+                <span class="faq-row__mobile-label">Question</span>
+                <input class="input" type="text" name="faq_q[]" placeholder="e.g. How long is a check-up?">
+              </div>
+              <div class="faq-row__a-wrap">
+                <span class="faq-row__mobile-label">Answer</span>
+                <input class="input" type="text" name="faq_a[]" placeholder="e.g. About 30 minutes">
+              </div>
+            </div>
+            <div class="faq-row">
+              <div class="faq-row__q-wrap">
+                <span class="faq-row__mobile-label">Question</span>
+                <input class="input" type="text" name="faq_q[]" placeholder="e.g. Do you have parking?">
+              </div>
+              <div class="faq-row__a-wrap">
+                <span class="faq-row__mobile-label">Answer</span>
+                <input class="input" type="text" name="faq_a[]" placeholder="e.g. Free on-site parking">
+              </div>
+            </div>
+          </div>
+
+          <button type="button" class="faq-add" id="faq-add-btn">
+            Add another question
+            <span class="faq-add__arrow">→</span>
+          </button>
+        </div>
+      </section>
+
+      <!-- SECTION 06 · WHAT HAPPENS NEXT -->
+      <section class="field-section" aria-labelledby="sec-next-title">
+        <div class="section-head">
+          <div class="section-num">§ 06 — Next</div>
+          <h2 id="sec-next-title" class="section-title">What happens next</h2>
+        </div>
+        <p class="section-dek">
+          Five working days from form submit to live answering. The owner phones you on day one.
+        </p>
+
+        <ol class="timeline">
+          <li>
+            <span class="timeline__day">Day 01 · 24h</span>
+            <span class="timeline__what">
+              <b>Intake review</b>
+              We read every answer. The owner rings you to confirm tone, hours, and anything missing.
+            </span>
+          </li>
+          <li>
+            <span class="timeline__day">Day 02 · Voice</span>
+            <span class="timeline__what">
+              <b>Voice tuning</b>
+              We build your receptionist — accent, pacing, phrasing, and your specific services.
+            </span>
+          </li>
+          <li>
+            <span class="timeline__day">Day 03 · Test</span>
+            <span class="timeline__what">
+              <b>Live call test with you</b>
+              You ring a test line. We iterate on anything that sounds off. Sign-off when it's right.
+            </span>
+          </li>
+          <li>
+            <span class="timeline__day">Day 04–05</span>
+            <span class="timeline__what">
+              <b>Number forwarding setup</b>
+              We wire Twilio, set your forwarding rules, and go live. Your existing number keeps working.
+            </span>
+          </li>
+        </ol>
+      </section>
+
+      <!-- SECTION 07 · BEFORE YOU SUBMIT -->
+      <section class="field-section" aria-labelledby="sec-disclosure-title">
+        <div class="section-head">
+          <div class="section-num">§ 07 — Disclosure</div>
+          <h2 id="sec-disclosure-title" class="section-title">Before you submit</h2>
+        </div>
+
+        <div class="disclosure">
+          <p>
+            <strong>GDPR.</strong> Your details and your callers' details are kept only for operating your service.
+            Call audio is retained 30 days and then deleted; transcripts are retained 90 days for your reports.
+            You or any caller can request erasure at any time by emailing <a href="mailto:callmeie@proton.me">callmeie@proton.me</a>,
+            and we purge within 72 hours. We never sell or share data with third parties.
+          </p>
+          <p>
+            <strong>Irish call-recording law.</strong> Under Irish law, callers must be informed that a call may be
+            recorded or processed. Every CallMeIE instance opens with a short disclosure — we handle this
+            for you, so your greeting stays compliant without feeling legal.
+          </p>
+          <p>
+            <strong>Our commitment.</strong> We personally phone every onboarding within 24 hours of form submission.
+            No account manager middleman. The person who rings you is the person who builds your receptionist.
+          </p>
+          <p class="disclosure__sign">
+            — Built and operated from Limerick. One small team. Short feedback loops.
+          </p>
+        </div>
+
+        <!-- GDPR consent -->
+        <label class="consent" for="gdpr-consent">
+          <input type="checkbox" id="gdpr-consent" name="gdpr_consent" value="yes" required>
+          <span>
+            I agree that CallMeIE may store and use my business details to set up and run my AI receptionist,
+            in line with GDPR. I can request deletion at any time by emailing
+            <a href="mailto:callmeie@proton.me">callmeie@proton.me</a>.
+          </span>
+        </label>
+
+        <!-- SUBMIT -->
+        <div class="submit-row">
+          <button type="submit" class="submit-btn" id="submit-btn">Submit onboarding</button>
+          <p class="submit-note">
+            We respond within 24 hours. If you'd rather ring first — <b>+1 (661) 764-3212</b>.
+          </p>
+        </div>
+      </section>
+
+    </form>
+
+    <!-- SUCCESS SCREEN -->
+    <div class="success-screen" id="success-screen" role="status" aria-live="polite">
+      <div class="success-screen__kicker">Received · Thank you</div>
+      <h2>You're on the list</h2>
+      <p>
+        We've got your details. The owner will ring you within <b>24 hours</b> to walk through the setup,
+        confirm tone and hours, and agree a go-live day.
+      </p>
+      <p>
+        Your AI receptionist will be live within <b>3–5 business days</b> from that call.
+      </p>
+      <p>
+        Anything in the meantime — email <span class="mono-val">callmeie@proton.me</span>
+        or ring <span class="mono-val">+1 (661) 764-3212</span>.
+      </p>
+    </div>
+
+  </main>
+
+</div><!-- /.page -->
+
+<!-- FINAL STRIP -->
+<section class="final-strip" aria-labelledby="final-strip-title">
+  <div class="page">
+    <div class="final-strip__kicker">Or hear it first</div>
+    <h2 id="final-strip-title" class="final-strip__headline">Ring the demo before you commit</h2>
+    <a class="final-strip__number" href="tel:+16617643212">+1 (661) 764-3212</a>
+    <p class="final-strip__sub">
+      Ninety seconds. A real CallMeIE instance in receptionist mode. Try to confuse it.
+    </p>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer role="contentinfo">
+  <div class="page">
+    <div class="footer-grid">
+      <div class="footer-col">
+        <h4>CallMeIE</h4>
+        <p>AI phone receptionist for Irish SMBs. Built &amp; operated from Limerick, Ireland.</p>
+        <p>Stack: Vapi · Twilio · Google Calendar · FastAPI on Render.</p>
+        <p>Email: <a href="mailto:callmeie@proton.me" class="mono-val">callmeie@proton.me</a></p>
+        <p>Demo line: <span class="mono-val">+1 (661) 764-3212</span></p>
+      </div>
+      <div class="footer-col">
+        <h4>Product</h4>
+        <ul>
+          <li><a href="/#how-demo-works">How the demo works</a></li>
+          <li><a href="/#handles">What it handles</a></li>
+          <li><a href="/#verticals">Verticals</a></li>
+          <li><a href="/#pricing">Pricing</a></li>
+          <li><a href="/onboard.html">Onboarding form</a></li>
+        </ul>
+      </div>
+      <div class="footer-col">
+        <h4>Support</h4>
+        <ul>
+          <li><a href="/#faq">FAQ</a></li>
+          <li><a href="/#cost">Cost comparison</a></li>
+          <li><a href="/#irish">Irish-specifics</a></li>
+          <li>Owner SMS: <span class="mono-val">+353 85 786 3564</span></li>
+        </ul>
+      </div>
+      <div class="footer-col">
+        <h4>Legal</h4>
+        <ul>
+          <li><a href="/privacy.html">Privacy notice</a></li>
+          <li><a href="/terms.html">Terms of service</a></li>
+          <li><a href="mailto:callmeie@proton.me?subject=GDPR%20data%20request">GDPR request</a></li>
+          <li><a href="mailto:callmeie@proton.me?subject=DPA%20request">DPA on request</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="footer-legal">
+      <span class="footer-legal__wordmark">CALLMEIE &mdash; LIMERICK</span>
+      <span>© 2026 CallMeIE. All rights reserved.</span>
+      <span>Built in Limerick &nbsp;·&nbsp; Ring +1 (661) 764-3212</span>
+    </div>
+  </div>
 </footer>
 
 <script>
+  // Webhook endpoint — preserved from prior onboard.html
   const API = 'https://callmeie-webhook-production.up.railway.app';
 
-  // Plan selection
-  function selectPlan(el, value) {
-    document.querySelectorAll('.plan-option').forEach(p => p.classList.remove('selected'));
-    el.classList.add('selected');
-    el.querySelector('input[type="radio"]').checked = true;
-  }
-
-  // FAQ rows
-  function addFaqRow() {
+  // FAQ rows — add another
+  document.getElementById('faq-add-btn').addEventListener('click', function () {
     const group = document.getElementById('faq-group');
     const row = document.createElement('div');
     row.className = 'faq-row';
-    row.innerHTML = '<input type="text" name="faq_q[]" placeholder="Question"><input type="text" name="faq_a[]" placeholder="Answer">';
+    row.innerHTML = ''
+      + '<div class="faq-row__q-wrap">'
+      +   '<span class="faq-row__mobile-label">Question</span>'
+      +   '<input class="input" type="text" name="faq_q[]" placeholder="Question">'
+      + '</div>'
+      + '<div class="faq-row__a-wrap">'
+      +   '<span class="faq-row__mobile-label">Answer</span>'
+      +   '<input class="input" type="text" name="faq_a[]" placeholder="Answer">'
+      + '</div>';
     group.appendChild(row);
-  }
+    // focus the new question field
+    const firstInput = row.querySelector('input');
+    if (firstInput) firstInput.focus();
+  });
 
-  // Collect insurance checkboxes
+  // Collect insurance checkboxes into a comma-separated string (for webhook payload compatibility)
   function getInsurance() {
-    return Array.from(document.querySelectorAll('input[name="insurance"]:checked'))
-      .map(el => el.value).join(', ');
+    return Array.from(document.querySelectorAll('input[name="insurance[]"]:checked'))
+      .map(function (el) { return el.value; })
+      .join(', ');
   }
 
-  // Collect FAQs
+  // Collect FAQ pairs
   function getFaqs() {
-    const qs = Array.from(document.querySelectorAll('input[name="faq_q[]"]')).map(el => el.value.trim());
-    const as = Array.from(document.querySelectorAll('input[name="faq_a[]"]')).map(el => el.value.trim());
+    const qs = Array.from(document.querySelectorAll('input[name="faq_q[]"]')).map(function (el) { return el.value.trim(); });
+    const as = Array.from(document.querySelectorAll('input[name="faq_a[]"]')).map(function (el) { return el.value.trim(); });
     const pairs = [];
     for (let i = 0; i < qs.length; i++) {
-      if (qs[i]) pairs.push(`Q: ${qs[i]}\nA: ${as[i] || '(to be confirmed)'}`);
+      if (qs[i]) pairs.push('Q: ' + qs[i] + '\nA: ' + (as[i] || '(to be confirmed)'));
     }
     return pairs.join('\n\n');
   }
 
-  // Form submit
-  document.getElementById('onboard-form').addEventListener('submit', async (e) => {
+  function showError(msg) {
+    const errEl = document.getElementById('error-msg');
+    const errTxt = document.getElementById('error-text');
+    errTxt.textContent = msg;
+    errEl.style.display = 'block';
+    errEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+
+  // Form submission — posts JSON to /submit-onboarding (preserved behaviour)
+  document.getElementById('onboard-form').addEventListener('submit', async function (e) {
     e.preventDefault();
+
+    const form = e.target;
     const btn = document.getElementById('submit-btn');
     const errEl = document.getElementById('error-msg');
     errEl.style.display = 'none';
-    btn.disabled = true;
-    btn.textContent = 'Sending...';
 
-    const fd = new FormData(e.target);
-    const data = Object.fromEntries(fd.entries());
-    data.insurance = getInsurance();
-    data.faqs = getFaqs();
-
-    // Validate plan selected
-    if (!data.plan) {
-      errEl.textContent = 'Please choose a plan before submitting.';
-      errEl.style.display = 'block';
-      btn.disabled = false;
-      btn.textContent = 'Submit & Get Started';
-      window.scrollTo({ top: document.querySelector('.plan-grid').getBoundingClientRect().top + window.scrollY - 80, behavior: 'smooth' });
+    // Native validation first
+    if (!form.checkValidity()) {
+      form.reportValidity();
       return;
     }
 
+    btn.disabled = true;
+    const originalLabel = btn.textContent;
+    btn.textContent = 'Sending…';
+
+    const fd = new FormData(form);
+    const data = Object.fromEntries(fd.entries());
+    // Overwrite / supplement
+    data.insurance = getInsurance();
+    data.faqs = getFaqs();
+
     try {
-      const res = await fetch(`${API}/submit-onboarding`, {
+      const res = await fetch(API + '/submit-onboarding', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data),
       });
-      const json = await res.json();
+
+      let json = {};
+      try { json = await res.json(); } catch (_) { /* non-JSON response */ }
 
       if (res.ok) {
-        document.getElementById('onboard-form').style.display = 'none';
-        document.getElementById('success-screen').style.display = 'block';
+        form.style.display = 'none';
+        const success = document.getElementById('success-screen');
+        success.style.display = 'block';
         window.scrollTo({ top: 0, behavior: 'smooth' });
       } else {
-        throw new Error(json.error || 'Something went wrong');
+        throw new Error(json.error || ('Server returned ' + res.status));
       }
     } catch (err) {
-      errEl.textContent = `There was a problem submitting: ${err.message}. Please email hello@callmeie.ie and we'll sort it.`;
-      errEl.style.display = 'block';
+      showError(
+        'There was a problem submitting: ' + err.message +
+        '. Email callmeie@proton.me or ring +1 (661) 764-3212 and we\'ll sort it.'
+      );
       btn.disabled = false;
-      btn.textContent = 'Submit & Get Started';
+      btn.textContent = originalLabel;
     }
   });
 </script>
+
 </body>
 </html>
