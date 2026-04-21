@@ -4,7 +4,7 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Onboard Your Business — CallMeIE</title>
-<meta name="description" content="Signup form for CallMeIE — AI phone receptionist. 90 seconds. Pick plan, pay, welcome call sets everything else up." />
+<meta name="description" content="Onboarding form for CallMeIE — AI phone receptionist. Five minutes. Live within 3-5 business days. No credit card now — you pay after setup." />
 
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <link rel="alternate icon" href="/favicon.ico">
@@ -659,7 +659,7 @@ img, video, iframe, svg, canvas { max-width: 100%; height: auto; display: block;
           <h2 id="sec-contact-title" class="section-title">The person we ring</h2>
         </div>
         <p class="section-dek">
-          We ring you personally within 24 hours to do the full setup together. No account manager middleman.
+          We ring you personally within 24 hours — no account manager middleman. Direct phone matters.
         </p>
 
         <div class="fields fields--row2">
@@ -694,11 +694,10 @@ img, video, iframe, svg, canvas { max-width: 100%; height: auto; display: block;
       <section class="field-section" aria-labelledby="sec-business-title">
         <div class="section-head">
           <div class="section-num">§ 02 — Business</div>
-          <h2 id="sec-business-title" class="section-title">Your business</h2>
+          <h2 id="sec-business-title" class="section-title">The business</h2>
         </div>
         <p class="section-dek">
-          Just the essentials. Everything else we capture on the 20-minute
-          welcome call after you sign up — don't do our homework for us.
+          What callers will hear when the AI answers. Opening hours and address matter — they're in every answer.
         </p>
 
         <div class="fields fields--row2">
@@ -735,34 +734,184 @@ img, video, iframe, svg, canvas { max-width: 100%; height: auto; display: block;
 
         <div class="fields">
           <div class="field">
-            <label class="field__label" for="plan">
-              Plan
+            <label class="field__label" for="address">
+              Business address
               <span class="field__req">· required</span>
-              <span class="field__hint">— you can upgrade or downgrade any time</span>
             </label>
-            <select class="select" id="plan" name="plan" required>
-              <option value="" disabled selected>Pick the package that best suits your business</option>
-              <option value="starter">Starter · €149/mo + €297 setup — AI receptionist, calendar booking, business hours only</option>
-              <option value="professional">Professional · €249/mo + €297 setup — + after-hours, missed-call text-back, SMS confirmations, weekly report</option>
-              <option value="growth">Growth · €347/mo + €497 setup — + knowledge base, live inventory sync, monthly optimisation call</option>
-              <option value="enterprise">Enterprise · custom — multi-location, integrations, white-glove setup</option>
-            </select>
+            <input class="input" id="address" name="address" type="text" autocomplete="street-address" required placeholder="e.g. 14 O'Connell Street, Limerick">
           </div>
 
           <div class="field">
-            <label class="field__label" for="notes">
-              Anything specific we should know upfront?
-              <span class="field__hint">— optional</span>
+            <label class="field__label" for="hours">
+              Opening hours
+              <span class="field__req">· required</span>
+              <span class="field__hint">— include every day you're open</span>
             </label>
-            <textarea class="textarea" id="notes" name="notes" rows="4" placeholder="e.g. we take medical cards, we close for two weeks in August, we've tried a different AI before..."></textarea>
+            <textarea class="textarea" id="hours" name="hours" rows="6" required placeholder="e.g. Monday to Friday 9am–5:30pm, Saturday 9am–1pm, closed Sunday"></textarea>
+          </div>
+
+          <div class="field">
+            <label class="field__label" for="ai_name">
+              What the AI should be called
+              <span class="field__hint">— optional, we'll suggest one if blank</span>
+            </label>
+            <input class="input" id="ai_name" name="ai_name" type="text" placeholder="e.g. Sarah, Aoife, Ciara — or leave blank">
           </div>
         </div>
       </section>
 
-      <!-- SECTION 03 · WHAT HAPPENS NEXT -->
+      <!-- SECTION 03 · SERVICES & SPECIFICS -->
+      <section class="field-section" aria-labelledby="sec-services-title">
+        <div class="section-head">
+          <div class="section-num">§ 03 — Services</div>
+          <h2 id="sec-services-title" class="section-title">Services &amp; specifics</h2>
+        </div>
+        <p class="section-dek">
+          Everything the AI might be asked about. Insurance and payment options too — callers ask every day.
+        </p>
+
+        <div class="fields">
+          <div class="field">
+            <label class="field__label" for="services">
+              Services you offer
+              <span class="field__req">· required</span>
+              <span class="field__hint">— list everything the AI might be asked about</span>
+            </label>
+            <textarea class="textarea" id="services" name="services" rows="6" required placeholder="e.g. Dental check-ups, fillings, root canals, crowns, teeth whitening, Invisalign, emergency dental care"></textarea>
+          </div>
+
+          <div class="field">
+            <label class="field__label" id="insurance-label">
+              Payment &amp; insurance accepted
+              <span class="field__hint">— tick all that apply</span>
+            </label>
+            <div class="check-grid" role="group" aria-labelledby="insurance-label">
+              <label class="check-item"><input type="checkbox" name="insurance[]" value="PRSI"> PRSI</label>
+              <label class="check-item"><input type="checkbox" name="insurance[]" value="Medical Card"> Medical Card</label>
+              <label class="check-item"><input type="checkbox" name="insurance[]" value="VHI"> VHI</label>
+              <label class="check-item"><input type="checkbox" name="insurance[]" value="Laya"> Laya Healthcare</label>
+              <label class="check-item"><input type="checkbox" name="insurance[]" value="Irish Life"> Irish Life Health</label>
+              <label class="check-item"><input type="checkbox" name="insurance[]" value="Aviva"> Aviva</label>
+              <label class="check-item"><input type="checkbox" name="insurance[]" value="Cash/Card"> Cash &amp; Card</label>
+              <label class="check-item"><input type="checkbox" name="insurance[]" value="Payment Plans"> Payment Plans</label>
+            </div>
+          </div>
+
+          <div class="field">
+            <label class="field__label" for="parking">
+              Parking &amp; access info
+              <span class="field__hint">— what callers typically ask about</span>
+            </label>
+            <input class="input" id="parking" name="parking" type="text" placeholder="e.g. Free parking on site / Street parking on O'Connell St / Wheelchair accessible">
+          </div>
+        </div>
+      </section>
+
+      <!-- SECTION 04 · PHONE & CALENDAR -->
+      <section class="field-section" aria-labelledby="sec-phone-title">
+        <div class="section-head">
+          <div class="section-num">§ 04 — Phone &amp; Calendar</div>
+          <h2 id="sec-phone-title" class="section-title">Phone &amp; calendar</h2>
+        </div>
+        <p class="section-dek">
+          Where emergencies transfer, and how the AI checks your diary. All covered in setup — we handle the wiring.
+        </p>
+
+        <div class="fields fields--row2">
+          <div class="field">
+            <label class="field__label" for="emergency_number">
+              Emergency / on-call number
+              <span class="field__req">· required</span>
+            </label>
+            <input class="input" id="emergency_number" name="emergency_number" type="tel" required placeholder="e.g. 085 123 4567">
+            <p class="field__note">
+              Where the AI transfers calls it can't handle — severe pain, emergencies, or callers who insist on a real person.
+            </p>
+          </div>
+          <div class="field">
+            <label class="field__label" for="existing_number">
+              Existing business number
+              <span class="field__hint">— optional, we set up forwarding</span>
+            </label>
+            <input class="input" id="existing_number" name="existing_number" type="tel" placeholder="e.g. 061 234 567">
+          </div>
+        </div>
+
+        <div class="fields">
+          <div class="field">
+            <label class="field__label" for="calendar_email">
+              Google Calendar email
+              <span class="field__hint">— optional, so the AI can check availability</span>
+            </label>
+            <input class="input" id="calendar_email" name="calendar_email" type="email" placeholder="e.g. brightsmile@gmail.com">
+            <p class="field__note">
+              We share a Google Calendar invite with <span style="font-family:'JetBrains Mono',monospace;color:var(--ink);">callmeie-receptionist@callme-ie.iam.gserviceaccount.com</span>
+              — you accept the share and the AI can read/write your diary.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <!-- SECTION 05 · FAQs -->
+      <section class="field-section" aria-labelledby="sec-faq-title">
+        <div class="section-head">
+          <div class="section-num">§ 05 — FAQs</div>
+          <h2 id="sec-faq-title" class="section-title">FAQs you want the AI to handle</h2>
+        </div>
+        <p class="section-dek">
+          The questions your callers ask most. The AI answers these from memory — no lookup, no delay. Three rows minimum.
+        </p>
+
+        <div class="faq-group">
+          <div class="faq-labels" aria-hidden="true">
+            <span>Question</span>
+            <span>Answer</span>
+          </div>
+
+          <div class="faq-group" id="faq-group">
+            <div class="faq-row">
+              <div class="faq-row__q-wrap">
+                <span class="faq-row__mobile-label">Question</span>
+                <input class="input" type="text" name="faq_q[]" placeholder="e.g. Do you take medical cards?">
+              </div>
+              <div class="faq-row__a-wrap">
+                <span class="faq-row__mobile-label">Answer</span>
+                <input class="input" type="text" name="faq_a[]" placeholder="e.g. Yes, we do — bring your card">
+              </div>
+            </div>
+            <div class="faq-row">
+              <div class="faq-row__q-wrap">
+                <span class="faq-row__mobile-label">Question</span>
+                <input class="input" type="text" name="faq_q[]" placeholder="e.g. How long is a check-up?">
+              </div>
+              <div class="faq-row__a-wrap">
+                <span class="faq-row__mobile-label">Answer</span>
+                <input class="input" type="text" name="faq_a[]" placeholder="e.g. About 30 minutes">
+              </div>
+            </div>
+            <div class="faq-row">
+              <div class="faq-row__q-wrap">
+                <span class="faq-row__mobile-label">Question</span>
+                <input class="input" type="text" name="faq_q[]" placeholder="e.g. Do you have parking?">
+              </div>
+              <div class="faq-row__a-wrap">
+                <span class="faq-row__mobile-label">Answer</span>
+                <input class="input" type="text" name="faq_a[]" placeholder="e.g. Free on-site parking">
+              </div>
+            </div>
+          </div>
+
+          <button type="button" class="faq-add" id="faq-add-btn">
+            Add another question
+            <span class="faq-add__arrow">→</span>
+          </button>
+        </div>
+      </section>
+
+      <!-- SECTION 06 · WHAT HAPPENS NEXT -->
       <section class="field-section" aria-labelledby="sec-next-title">
         <div class="section-head">
-          <div class="section-num">§ 03 — Next</div>
+          <div class="section-num">§ 06 — Next</div>
           <h2 id="sec-next-title" class="section-title">What happens next</h2>
         </div>
         <p class="section-dek">
@@ -801,10 +950,10 @@ img, video, iframe, svg, canvas { max-width: 100%; height: auto; display: block;
         </ol>
       </section>
 
-      <!-- SECTION 04 · BEFORE YOU SUBMIT -->
+      <!-- SECTION 07 · BEFORE YOU SUBMIT -->
       <section class="field-section" aria-labelledby="sec-disclosure-title">
         <div class="section-head">
-          <div class="section-num">§ 04 — Disclosure</div>
+          <div class="section-num">§ 07 — Disclosure</div>
           <h2 id="sec-disclosure-title" class="section-title">Before you submit</h2>
         </div>
 
@@ -841,7 +990,7 @@ img, video, iframe, svg, canvas { max-width: 100%; height: auto; display: block;
 
         <!-- SUBMIT -->
         <div class="submit-row">
-          <button type="submit" class="submit-btn" id="submit-btn">Continue to payment</button>
+          <button type="submit" class="submit-btn" id="submit-btn">Submit onboarding</button>
           <p class="submit-note">
             We respond within 24 hours. If you'd rather ring first — <b>+1 (661) 764-3212</b>.
           </p>
