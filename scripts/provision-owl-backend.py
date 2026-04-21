@@ -33,7 +33,7 @@ from typing import Any
 import httpx
 
 RENDER = "https://api.render.com/v1"
-SERVICE_NAME = "ai-receptionist-server"  # from render.yaml
+SERVICE_NAMES = ("CallMeIE", "ai-receptionist-server", "callmeie-receptionist")  # try each
 CALLMEIE_URL = "https://callmeie.onrender.com"
 
 
@@ -42,21 +42,42 @@ def auth_headers(key: str) -> dict[str, str]:
 
 
 def find_service(key: str) -> dict[str, Any]:
+    """List all services, pick the one whose URL matches the expected callmeie host
+    or whose name is in SERVICE_NAMES. Robust against naming drift between
+    render.yaml and the actual deployed service."""
     with httpx.Client(timeout=30) as c:
-        r = c.get(f"{RENDER}/services", headers=auth_headers(key), params={"name": SERVICE_NAME, "limit": 20})
+        r = c.get(f"{RENDER}/services", headers=auth_headers(key), params={"limit": 100})
         r.raise_for_status()
         hits = r.json()
-        for h in hits:
-            svc = h.get("service") or h
-            if svc.get("name") == SERVICE_NAME:
-                return svc
-        # fallback: fuzzy match
-        for h in hits:
-            svc = h.get("service") or h
-            if "receptionist" in (svc.get("name") or "").lower():
-                print(f"[warn] using fuzzy service match: {svc['name']}", file=sys.stderr)
-                return svc
-    raise SystemExit(f"Render service '{SERVICE_NAME}' not found. Available: {json.dumps(hits, indent=2)}")
+
+    services = [(h.get("service") or h) for h in hits]
+    if not services:
+        raise SystemExit("Render account has no services visible to this API key.")
+
+    # 1. URL match (most reliable)
+    want_host = CALLMEIE_URL.rstrip("/")
+    for svc in services:
+        details = svc.get("serviceDetails") or {}
+        url = (details.get("url") or "").rstrip("/")
+        if url and url == want_host:
+            return svc
+
+    # 2. Name match against known candidates
+    for svc in services:
+        if (svc.get("name") or "") in SERVICE_NAMES:
+            return svc
+
+    # 3. Fuzzy — anything containing 'call' or 'receptionist'
+    for svc in services:
+        n = (svc.get("name") or "").lower()
+        if "callmeie" in n or "receptionist" in n:
+            print(f"[warn] using fuzzy service match: {svc['name']}", file=sys.stderr)
+            return svc
+
+    raise SystemExit(
+        "No matching Render service. Available:\n"
+        + "\n".join(f"  - {s.get('name')} ({s.get('id')})" for s in services)
+    )
 
 
 def get_env_vars(key: str, service_id: str) -> list[dict[str, str]]:
