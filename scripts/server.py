@@ -155,17 +155,95 @@ DEMO_ASSISTANT_IDS = {
     "3e2f8e1c-e4eb-46ab-b8be-d7f97cbe6080": "general business discovery",
 }
 
-# --- SQLite DB ---
+# --- DB adapter (Postgres via DATABASE_URL, else SQLite) ---
+DATABASE_URL = os.environ.get("DATABASE_URL", "").strip()
+_USE_PG = DATABASE_URL.startswith("postgres://") or DATABASE_URL.startswith("postgresql://")
+if _USE_PG:
+    # psycopg v3 requires the postgresql:// prefix, not postgres://
+    if DATABASE_URL.startswith("postgres://"):
+        DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
+    try:
+        import psycopg  # type: ignore
+        from psycopg.rows import dict_row  # type: ignore
+    except ImportError:
+        # If psycopg isn't installed, degrade to SQLite so server still boots
+        _USE_PG = False
+        print("[warn] DATABASE_URL set but psycopg not installed — falling back to SQLite", file=sys.stderr)
+
 DB_PATH = os.environ.get("DB_PATH", "/var/data/callmeie.db")
 
 
-def get_db() -> sqlite3.Connection:
-    db_dir = os.path.dirname(DB_PATH)
-    if db_dir:
-        os.makedirs(db_dir, exist_ok=True)
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    return conn
+def _ddl_fix(sql: str) -> str:
+    """Translate SQLite-flavour DDL to Postgres where they differ."""
+    if not _USE_PG:
+        return sql
+    out = sql.replace("INTEGER PRIMARY KEY AUTOINCREMENT", "BIGSERIAL PRIMARY KEY")
+    out = out.replace("datetime('now')", "NOW()")
+    # datetime typed columns -> timestamp
+    import re as _re
+    out = _re.sub(r"\bDATETIME\b", "TIMESTAMP", out)
+    return out
+
+
+class _DbProxy:
+    """SQLite-like wrapper over either sqlite3 or psycopg3.
+
+    Same call-surface as sqlite3.Connection:
+      - conn.execute(sql, params) -> cursor-like object with fetchone/fetchall
+      - conn.commit(), conn.close()
+      - context manager support; rows dict-accessible in both backends
+    Translates '?' placeholders to '%s' on Postgres path. DDL normalisation
+    handled via `_ddl_fix()` wrapping every CREATE TABLE / INDEX call.
+    """
+    def __init__(self) -> None:
+        if _USE_PG:
+            self._c = psycopg.connect(DATABASE_URL, row_factory=dict_row, connect_timeout=10)
+        else:
+            db_dir = os.path.dirname(DB_PATH)
+            if db_dir:
+                os.makedirs(db_dir, exist_ok=True)
+            self._c = sqlite3.connect(DB_PATH)
+            self._c.row_factory = sqlite3.Row
+
+    def execute(self, sql: str, params=()):
+        if _USE_PG:
+            cur = self._c.cursor()
+            cur.execute(sql.replace("?", "%s"), params)
+            return cur
+        return self._c.execute(sql, params)
+
+    def commit(self) -> None:
+        self._c.commit()
+
+    def close(self) -> None:
+        self._c.close()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        if exc_type is None:
+            try:
+                self._c.commit()
+            except Exception:
+                pass
+        else:
+            try:
+                self._c.rollback()
+            except Exception:
+                pass
+        self._c.close()
+
+
+# Exception type to catch on constraint violations, unified across backends
+if _USE_PG:
+    _DbIntegrityError = (sqlite3.IntegrityError, psycopg.errors.IntegrityError)  # type: ignore
+else:
+    _DbIntegrityError = (sqlite3.IntegrityError,)
+
+
+def get_db() -> "_DbProxy":
+    return _DbProxy()
 
 
 def _load_google_credentials():
@@ -397,7 +475,7 @@ def create_callback_event(
 
 def init_db():
     with get_db() as conn:
-        conn.execute("""
+        conn.execute(_ddl_fix("""
             CREATE TABLE IF NOT EXISTS submissions (
                 id            INTEGER PRIMARY KEY AUTOINCREMENT,
                 created_at    TEXT    DEFAULT (datetime('now')),
@@ -418,8 +496,8 @@ def init_db():
                 vapi_assistant_id TEXT,
                 provisioned_at    TEXT
             )
-        """)
-        conn.execute("""
+        """))
+        conn.execute(_ddl_fix("""
             CREATE TABLE IF NOT EXISTS call_events (
                 id         INTEGER PRIMARY KEY AUTOINCREMENT,
                 created_at TEXT DEFAULT (datetime('now')),
@@ -429,8 +507,8 @@ def init_db():
                 summary    TEXT,
                 detail     TEXT
             )
-        """)
-        conn.execute("""
+        """))
+        conn.execute(_ddl_fix("""
             CREATE TABLE IF NOT EXISTS leads (
                 id            INTEGER PRIMARY KEY AUTOINCREMENT,
                 created_at    TEXT DEFAULT (datetime('now')),
@@ -448,8 +526,8 @@ def init_db():
                 next_action      TEXT,
                 callback_requested INTEGER DEFAULT 0
             )
-        """)
-        conn.execute("""
+        """))
+        conn.execute(_ddl_fix("""
             CREATE TABLE IF NOT EXISTS call_diagnostics (
                 id          INTEGER PRIMARY KEY AUTOINCREMENT,
                 created_at  TEXT DEFAULT (datetime('now')),
@@ -459,8 +537,8 @@ def init_db():
                 diagnosis   TEXT,
                 action      TEXT
             )
-        """)
-        conn.execute("""
+        """))
+        conn.execute(_ddl_fix("""
             CREATE TABLE IF NOT EXISTS clients (
                 id            INTEGER PRIMARY KEY AUTOINCREMENT,
                 assistant_id  TEXT UNIQUE,
@@ -472,7 +550,7 @@ def init_db():
                 created_at    TEXT DEFAULT (datetime('now')),
                 submission_id INTEGER
             )
-        """)
+        """))
         existing_columns = {
             row["name"] for row in conn.execute("PRAGMA table_info(leads)").fetchall()
         }
@@ -1903,7 +1981,7 @@ OWL_OWNER_TOKEN = os.environ.get("OWL_OWNER_TOKEN", "").strip()
 def _owl_init_tables() -> None:
     """Create the Owl Studio tables if they don't exist yet."""
     with get_db() as conn:
-        conn.execute("""
+        conn.execute(_ddl_fix("""
             CREATE TABLE IF NOT EXISTS owl_sites (
                 site_id            TEXT PRIMARY KEY,
                 display_name       TEXT NOT NULL,
@@ -1917,8 +1995,8 @@ def _owl_init_tables() -> None:
                 status             TEXT NOT NULL DEFAULT 'active',
                 created_at         TEXT NOT NULL DEFAULT (datetime('now'))
             )
-        """)
-        conn.execute("""
+        """))
+        conn.execute(_ddl_fix("""
             CREATE TABLE IF NOT EXISTS owl_leads (
                 id               INTEGER PRIMARY KEY AUTOINCREMENT,
                 site_id          TEXT NOT NULL,
@@ -1929,8 +2007,8 @@ def _owl_init_tables() -> None:
                 submitted_from   TEXT,
                 status           TEXT NOT NULL DEFAULT 'new'
             )
-        """)
-        conn.execute("""
+        """))
+        conn.execute(_ddl_fix("""
             CREATE TABLE IF NOT EXISTS owl_tickets (
                 id               INTEGER PRIMARY KEY AUTOINCREMENT,
                 site_id          TEXT NOT NULL,
@@ -1942,9 +2020,9 @@ def _owl_init_tables() -> None:
                 status           TEXT NOT NULL DEFAULT 'open',
                 sla_due          TEXT
             )
-        """)
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_owl_leads_site_ts ON owl_leads(site_id, ts)")
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_owl_tickets_site_ts ON owl_tickets(site_id, ts)")
+        """))
+        conn.execute(_ddl_fix("CREATE INDEX IF NOT EXISTS idx_owl_leads_site_ts ON owl_leads(site_id, ts)"))
+        conn.execute(_ddl_fix("CREATE INDEX IF NOT EXISTS idx_owl_tickets_site_ts ON owl_tickets(site_id, ts)"))
 
 
 _owl_init_tables()
@@ -2189,7 +2267,7 @@ async def owl_register_site(request: Request, token: str = Query("")) -> JSONRes
                 (site_id, display_name, tier, care_tier, lead_email,
                  lead_sms, json.dumps(edit_emails), admin_token, live_url),
             )
-    except sqlite3.IntegrityError:
+    except _DbIntegrityError:
         raise HTTPException(status_code=409, detail="site_id already exists")
 
     return JSONResponse({
@@ -2414,7 +2492,7 @@ OWL_STRIPE_WEBHOOK_SECRET = os.environ.get("OWL_STRIPE_WEBHOOK_SECRET", "").stri
 
 def _owl_init_payments_table() -> None:
     with get_db() as conn:
-        conn.execute("""
+        conn.execute(_ddl_fix("""
             CREATE TABLE IF NOT EXISTS owl_payments (
                 id                INTEGER PRIMARY KEY AUTOINCREMENT,
                 stripe_event_id   TEXT UNIQUE,
@@ -2429,8 +2507,8 @@ def _owl_init_payments_table() -> None:
                 status            TEXT,
                 payload_json      TEXT
             )
-        """)
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_owl_pay_site ON owl_payments(site_id, ts)")
+        """))
+        conn.execute(_ddl_fix("CREATE INDEX IF NOT EXISTS idx_owl_pay_site ON owl_payments(site_id, ts)"))
 
 
 _owl_init_payments_table()
@@ -2514,7 +2592,7 @@ async def owl_stripe_webhook(request: Request, background_tasks: BackgroundTasks
                  product_key, amount, currency, status,
                  json.dumps(obj, ensure_ascii=False)[:8000]),
             )
-    except sqlite3.IntegrityError:
+    except _DbIntegrityError:
         return JSONResponse({"ok": True, "deduped": True})
 
     # Subscription lifecycle -> update owl_sites.care_tier if site_id was attached
