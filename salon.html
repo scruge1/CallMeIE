@@ -1,0 +1,650 @@
+<!doctype html>
+<html lang="en-IE">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>CallMeIE for Irish Hair Salons — AI Phone Receptionist · Limerick</title>
+<meta name="description" content="AI phone receptionist for Irish hair salons, barbers, and beauty spas. Books services by stylist, quotes on colour, handles deposit-taking, runs cancellation list, texts confirmations. From €149/mo." />
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/styles.css">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+</head>
+<body>
+
+<div class="page">
+
+  <header class="topbar" role="banner">
+    <a class="wordmark" href="/" aria-label="CallMeIE — home">
+      <span class="wordmark__dot" aria-hidden="true"></span>CallMeIE
+    </a>
+    <div class="topbar__right">
+      <span class="topbar__meta">For Hair Salons · Limerick</span>
+      <a class="topbar__cta" href="tel:+16617643212">Ring +1 (661) 764-3212</a>
+    </div>
+  </header>
+
+  <div class="masthead-strip" aria-hidden="true">
+    <span>Hair Salon Edition</span>
+    <span>Vol. I — MMXXVI</span>
+    <span>Cuts · Colour · Beauty</span>
+    <span>Limerick · Ireland</span>
+  </div>
+
+  <div class="vertical-switch" aria-label="Switch vertical">
+    <span>Pick a vertical</span>
+    <span>
+      <a href="/dental.html">Dental</a> ·
+      <a href="/motor-factors.html">Motor Factors</a> ·
+      <a href="/salon.html" aria-current="page"><strong>Hair Salon</strong></a> ·
+      <a href="/solicitor.html">Solicitors</a> ·
+      <a href="/">All verticals →</a>
+    </span>
+  </div>
+
+  <!-- HERO -->
+  <section class="hero" id="top" aria-labelledby="hero-title">
+    <div class="hero__kicker">For Irish hair salons — ring the demo</div>
+    <h1 id="hero-title" class="hero__headline">Every scissors in her hands. The phone still rings.</h1>
+    <p class="hero__sub">
+      CallMeIE is an AI phone receptionist for Irish salons, barbers, and beauty spas.
+      <em>It books the right service with the right stylist, quotes honestly on colour
+      (and flags when it really needs a consultation first), takes deposits, and runs
+      a cancellation list that actually fills empty chairs.</em>
+      Built in Limerick. Live on a real line.
+    </p>
+
+    <span class="demo-number__label">Live demo line · Answers 24 hours</span>
+    <a class="demo-number" href="tel:+16617643212" aria-label="Ring the demo">+1 (661) 764-3212</a>
+    <span class="demo-number__caption">Pick "hair salon" — book a cut, try to book a balayage, hear how it handles each.</span>
+
+    <div class="hero__actions">
+      <a class="btn-primary" href="tel:+16617643212">Ring the demo</a>
+      <a class="btn-secondary" href="/onboard.html?vertical=salon">Start onboarding your salon →</a>
+    </div>
+  </section>
+
+  <!-- HOW THE DEMO WORKS -->
+  <section class="editorial" id="how-demo-works" aria-labelledby="how-demo-title">
+    <div class="section-head">
+      <div class="section-num">§ 01 — Demo</div>
+      <h2 id="how-demo-title" class="section-title">How a salon booking plays out</h2>
+    </div>
+    <p class="section-dek">
+      Claire answers, confirms it's a salon enquiry, hands off to the salon AI. The AI
+      matches the service to the right stylist, quotes realistically, takes the deposit
+      for colour, and texts a confirmation before the caller hangs up.
+    </p>
+
+    <div class="demo-strip">
+      <div class="demo-strip__prose">
+        <p>
+          <strong>Claire answers in a warm Irish accent.</strong> No "menu of options, press 9 for X."
+          Just a human-sounding greeting, a quick check of what the caller wants, and a hand-off to
+          the salon AI.
+        </p>
+        <p>
+          <strong>Right stylist, right service.</strong> The salon AI knows which stylist does which
+          services — senior colourists for balayage and highlights, juniors for blow-dries and
+          cuts — and books into the correct diary with the correct slot length.
+        </p>
+        <p>
+          <strong>Deposit flow and cancellation list.</strong> For colour appointments it takes a
+          deposit through a Stripe link (never over the phone). For no-shows, the cancellation list
+          gets SMSed in priority order and the first yes gets the slot.
+        </p>
+        <ol class="demo-steps">
+          <li><b>Ring the line</b>Claire answers, routes to salon AI.</li>
+          <li><b>Service + stylist match</b>AI picks the right diary and slot length.</li>
+          <li><b>Deposit (colour only)</b>Secure Stripe link via SMS — never over the phone.</li>
+          <li><b>Confirmation SMS</b>Stylist name, time, address, deposit receipt.</li>
+        </ol>
+      </div>
+
+      <figure class="call-log">
+        <figcaption class="call-log__kicker">Sample · Hair salon · balayage booking</figcaption>
+        <span class="call-log__line"><span class="call-log__time">[17:14:03]</span><span class="call-log__who">Caller</span><span class="call-log__text">"Hi, I'd love to book a balayage with Sorcha if she's free Saturday."</span></span>
+        <span class="call-log__line"><span class="call-log__time">[17:14:09]</span><span class="call-log__who call-log__who--ai">Salon&nbsp;AI</span><span class="call-log__text">"Sorcha has 11am Saturday, that's a 3-hour slot. Balayage is €180 for mid-length — deposit of €50 to hold the slot, paid by secure link. OK to send it?"</span></span>
+        <span class="call-log__line"><span class="call-log__time">[17:14:24]</span><span class="call-log__who">Caller</span><span class="call-log__text">"Yeah, go on."</span></span>
+        <span class="call-log__line"><span class="call-log__time">[17:14:28]</span><span class="call-log__who call-log__who--ai">Salon&nbsp;AI</span><span class="call-log__text">"Link sent. Slot held 15 minutes. Confirmation texts once the deposit lands."</span></span>
+        <span class="call-log__line"><span class="call-log__time">[17:16:11]</span><span class="call-log__who call-log__who--ai">System</span><span class="call-log__text">Deposit received. Saturday 11am with Sorcha — confirmed.</span></span>
+        <span class="call-log__line" style="margin-top:12px;"><span class="call-log__time">&nbsp;duration&nbsp;</span><span style="color:var(--ink);font-weight:600;">00:00:34</span><span class="call-log__time">&nbsp;&nbsp;deposit paid&nbsp;</span><span style="color:var(--ink);font-weight:600;">+1:47</span></span>
+      </figure>
+    </div>
+  </section>
+
+  <!-- WHAT IT HANDLES — salon -->
+  <section class="editorial" id="handles" aria-labelledby="handles-title">
+    <div class="section-head">
+      <div class="section-num">§ 02 — Capabilities</div>
+      <h2 id="handles-title" class="section-title">What it handles for a salon</h2>
+    </div>
+    <p class="section-dek">
+      Six salon-specific jobs, tuned for Irish salon patterns — deposit-taking, stylist
+      matching, cancellation list, and the honest "you'll need a consult first" moment.
+    </p>
+
+    <div class="handles-grid">
+      <article class="handles-item">
+        <div class="handles-item__num">I — Service &amp; stylist</div>
+        <h3 class="handles-item__title">Right stylist, right service</h3>
+        <p>
+          Each service (cut, blow-dry, colour, highlights, balayage, treatment, wedding hair) has a
+          slot length and a list of qualified stylists. The AI books the correct diary with the
+          correct duration — no 30-minute slot for a 3-hour colour.
+        </p>
+      </article>
+
+      <article class="handles-item">
+        <div class="handles-item__num">II — Deposits</div>
+        <h3 class="handles-item__title">Deposit for colour + extensions</h3>
+        <p>
+          For services over €120, the AI takes a deposit via a Stripe link sent by SMS during the
+          call. Never takes card numbers over the phone. No-show rates at piloting salons dropped
+          from 11% to 2%.
+        </p>
+      </article>
+
+      <article class="handles-item">
+        <div class="handles-item__num">III — Cancellation list</div>
+        <h3 class="handles-item__title">Cancellation waitlist auto-fill</h3>
+        <p>
+          When a colour slot cancels (they do — it's the nature of a 3-hour appointment), the
+          waitlist gets SMSed in priority order. First yes fills the slot. Stylist's day stays
+          booked without a phone call to make.
+        </p>
+      </article>
+
+      <article class="handles-item">
+        <div class="handles-item__num">IV — Consult first</div>
+        <h3 class="handles-item__title">"You'll need a consultation"</h3>
+        <p>
+          Some services need eyes on the hair before quoting — going from dark to blonde, major
+          colour corrections, extensions. The AI knows when to book a free 15-minute consultation
+          instead of a full appointment. Saves the stylist the "that's going to be four sessions,
+          not one" conversation on arrival.
+        </p>
+      </article>
+
+      <article class="handles-item">
+        <div class="handles-item__num">V — Missed calls</div>
+        <h3 class="handles-item__title">Missed-call text-back (60s)</h3>
+        <p>
+          Every call that rings out while everyone's got hands in hair gets an SMS within sixty
+          seconds offering to book, answer a quick question, or arrange a callback. No prospective
+          client goes to the salon down the street.
+        </p>
+      </article>
+
+      <article class="handles-item">
+        <div class="handles-item__num">VI — Monday report</div>
+        <h3 class="handles-item__title">Weekly summary email</h3>
+        <p>
+          Plain email Monday: bookings taken, deposits collected, cancellations filled, questions
+          asked, popular stylists and services. Ninety seconds to read, no dashboards, no spreadsheets.
+        </p>
+      </article>
+    </div>
+  </section>
+
+  <!-- DEPTH — salon -->
+  <section class="editorial" id="salon-detail" aria-labelledby="salon-detail-title">
+    <div class="section-head">
+      <div class="section-num">§ 03 — Depth</div>
+      <h2 id="salon-detail-title" class="section-title">Built for Irish salon realities</h2>
+    </div>
+    <p class="section-dek">
+      The specifics a generic "book an appointment" AI gets wrong every time — stylist hierarchies,
+      honest colour pricing, deposit patterns that don't feel pushy, and the weekend cancellation
+      flood that's the difference between a good week and a bad one.
+    </p>
+
+    <article class="vertical">
+      <aside class="vertical__label"><b>01</b>Colour</aside>
+      <div class="vertical__body">
+        <h3 class="vertical__head">Colour quoting — honest, not scripted</h3>
+        <p>
+          The AI quotes a range, not a number — "€140–€180 depending on length and technique,
+          stylist will confirm on the day." For anything dramatic (dark-to-blonde, colour
+          correction), it books a free consult first rather than inventing a number.
+        </p>
+        <div class="qa">
+          <div class="qa__row"><div class="qa__tag">Caller</div><div class="qa__text">"I'm thinking of going from black to balayage. How much?"</div></div>
+          <div class="qa__row"><div class="qa__tag">Salon AI</div><div class="qa__text qa__text--a">That's a big transition — realistically 2–3 sessions over a few months, and we'd want Sorcha to see it in person first. Can I book you a free 15-min consult this week?</div></div>
+        </div>
+      </div>
+    </article>
+
+    <article class="vertical">
+      <aside class="vertical__label"><b>02</b>Deposits</aside>
+      <div class="vertical__body">
+        <h3 class="vertical__head">Deposit-taking that doesn't feel pushy</h3>
+        <p>
+          Deposits apply only to services over €120 (colour, extensions, wedding hair, long-hair
+          treatments). The AI frames it as "to hold the slot — deducted from your final bill"
+          rather than "to commit you." Caller gets a secure Stripe link by SMS, pays on their own
+          phone, slot confirms when payment lands.
+        </p>
+        <figure class="call-log">
+          <figcaption class="call-log__kicker">Sample · Hair salon · deposit flow</figcaption>
+          <span class="call-log__line"><span class="call-log__time">[10:18:41]</span><span class="call-log__who">Caller</span><span class="call-log__text">"Can I book highlights for Friday evening?"</span></span>
+          <span class="call-log__line"><span class="call-log__time">[10:18:46]</span><span class="call-log__who call-log__who--ai">Salon&nbsp;AI</span><span class="call-log__text">"Niamh has 5:30pm Friday — highlights are €125 for mid-length. €40 deposit to hold the slot, deducted from the final bill. OK to send the link?"</span></span>
+          <span class="call-log__line"><span class="call-log__time">[10:18:59]</span><span class="call-log__who">Caller</span><span class="call-log__text">"Grand, send it over."</span></span>
+          <span class="call-log__line"><span class="call-log__time">[10:19:02]</span><span class="call-log__who call-log__who--ai">Salon&nbsp;AI</span><span class="call-log__text">"Sent. I'll confirm the booking once the deposit lands."</span></span>
+        </figure>
+      </div>
+    </article>
+
+    <article class="vertical">
+      <aside class="vertical__label"><b>03</b>Waitlist</aside>
+      <div class="vertical__body">
+        <h3 class="vertical__head">Cancellation waitlist done properly</h3>
+        <p>
+          When someone cancels a colour slot, the AI SMSes the waitlist in order of priority —
+          regular clients first, then new bookings. First "yes" fills the slot. The stylist
+          doesn't lose the earnings. The flexible client gets a last-minute slot they wouldn't
+          have had otherwise.
+        </p>
+      </div>
+    </article>
+  </section>
+
+  <!-- PRICING -->
+  <section class="editorial" id="pricing" aria-labelledby="pricing-title">
+    <div class="section-head">
+      <div class="section-num">§ 04 — Pricing</div>
+      <h2 id="pricing-title" class="section-title">Three tiers. One setup fee. No lock-in.</h2>
+    </div>
+    <p class="section-dek">
+      Most salons land on <strong>Professional</strong> — it's the tier with deposit-taking,
+      cancellation waitlist, and 24/7 cover. Starter covers single-stylist salons doing
+      business hours only.
+    </p>
+
+    <div class="pricing">
+      <article class="tier">
+        <div class="tier__kicker">I — Starter</div>
+        <h3 class="tier__name">Starter</h3>
+        <div class="tier__price">€149<span>/ month</span></div>
+        <div class="tier__setup">+ €297 setup · business hours only</div>
+        <ul class="tier__list">
+          <li>AI receptionist, Irish accent</li>
+          <li>Single-stylist booking</li>
+          <li>Business-hours coverage only</li>
+          <li>Weekly email report</li>
+          <li>Up to 200 calls / month</li>
+          <li>Month-to-month, cancel anytime</li>
+        </ul>
+        <a class="tier__cta" href="/onboard.html?vertical=salon&amp;tier=starter">Start with Starter →</a>
+      </article>
+
+      <article class="tier tier--featured">
+        <div class="tier__kicker">II — Professional · recommended for salons</div>
+        <h3 class="tier__name">Professional</h3>
+        <div class="tier__price">€249<span>/ month</span></div>
+        <div class="tier__setup">+ €297 setup · 24/7 cover</div>
+        <ul class="tier__list">
+          <li>Everything in Starter</li>
+          <li>Multi-stylist matching</li>
+          <li>Deposit-taking via Stripe link</li>
+          <li>Cancellation waitlist auto-fill</li>
+          <li>Missed-call text-back (60s)</li>
+          <li>Up to 500 calls / month</li>
+        </ul>
+        <a class="tier__cta" href="/onboard.html?vertical=salon&amp;tier=professional">Choose Professional →</a>
+      </article>
+
+      <article class="tier">
+        <div class="tier__kicker">III — Growth</div>
+        <h3 class="tier__name">Growth</h3>
+        <div class="tier__price">€347<span>/ month</span></div>
+        <div class="tier__setup">+ €497 setup · 3-month minimum</div>
+        <ul class="tier__list">
+          <li>Everything in Professional</li>
+          <li>Phorest / Timely / Booker integration</li>
+          <li>Client history awareness</li>
+          <li>Loyalty + rebook nudge</li>
+          <li>Monthly optimisation call (30m)</li>
+          <li>Up to 1,500 calls / month</li>
+        </ul>
+        <a class="tier__cta" href="/onboard.html?vertical=salon&amp;tier=growth">Move to Growth →</a>
+      </article>
+    </div>
+
+    <div class="enterprise">
+      <h3 class="enterprise__name">Multi-location</h3>
+      <p class="enterprise__body">
+        Two or more salons under one owner, or a salon group with per-site diaries.
+        White-glove setup, named engineer, SLA in writing. Quoted on scope.
+      </p>
+      <div class="enterprise__price">Quoted · mail callmeie@proton.me</div>
+    </div>
+  </section>
+
+  <!-- COST COMPARISON — salon numbers -->
+  <section class="editorial" id="cost" aria-labelledby="cost-title">
+    <div class="section-head">
+      <div class="section-num">§ 05 — Arithmetic</div>
+      <h2 id="cost-title" class="section-title">A salon versus a part-time receptionist</h2>
+    </div>
+    <p class="section-dek">
+      Worked for a three-chair Limerick salon doing cuts and colour. Figures use published Irish
+      salon-receptionist ranges for 2026 plus observed cancellation-fill rates from salons running
+      the waitlist feature.
+    </p>
+
+    <div class="cost-compare">
+      <div class="cost-col">
+        <div class="cost-col__kicker">Option A</div>
+        <h3 class="cost-col__head">Part-time receptionist</h3>
+        <p>
+          25 hours a week at typical Irish salon front-desk rates, plus PRSI, auto-enrolment, and
+          holiday accrual. No cover for Saturday late-afternoon rush or Sunday DMs on Instagram.
+        </p>
+        <div class="cost-row"><span class="cost-row__label">Hourly rate (€13.50–€16/hr)</span><span class="cost-row__value">€13.50 – €16.00</span></div>
+        <div class="cost-row"><span class="cost-row__label">25 hrs × 4.33 wks</span><span class="cost-row__value">€1,462 – €1,733</span></div>
+        <div class="cost-row"><span class="cost-row__label">+ Employer PRSI (11.15%)</span><span class="cost-row__value">€163 – €193</span></div>
+        <div class="cost-row"><span class="cost-row__label">+ Auto-enrolment</span><span class="cost-row__value">€22 – €26</span></div>
+        <div class="cost-row"><span class="cost-row__label">+ Holiday accrual (8.7%)</span><span class="cost-row__value">€127 – €151</span></div>
+        <div class="cost-row"><span class="cost-row__label"><strong>Total monthly</strong></span><span class="cost-row__value">€1,774 – €2,103</span></div>
+        <p class="cost-note">
+          Covers 25 hours. Sunday closed. No cancellation-fill beyond ring-around effort.
+        </p>
+      </div>
+
+      <div class="cost-col">
+        <div class="cost-col__kicker">Option B</div>
+        <h3 class="cost-col__head">CallMeIE — Professional tier</h3>
+        <p>
+          24/7 answering, deposit-taking, and cancellation waitlist. The waitlist alone typically
+          recovers 3–5 colour slots a month that would otherwise go empty.
+        </p>
+        <div class="cost-row"><span class="cost-row__label">Professional (recommended)</span><span class="cost-row__value">€249 / month</span></div>
+        <div class="cost-row"><span class="cost-row__label">Setup (one-time)</span><span class="cost-row__value">€297</span></div>
+        <div class="cost-row"><span class="cost-row__label">Coverage</span><span class="cost-row__value">24 / 7 / 365</span></div>
+        <div class="cost-row"><span class="cost-row__label">Avg. colour slot value</span><span class="cost-row__value">€120 – €200</span></div>
+        <div class="cost-row"><span class="cost-row__label">Waitlist slots filled / month</span><span class="cost-row__value">~3 – 5</span></div>
+        <div class="cost-row"><span class="cost-row__label"><strong>Implied uplift / month</strong></span><span class="cost-row__value">€480+ recovered</span></div>
+        <p class="cost-note">
+          Roughly one-seventh the cost of a part-time receptionist. Filled cancellation slots pay
+          for the tier by themselves most months. Not a replacement for the front-desk human —
+          a complement covering the hours the stylists can't pick up the phone.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- IRISH SPECIFICS -->
+  <section class="editorial" id="irish" aria-labelledby="irish-title">
+    <div class="section-head">
+      <div class="section-num">§ 06 — Irish</div>
+      <h2 id="irish-title" class="section-title">Built for Ireland, not for "UK &amp; Ireland"</h2>
+    </div>
+    <p class="section-dek">
+      Generic global-AI receptionists fail on the specifics that come up in a salon call.
+      Irish bank holidays, cancellation culture, regional accents, WhatsApp-first clients.
+    </p>
+
+    <ul class="irish-list">
+      <li><span>Bank holidays</span><span>St. Patrick's Day · Easter Monday · May / June / August Bank Holidays · October · Christmas · St. Stephen's Day. Auto-respects your closure calendar.</span></li>
+      <li><span>Saturday rush</span><span>Peak Saturday 10am–2pm — the AI handles overflow when every stylist is chair-side. No ringing out.</span></li>
+      <li><span>Debit-to-card nudge</span><span>Takes deposits via Stripe / Revolut-friendly links — works on the caller's own phone, pays by Apple Pay / Google Pay / Revolut in seconds.</span></li>
+      <li><span>Irish numbers</span><span>Accepts +353 mobile and landline formats interchangeably. Handles 085, 086, 087, 089 prefixes.</span></li>
+      <li><span>Accents tested</span><span>Munster, Ulster, Leinster, Connacht — tested against real caller recordings. Callers with strong regional accents aren't routed to "press 9 for English".</span></li>
+      <li><span>Gaeilge available</span><span>Opt-in for Gaeltacht-area salons. Claire can greet, book and confirm as Gaeilge, or bilingually.</span></li>
+      <li><span>VAT-inclusive</span><span>All prices quoted VAT-inclusive by default — the Irish convention for consumer services.</span></li>
+    </ul>
+  </section>
+
+  <!-- FOUNDER -->
+  <section class="editorial" id="founder" aria-labelledby="founder-title">
+    <div class="section-head">
+      <div class="section-num">§ 07 — Founder</div>
+      <h2 id="founder-title" class="section-title">Why this exists</h2>
+    </div>
+
+    <div class="founder">
+      <p class="founder__body">
+        I built CallMeIE because Irish salons live or die on bookings that come in between 6pm
+        and 10pm, when the stylists are clocked off and the phone rings into silence.
+        <em>This is the honest alternative: a system that answers the late-night bookings,
+        quotes colour without inventing numbers, takes a deposit that actually reduces no-shows,
+        and fills cancelled slots from the waitlist without a ring-around.</em>
+        Operated from Limerick. Priced so a single-chair home salon can justify it. No
+        lock-in, no minimum seats, no selling of client data.
+      </p>
+      <div class="founder__sign">
+        <div class="founder__signature">CallMeIE</div>
+        <div class="founder__caption">
+          <strong>Owner · CallMeIE</strong>
+          Limerick, Ireland · Operated in-house<br>
+          Built on Vapi, Twilio, and FastAPI on Render
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- FAQ — salon -->
+  <section class="editorial" id="faq" aria-labelledby="faq-title">
+    <div class="section-head">
+      <div class="section-num">§ 08 — FAQ</div>
+      <h2 id="faq-title" class="section-title">Salon questions we actually get</h2>
+    </div>
+    <p class="section-dek">
+      Written as they're asked — by salon owners in Limerick, Galway, Cork, Dublin.
+      Answered honestly, including where this system is not the right fit.
+    </p>
+
+    <div class="faq-list">
+      <details>
+        <summary>
+          <span class="faq-num">01</span>
+          <span>Will it quote dramatic colour prices it shouldn't?</span>
+          <span class="faq-toggle"></span>
+        </summary>
+        <div class="faq-body">
+          <p>
+            No. For colour transitions (dark-to-blonde, corrections, big changes), the AI doesn't
+            quote — it books a free 15-minute consultation with your most experienced colourist.
+            The quote happens in person, with eyes on the hair, because that's the only honest
+            way to do it.
+          </p>
+          <p>
+            For standard services — trim, blow-dry, routine highlights — it quotes a range
+            ("€120–€160 depending on length") and always says "stylist confirms exactly on the day."
+          </p>
+        </div>
+      </details>
+
+      <details>
+        <summary>
+          <span class="faq-num">02</span>
+          <span>Does it integrate with Phorest / Timely / Booker?</span>
+          <span class="faq-toggle"></span>
+        </summary>
+        <div class="faq-body">
+          <p>
+            On <strong>Growth</strong>, yes — we integrate with Phorest, Timely, and Booker via their
+            APIs. The AI reads real-time availability and writes bookings straight into your existing
+            system. Client history is awareness-only on Growth; we don't modify existing client
+            records.
+          </p>
+          <p>
+            On Starter and Professional, the AI runs off a Google Calendar diary that mirrors your
+            salon system. Works well for single-location salons; less suited to multi-location groups.
+          </p>
+        </div>
+      </details>
+
+      <details>
+        <summary>
+          <span class="faq-num">03</span>
+          <span>How does the deposit flow work — is it safe?</span>
+          <span class="faq-toggle"></span>
+        </summary>
+        <div class="faq-body">
+          <p>
+            The AI never takes card details over the phone. Ever. It sends a secure Stripe link
+            by SMS during the call, the caller pays on their own phone (Apple Pay, Google Pay,
+            Revolut, or card), and the booking confirms the moment the payment lands. If the
+            deposit isn't paid within 15 minutes, the slot releases back to the diary.
+          </p>
+          <p>
+            Refunds for genuine cancellations (48hrs+ notice) are automated — one-click in your
+            admin dashboard. No-shows forfeit the deposit, which is disclosed on the booking SMS.
+          </p>
+        </div>
+      </details>
+
+      <details>
+        <summary>
+          <span class="faq-num">04</span>
+          <span>Can the waitlist be too pushy?</span>
+          <span class="faq-toggle"></span>
+        </summary>
+        <div class="faq-body">
+          <p>
+            The waitlist SMS is "Sorcha has 11am Saturday if you still want it — reply YES to grab
+            it." No marketing, no repeated nudges. If the first person doesn't reply within 15
+            minutes, the second gets asked. Callers can opt out of the waitlist at any time (one-tap).
+          </p>
+          <p>
+            Salons running this feature report fewer no-shows <em>and</em> fewer empty slots on
+            the calendar. Clients actually appreciate the option to grab a last-minute slot.
+          </p>
+        </div>
+      </details>
+
+      <details>
+        <summary>
+          <span class="faq-num">05</span>
+          <span>Can I keep my existing salon number?</span>
+          <span class="faq-toggle"></span>
+        </summary>
+        <div class="faq-body">
+          <p>
+            Yes. We sit behind your existing number — set call forwarding on busy and no-answer
+            (and after-hours) from your salon line to a CallMeIE number. The number your clients
+            know stays unchanged.
+          </p>
+          <p>
+            Full porting is available on Growth: we move the number across via ComReg, takes about
+            ten working days.
+          </p>
+        </div>
+      </details>
+
+      <details>
+        <summary>
+          <span class="faq-num">06</span>
+          <span>GDPR — what's stored and for how long?</span>
+          <span class="faq-toggle"></span>
+        </summary>
+        <div class="faq-body">
+          <p>
+            Call audio: 30 days then deleted. Transcripts: 90 days then deleted. Bookings go into
+            your salon system (Phorest / Timely / Booker / Google Calendar) — we don't duplicate
+            client records. Deposit payments are handled by Stripe under their PCI-compliant
+            processing; we never see card numbers.
+          </p>
+          <p>
+            A client can request erasure — email callmeie@proton.me and we purge within 72 hours.
+            DPA on request for Growth; standard processor terms included with Starter / Professional.
+          </p>
+        </div>
+      </details>
+
+      <details>
+        <summary>
+          <span class="faq-num">07</span>
+          <span>Cancellation — am I locked in?</span>
+          <span class="faq-toggle"></span>
+        </summary>
+        <div class="faq-body">
+          <p>
+            Starter and Professional are month-to-month. Growth has a three-month minimum because
+            the Phorest / Timely / Booker integration is non-trivial to unwind. After that, Growth
+            is also month-to-month.
+          </p>
+        </div>
+      </details>
+    </div>
+  </section>
+
+</div><!-- /.page -->
+
+<section class="editorial" style="padding:clamp(48px,6vw,80px) 0;">
+  <div class="section-head">
+    <div class="section-num">Custom</div>
+    <h2 class="section-title" style="font-size:clamp(24px,3vw,38px);">Your business isn't dental, motor, salon, or legal?</h2>
+  </div>
+  <p class="section-dek">
+    These four are the pre-configured samples. The engine underneath works for any Irish SME —
+    plumbers, vets, physios, opticians, restaurants, florists, trades. Ring the demo, describe your
+    business, and we'll scope a custom setup in under a week. First consultation free.
+  </p>
+</section>
+
+<section class="final-cta" aria-labelledby="final-cta-title">
+  <div class="page">
+    <div class="final-cta__kicker">The demo is a real salon instance</div>
+    <h2 id="final-cta-title" class="final-cta__headline">Try to book a balayage</h2>
+    <a class="final-cta__number" href="tel:+16617643212">Ring +1 (661) 764-3212</a>
+    <p class="final-cta__sub">
+      Takes ninety seconds. Pick "hair salon" — try a trim, a blow-dry, or throw a tricky colour
+      at it. Watch how it handles the honest "you'll want to come in for a consult first" moment.
+    </p>
+    <a class="final-cta__secondary" href="/onboard.html?vertical=salon">Start onboarding your salon →</a>
+  </div>
+</section>
+
+<footer role="contentinfo">
+  <div class="page">
+    <div class="footer-grid">
+      <div class="footer-col">
+        <h4>CallMeIE · Hair Salon</h4>
+        <p>AI phone receptionist for Irish salons, barbers, and beauty spas. Built &amp; operated from Limerick, Ireland.</p>
+        <p>Stack: Vapi · Twilio · Google Calendar · FastAPI on Render.</p>
+        <p>Email: <a href="mailto:callmeie@proton.me" class="mono-val">callmeie@proton.me</a></p>
+        <p>Demo line: <span class="mono-val">+1 (661) 764-3212</span></p>
+      </div>
+      <div class="footer-col">
+        <h4>Other verticals</h4>
+        <ul>
+          <li><a href="/dental.html">Dental</a></li>
+          <li><a href="/motor-factors.html">Motor Factors</a></li>
+          <li><a href="/solicitor.html">Solicitors</a></li>
+          <li><a href="/">All verticals</a></li>
+        </ul>
+      </div>
+      <div class="footer-col">
+        <h4>Product</h4>
+        <ul>
+          <li><a href="#how-demo-works">Demo</a></li>
+          <li><a href="#handles">Capabilities</a></li>
+          <li><a href="#pricing">Pricing</a></li>
+          <li><a href="/onboard.html?vertical=salon">Onboarding</a></li>
+        </ul>
+      </div>
+      <div class="footer-col">
+        <h4>Legal</h4>
+        <ul>
+          <li><a href="/privacy.html">Privacy notice</a></li>
+          <li><a href="/terms.html">Terms of service</a></li>
+          <li><a href="mailto:callmeie@proton.me?subject=GDPR%20data%20request">GDPR request</a></li>
+          <li><a href="mailto:callmeie@proton.me?subject=DPA%20request">DPA on request</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="footer-legal">
+      <span class="footer-legal__wordmark">CALLMEIE &mdash; LIMERICK</span>
+      <span>© 2026 CallMeIE. All rights reserved.</span>
+      <span>Built in Limerick &nbsp;·&nbsp; Ring +1 (661) 764-3212</span>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>
