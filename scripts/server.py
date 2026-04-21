@@ -2142,6 +2142,7 @@ pre {{ font-family: 'JetBrains Mono', monospace; font-size: 12px; white-space: p
   <div>live · <b><a href='{esc(site['live_url'])}'>{esc(site['live_url'])}</a></b></div>
   <div>site_id · <b>{esc(site['site_id'])}</b></div>
 </div>
+<p style='margin: 8px 0 32px;'><a href='/owl/reports/{site['site_id']}?token={token}' style='display:inline-block;padding:10px 16px;background:var(--ink);color:var(--paper);font-family:"JetBrains Mono",monospace;font-size:11px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;text-decoration:none;'>View latest report -></a></p>
 <h2>Leads <span class='mono' style='color: var(--grey); font-weight: 400;'>· {len(leads)} latest</span></h2>
 <table><thead><tr><th>When</th><th>Form</th><th>Payload</th><th>Status</th></tr></thead><tbody>{lead_rows}</tbody></table>
 <h2>Care tickets <span class='mono' style='color: var(--grey); font-weight: 400;'>· {len(tickets)} latest</span></h2>
@@ -2235,6 +2236,168 @@ def owl_health(site_id: str) -> JSONResponse:
     if not site:
         raise HTTPException(status_code=404, detail="unknown site")
     return JSONResponse({"ok": True, "site_id": site_id, "live_url": site["live_url"]})
+
+
+def _owl_report_stats(site_id: str, period_days: int = 30) -> dict:
+    """Stats a monthly care-plan report shows for one site."""
+    cutoff = (datetime.utcnow() - timedelta(days=period_days)).isoformat()
+    prev_cutoff = (datetime.utcnow() - timedelta(days=period_days * 2)).isoformat()
+    with get_db() as conn:
+        leads_now = conn.execute(
+            "SELECT COUNT(*) FROM owl_leads WHERE site_id = ? AND ts >= ?",
+            (site_id, cutoff),
+        ).fetchone()[0]
+        leads_prev = conn.execute(
+            "SELECT COUNT(*) FROM owl_leads WHERE site_id = ? AND ts >= ? AND ts < ?",
+            (site_id, prev_cutoff, cutoff),
+        ).fetchone()[0]
+        tickets_opened = conn.execute(
+            "SELECT COUNT(*) FROM owl_tickets WHERE site_id = ? AND ts >= ?",
+            (site_id, cutoff),
+        ).fetchone()[0]
+        tickets_closed = conn.execute(
+            "SELECT COUNT(*) FROM owl_tickets WHERE site_id = ? AND ts >= ? AND status = 'done'",
+            (site_id, cutoff),
+        ).fetchone()[0]
+        form_types = [dict(r) for r in conn.execute(
+            "SELECT form_type, COUNT(*) AS n FROM owl_leads WHERE site_id = ? AND ts >= ? GROUP BY form_type ORDER BY n DESC",
+            (site_id, cutoff),
+        ).fetchall()]
+        recent_payments = [dict(r) for r in conn.execute(
+            "SELECT event_type, amount, currency, product_key, ts FROM owl_payments WHERE site_id = ? AND ts >= ? ORDER BY ts DESC LIMIT 10",
+            (site_id, cutoff),
+        ).fetchall()]
+    delta = leads_now - leads_prev
+    delta_pct = round(100 * delta / leads_prev) if leads_prev > 0 else (100 if leads_now > 0 else 0)
+    return {
+        "period_days": period_days,
+        "leads_now": leads_now, "leads_prev": leads_prev,
+        "leads_delta": delta, "leads_delta_pct": delta_pct,
+        "tickets_opened": tickets_opened, "tickets_closed": tickets_closed,
+        "form_types": form_types, "recent_payments": recent_payments,
+    }
+
+
+@app.get("/owl/reports/{site_id}", response_class=HTMLResponse)
+def owl_report(site_id: str, token: str = Query(""), period: int = Query(30)) -> HTMLResponse:
+    """Branded 1-page monthly report — same token as /owl/admin.
+    Print-friendly (Ctrl+P for PDF). Real-time stats."""
+    site = _owl_site_by_token(token)
+    if not site or site["site_id"] != site_id:
+        return HTMLResponse("<h1>401 - invalid or missing token</h1>", status_code=401)
+
+    period = max(7, min(365, int(period)))
+    s = _owl_report_stats(site_id, period)
+
+    def esc(x):
+        return (str(x or "")
+                .replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+                .replace('"', "&quot;"))
+
+    care = (site.get("care_tier") or "").lower()
+    care_cls = {"essential": "essential", "growth": "growth", "concierge": "concierge"}.get(care, "none")
+
+    form_rows = "".join(
+        f"<tr><td>{esc(f['form_type'])}</td><td class='num'>{f['n']}</td></tr>"
+        for f in s["form_types"]
+    ) or "<tr><td colspan='2' class='empty'>No form submissions in the period.</td></tr>"
+
+    pay_rows = "".join(
+        f"<tr><td class='mono'>{esc(p['ts'])}</td>"
+        f"<td>{esc(p['event_type'])}</td>"
+        f"<td>{esc(p['product_key'] or '-')}</td>"
+        f"<td class='num'>{(p['amount'] or 0)/100:.0f} {esc((p['currency'] or '').upper())}</td></tr>"
+        for p in s["recent_payments"]
+    ) or "<tr><td colspan='4' class='empty'>No payment events in the period.</td></tr>"
+
+    delta_cls = "up" if s["leads_delta"] > 0 else ("down" if s["leads_delta"] < 0 else "flat")
+    delta_sign = "+" if s["leads_delta"] > 0 else ""
+    now_iso = datetime.now().isoformat()[:19].replace("T", " ")
+
+    html = f"""<!doctype html><html lang='en'><head>
+<meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'>
+<title>{esc(site['display_name'])} - Monthly report</title>
+<link href='https://fonts.googleapis.com/css2?family=Archivo+Black&family=Fraunces:opsz,wght@9..144,400;9..144,600&family=JetBrains+Mono:wght@400;500;600&display=swap' rel='stylesheet'>
+<style>
+:root {{ --paper:#F5F1E8; --ink:#0b0a08; --burgundy:#5A1420; --grey:#545454; --accent:#c96f32; }}
+*{{box-sizing:border-box;margin:0;padding:0;}}
+body{{background:var(--paper);color:var(--ink);font-family:'Fraunces',Georgia,serif;padding:clamp(28px,4vw,64px) clamp(20px,4vw,40px);max-width:1000px;margin:0 auto;line-height:1.55;}}
+.kicker{{font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;letter-spacing:0.18em;text-transform:uppercase;color:var(--burgundy);margin-bottom:10px;}}
+h1{{font-family:'Archivo Black',sans-serif;font-size:clamp(30px,4vw,52px);letter-spacing:-0.02em;line-height:1.04;margin-bottom:6px;}}
+.sub{{font-size:18px;color:var(--grey);margin-bottom:32px;}}
+.meta{{display:flex;gap:18px;flex-wrap:wrap;font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--grey);padding:12px 0;border-top:3px solid var(--ink);border-bottom:1px solid rgba(11,10,8,0.14);margin-bottom:36px;}}
+.meta b{{color:var(--ink);font-weight:600;}}
+.badge{{padding:3px 8px;background:var(--ink);color:var(--paper);font-weight:600;letter-spacing:0.1em;}}
+.badge.growth{{background:var(--accent);}}
+.badge.concierge{{background:var(--burgundy);}}
+.badge.essential{{background:var(--grey);color:var(--paper);}}
+.badge.none{{background:rgba(11,10,8,0.2);color:var(--grey);}}
+.stats{{display:grid;grid-template-columns:repeat(4,1fr);gap:22px;margin-bottom:40px;}}
+@media (max-width:720px){{.stats{{grid-template-columns:repeat(2,1fr);}}}}
+.stat{{border-top:3px solid var(--ink);padding-top:14px;}}
+.stat .label{{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:0.14em;text-transform:uppercase;color:var(--grey);margin-bottom:10px;}}
+.stat .num{{font-family:'Archivo Black',sans-serif;font-size:42px;letter-spacing:-0.03em;line-height:1;}}
+.stat .delta{{font-family:'JetBrains Mono',monospace;font-size:11px;margin-top:6px;}}
+.stat .delta.up{{color:#2d6e3f;}}
+.stat .delta.down{{color:var(--burgundy);}}
+.stat .delta.flat{{color:var(--grey);}}
+h2{{font-family:'Archivo Black',sans-serif;font-size:22px;margin:40px 0 14px;padding-bottom:8px;border-bottom:2px solid var(--ink);}}
+table{{width:100%;border-collapse:collapse;}}
+th,td{{padding:10px 12px;text-align:left;border-bottom:1px solid rgba(11,10,8,0.14);font-size:14px;}}
+th{{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:0.12em;text-transform:uppercase;color:var(--grey);}}
+td.num{{font-family:'JetBrains Mono',monospace;font-weight:600;text-align:right;}}
+td.mono{{font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--grey);}}
+.empty{{color:var(--grey);font-style:italic;}}
+.footer-note{{margin-top:50px;padding-top:24px;border-top:2px solid var(--ink);font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--grey);line-height:1.6;}}
+.footer-note a{{color:var(--accent);}}
+@media print{{body{{padding:0;}}.meta,h2{{break-inside:avoid;}}}}
+</style></head><body>
+<div class='kicker'>Owl Studio * Care plan monthly report</div>
+<h1>{esc(site['display_name'])}</h1>
+<p class='sub'>{esc(site['live_url'])}</p>
+<div class='meta'>
+  <div>Period * <b>last {s['period_days']} days</b></div>
+  <div>Care tier * <span class='badge {care_cls}'>{esc(care or 'none')}</span></div>
+  <div>Tier * <b>{esc(site['tier'])}</b></div>
+  <div>Report generated * <b>{esc(now_iso)}</b></div>
+</div>
+<div class='stats'>
+  <div class='stat'>
+    <div class='label'>Leads</div>
+    <div class='num'>{s['leads_now']}</div>
+    <div class='delta {delta_cls}'>{delta_sign}{s['leads_delta']} vs prior period ({s['leads_delta_pct']:+d}%)</div>
+  </div>
+  <div class='stat'>
+    <div class='label'>Tickets opened</div>
+    <div class='num'>{s['tickets_opened']}</div>
+    <div class='delta flat'>{s['tickets_closed']} closed</div>
+  </div>
+  <div class='stat'>
+    <div class='label'>Form types</div>
+    <div class='num'>{len(s['form_types'])}</div>
+    <div class='delta flat'>distinct form sources</div>
+  </div>
+  <div class='stat'>
+    <div class='label'>Payments logged</div>
+    <div class='num'>{len(s['recent_payments'])}</div>
+    <div class='delta flat'>Stripe events captured</div>
+  </div>
+</div>
+<h2>Form submissions by type</h2>
+<table><thead><tr><th>Form type</th><th style='text-align:right;'>Count</th></tr></thead>
+<tbody>{form_rows}</tbody></table>
+<h2>Recent payment events</h2>
+<table><thead><tr><th>When</th><th>Event</th><th>Product</th><th style='text-align:right;'>Amount</th></tr></thead>
+<tbody>{pay_rows}</tbody></table>
+<div class='footer-note'>
+  Print this page (Ctrl+P / Cmd+P) to save as PDF. Data updates in real time -
+  reload anytime. Different period via <code>?period=60</code> or <code>?period=90</code>.
+  <br><br>
+  Care tier: <b>{esc(care or 'none')}</b>. Upgrade paths at
+  <a href='https://websites.owlzone.trade/#care'>websites.owlzone.trade/#care</a>.
+</div>
+</body></html>"""
+    return HTMLResponse(html)
 
 
 # ---------------- Stripe webhook -----------------------------------------
