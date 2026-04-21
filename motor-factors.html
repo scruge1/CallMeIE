@@ -1,0 +1,626 @@
+<!doctype html>
+<html lang="en-IE">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>CallMeIE for Irish Motor Factors — AI Phone Receptionist · Limerick</title>
+<meta name="description" content="AI phone receptionist built for Irish motor factors and auto parts suppliers. Live stock lookup, VRN-based parts fit, trade-account pricing, delivery-window quotes. Handles trade and retail calls 24/7. From €149/mo." />
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/styles.css">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+</head>
+<body>
+
+<div class="page">
+
+  <header class="topbar" role="banner">
+    <a class="wordmark" href="/" aria-label="CallMeIE — home">
+      <span class="wordmark__dot" aria-hidden="true"></span>CallMeIE
+    </a>
+    <div class="topbar__right">
+      <span class="topbar__meta">For Motor Factors · Limerick</span>
+      <a class="topbar__cta" href="tel:+16617643212">Ring +1 (661) 764-3212</a>
+    </div>
+  </header>
+
+  <div class="masthead-strip" aria-hidden="true">
+    <span>Motor Factors Edition</span>
+    <span>Vol. I — MMXXVI</span>
+    <span>Trade &amp; retail · VRN lookup</span>
+    <span>Limerick · Ireland</span>
+  </div>
+
+  <div class="vertical-switch" aria-label="Switch vertical">
+    <span>Pick a vertical</span>
+    <span>
+      <a href="/dental.html">Dental</a> ·
+      <a href="/motor-factors.html" aria-current="page"><strong>Motor Factors</strong></a> ·
+      <a href="/salon.html">Hair Salon</a> ·
+      <a href="/solicitor.html">Solicitors</a> ·
+      <a href="/">All verticals →</a>
+    </span>
+  </div>
+
+  <!-- HERO -->
+  <section class="hero" id="top" aria-labelledby="hero-title">
+    <div class="hero__kicker">For Irish motor factors — ring the demo</div>
+    <h1 id="hero-title" class="hero__headline">Ten calls at once. One counter lad.</h1>
+    <p class="hero__sub">
+      CallMeIE is an AI phone receptionist for Irish motor factors and auto parts suppliers.
+      <em>It looks parts up by VRN, quotes trade-account pricing, confirms delivery windows,
+      and takes retail orders while the counter is buried on the other line.</em>
+      Built in Limerick. Live on a real number.
+    </p>
+
+    <span class="demo-number__label">Live demo line · Answers 24 hours</span>
+    <a class="demo-number" href="tel:+16617643212" aria-label="Ring the demo">+1 (661) 764-3212</a>
+    <span class="demo-number__caption">Pick "motor factors" on the call — ask for a part by VRN and hear it priced live.</span>
+
+    <div class="hero__actions">
+      <a class="btn-primary" href="tel:+16617643212">Ring the demo</a>
+      <a class="btn-secondary" href="/onboard.html?vertical=motor-factors">Start onboarding your branch →</a>
+    </div>
+  </section>
+
+  <!-- HOW THE DEMO WORKS -->
+  <section class="editorial" id="how-demo-works" aria-labelledby="how-demo-title">
+    <div class="section-head">
+      <div class="section-num">§ 01 — Demo</div>
+      <h2 id="how-demo-title" class="section-title">How a parts call plays out</h2>
+    </div>
+    <p class="section-dek">
+      The motor factors AI reads your live catalogue, does a VRN-to-part lookup, quotes the
+      correct price for the caller's trade account (or retail RRP), and writes the order
+      back to your system.
+    </p>
+
+    <div class="demo-strip">
+      <div class="demo-strip__prose">
+        <p>
+          <strong>Claire answers.</strong> Confirms it's a parts enquiry and routes to the motor
+          factors AI inside two seconds. If it's an existing trade caller the AI is already looking
+          them up by Caller-ID before it speaks.
+        </p>
+        <p>
+          <strong>VRN or part number.</strong> Caller reads the reg — the AI pulls make, model, year,
+          engine code from the RSA / GoCompare lookup, then queries your inventory for the right fit.
+          For trade accounts, the AI quotes the discounted trade price, not RRP.
+        </p>
+        <p>
+          <strong>Order placed or collection booked.</strong> If in stock — takes the order, writes
+          it to your system, confirms by SMS. If not in stock — quotes next-day delivery, same-day
+          from the main depot, or offers to order in. Never says "we'll ring you back."
+        </p>
+        <ol class="demo-steps">
+          <li><b>Ring the line</b>Claire answers, routes to motor factors.</li>
+          <li><b>VRN or part number</b>Live catalogue + trade-price lookup.</li>
+          <li><b>Order or collection</b>Writes to your system, SMS confirmation.</li>
+          <li><b>Delivery window</b>Honest ETA — no "I'll get someone to ring you back."</li>
+        </ol>
+      </div>
+
+      <figure class="call-log">
+        <figcaption class="call-log__kicker">Sample · Motor factors · trade account</figcaption>
+        <span class="call-log__line"><span class="call-log__time">[11:04:22]</span><span class="call-log__who">Caller</span><span class="call-log__text">"Howya, I need a front offside wishbone for a 2016 Focus 1.5 diesel. Trade."</span></span>
+        <span class="call-log__line"><span class="call-log__time">[11:04:28]</span><span class="call-log__who call-log__who--ai">Motor&nbsp;AI</span><span class="call-log__text">"Ford Focus MK3.5 1.5 TDCi — lower control arm, offside front. In stock at Limerick branch, €84.50 trade."</span></span>
+        <span class="call-log__line"><span class="call-log__time">[11:04:36]</span><span class="call-log__who">Caller</span><span class="call-log__text">"Grand, put one aside for Johnny O'Brien Motors."</span></span>
+        <span class="call-log__line"><span class="call-log__time">[11:04:42]</span><span class="call-log__who call-log__who--ai">Motor&nbsp;AI</span><span class="call-log__text">"Reserved — collection counter ticket OB-4471. Held until 5pm. SMS confirmation sent."</span></span>
+        <span class="call-log__line" style="margin-top:12px;"><span class="call-log__time">&nbsp;duration&nbsp;</span><span style="color:var(--ink);font-weight:600;">00:00:28</span><span class="call-log__time">&nbsp;&nbsp;wrap-up SMS&nbsp;</span><span style="color:var(--ink);font-weight:600;">delivered +0:14</span></span>
+      </figure>
+    </div>
+  </section>
+
+  <!-- WHAT IT HANDLES — motor factors -->
+  <section class="editorial" id="handles" aria-labelledby="handles-title">
+    <div class="section-head">
+      <div class="section-num">§ 02 — Capabilities</div>
+      <h2 id="handles-title" class="section-title">What it handles for a motor factor</h2>
+    </div>
+    <p class="section-dek">
+      Six parts-counter jobs, done by one system, tuned for Irish motor-factor patterns —
+      trade accounts, VRN lookups, delivery windows, multi-branch stock.
+    </p>
+
+    <div class="handles-grid">
+      <article class="handles-item">
+        <div class="handles-item__num">I — VRN lookup</div>
+        <h3 class="handles-item__title">Reg-to-part identification</h3>
+        <p>
+          Caller reads the Irish reg (e.g. 161-L-2345), the AI resolves it to make / model / year /
+          engine code via RSA data, then narrows your catalogue to the correct fit — brake pads,
+          filters, belts, whatever. No "is yours the 1.6 or the 1.8?" back-and-forth.
+        </p>
+      </article>
+
+      <article class="handles-item">
+        <div class="handles-item__num">II — Trade accounts</div>
+        <h3 class="handles-item__title">Trade-vs-retail pricing</h3>
+        <p>
+          Recognises trade-account callers by Caller-ID or by asking for the account name.
+          Quotes the correct discount tier — 15%, 20%, 25% off retail — without the trade
+          lad having to remember their rate each call.
+        </p>
+      </article>
+
+      <article class="handles-item">
+        <div class="handles-item__num">III — Stock check</div>
+        <h3 class="handles-item__title">Live multi-branch stock</h3>
+        <p>
+          Queries your inventory in real time. If out of stock at the caller's home branch,
+          checks sister branches and quotes the transfer time. Never says "I think we have
+          one" when the system says otherwise.
+        </p>
+      </article>
+
+      <article class="handles-item">
+        <div class="handles-item__num">IV — Delivery windows</div>
+        <h3 class="handles-item__title">Van-run and courier ETA</h3>
+        <p>
+          Knows your van-run schedule — the 10am Limerick drop, the 2pm Ennis run, the next-day
+          courier to Galway. Quotes an honest window, and if the caller misses a cut-off, tells
+          them on the spot rather than after the order is placed.
+        </p>
+      </article>
+
+      <article class="handles-item">
+        <div class="handles-item__num">V — Cross-reference</div>
+        <h3 class="handles-item__title">OEM ↔ aftermarket cross-ref</h3>
+        <p>
+          Caller reads an OEM part number — the AI returns the aftermarket equivalents in your
+          catalogue (Febi, Meyle, Lemförder, etc.) at their price points. Good for mechanics
+          chasing a cheaper alternative that fits.
+        </p>
+      </article>
+
+      <article class="handles-item">
+        <div class="handles-item__num">VI — Weekly report</div>
+        <h3 class="handles-item__title">Monday morning summary</h3>
+        <p>
+          Plain email Monday: calls handled, orders placed, missed calls, parts asked for that you
+          didn't stock, and the top trade accounts by call volume. Read in ninety seconds — no
+          dashboard.
+        </p>
+      </article>
+    </div>
+  </section>
+
+  <!-- DEPTH — motor factors -->
+  <section class="editorial" id="motor-detail" aria-labelledby="motor-detail-title">
+    <div class="section-head">
+      <div class="section-num">§ 03 — Depth</div>
+      <h2 id="motor-detail-title" class="section-title">Built for Irish parts trade specifically</h2>
+    </div>
+    <p class="section-dek">
+      The stuff a generic "global" receptionist gets wrong every time: Irish reg plates,
+      trade-discount tiers, van-run schedules, and the gap between what the catalogue says
+      and what's actually on the shelf.
+    </p>
+
+    <article class="vertical">
+      <aside class="vertical__label"><b>01</b>Trade</aside>
+      <div class="vertical__body">
+        <h3 class="vertical__head">Trade-account recognition</h3>
+        <p>
+          Trade callers don't want to re-introduce themselves every call. The AI recognises
+          the account by Caller-ID for the top 80% of regulars, or confirms by asking "is
+          that Johnny O'Brien Motors?" on the way in. Trade price quoted without the caller
+          having to specify the discount rate.
+        </p>
+        <div class="qa">
+          <div class="qa__row"><div class="qa__tag">Caller</div><div class="qa__text">"Same as last time but for a 171-D Golf."</div></div>
+          <div class="qa__row"><div class="qa__tag">Motor AI</div><div class="qa__text qa__text--a">VW Golf MK7 1.6 TDI — brake pads front, €42 trade. Two on the shelf. Pop them on your account and ready for the 2pm run?</div></div>
+        </div>
+      </div>
+    </article>
+
+    <article class="vertical">
+      <aside class="vertical__label"><b>02</b>Retail</aside>
+      <div class="vertical__body">
+        <h3 class="vertical__head">Retail walk-up and phone orders</h3>
+        <p>
+          Retail callers pay RRP, get asked politely for card details only via your payment
+          terminal (never on the phone, never to the AI — GDPR / PCI clean). The AI takes the
+          order, reserves the part, and the collector pays at the counter.
+        </p>
+        <figure class="call-log">
+          <figcaption class="call-log__kicker">Sample · Motor factors · retail walk-up</figcaption>
+          <span class="call-log__line"><span class="call-log__time">[16:22:11]</span><span class="call-log__who">Caller</span><span class="call-log__text">"Hiya, I need a battery for a 2018 Fiesta, any size that fits."</span></span>
+          <span class="call-log__line"><span class="call-log__time">[16:22:17]</span><span class="call-log__who call-log__who--ai">Motor&nbsp;AI</span><span class="call-log__text">"Ford Fiesta MK8 — Yuasa YBX3063 fits. €92 retail, 3-year warranty. One in stock, collection any time before 6pm."</span></span>
+          <span class="call-log__line"><span class="call-log__time">[16:22:29]</span><span class="call-log__who">Caller</span><span class="call-log__text">"Perfect, I'll come down now."</span></span>
+          <span class="call-log__line"><span class="call-log__time">[16:22:32]</span><span class="call-log__who call-log__who--ai">Motor&nbsp;AI</span><span class="call-log__text">"Reserved for you — ticket 4488. Pay at the counter on collection."</span></span>
+        </figure>
+      </div>
+    </article>
+
+    <article class="vertical">
+      <aside class="vertical__label"><b>03</b>Out-of-stock</aside>
+      <div class="vertical__body">
+        <h3 class="vertical__head">When it's not on the shelf</h3>
+        <p>
+          The AI doesn't pretend. If the part isn't in local stock, it checks sister branches
+          and quotes the transfer time. If it's not in any branch, it offers to order from the
+          main distributor and quotes the realistic arrival window — the one your system says,
+          not an optimistic guess.
+        </p>
+      </div>
+    </article>
+  </section>
+
+  <!-- PRICING -->
+  <section class="editorial" id="pricing" aria-labelledby="pricing-title">
+    <div class="section-head">
+      <div class="section-num">§ 04 — Pricing</div>
+      <h2 id="pricing-title" class="section-title">Three tiers. One setup fee. No lock-in.</h2>
+    </div>
+    <p class="section-dek">
+      Most motor factors land on <strong>Growth</strong> — that's the tier with the live
+      catalogue integration and trade-account sync. Starter works for a small single-branch
+      shop doing mostly retail.
+    </p>
+
+    <div class="pricing">
+      <article class="tier">
+        <div class="tier__kicker">I — Starter</div>
+        <h3 class="tier__name">Starter</h3>
+        <div class="tier__price">€149<span>/ month</span></div>
+        <div class="tier__setup">+ €297 setup · business hours only</div>
+        <ul class="tier__list">
+          <li>AI receptionist, Irish accent</li>
+          <li>Basic part-name lookup</li>
+          <li>Business-hours coverage only</li>
+          <li>Weekly email report</li>
+          <li>Up to 200 calls / month</li>
+          <li>Month-to-month, cancel anytime</li>
+        </ul>
+        <a class="tier__cta" href="/onboard.html?vertical=motor-factors&amp;tier=starter">Start with Starter →</a>
+      </article>
+
+      <article class="tier">
+        <div class="tier__kicker">II — Professional</div>
+        <h3 class="tier__name">Professional</h3>
+        <div class="tier__price">€249<span>/ month</span></div>
+        <div class="tier__setup">+ €297 setup · 24/7 cover</div>
+        <ul class="tier__list">
+          <li>Everything in Starter</li>
+          <li>After-hours coverage, 24/7</li>
+          <li>Missed-call text-back (60 seconds)</li>
+          <li>VRN lookup integration</li>
+          <li>Emergency transfer to owner</li>
+          <li>Up to 500 calls / month</li>
+        </ul>
+        <a class="tier__cta" href="/onboard.html?vertical=motor-factors&amp;tier=professional">Choose Professional →</a>
+      </article>
+
+      <article class="tier tier--featured">
+        <div class="tier__kicker">III — Growth · recommended for motor factors</div>
+        <h3 class="tier__name">Growth</h3>
+        <div class="tier__price">€347<span>/ month</span></div>
+        <div class="tier__setup">+ €497 setup · 3-month minimum</div>
+        <ul class="tier__list">
+          <li>Everything in Professional</li>
+          <li>Live catalogue &amp; inventory sync</li>
+          <li>Trade-account pricing tiers</li>
+          <li>Multi-branch stock lookup</li>
+          <li>Van-run schedule awareness</li>
+          <li>Up to 1,500 calls / month</li>
+        </ul>
+        <a class="tier__cta" href="/onboard.html?vertical=motor-factors&amp;tier=growth">Move to Growth →</a>
+      </article>
+    </div>
+
+    <div class="enterprise">
+      <h3 class="enterprise__name">Multi-branch / group</h3>
+      <p class="enterprise__body">
+        Three or more branches, custom PMS / inventory integration (Kerridge, Catalyst, MAM, etc),
+        named engineer, SLA in writing. Quoted on scope.
+      </p>
+      <div class="enterprise__price">Quoted · mail callmeie@proton.me</div>
+    </div>
+  </section>
+
+  <!-- COST COMPARISON — motor factors numbers -->
+  <section class="editorial" id="cost" aria-labelledby="cost-title">
+    <div class="section-head">
+      <div class="section-num">§ 05 — Arithmetic</div>
+      <h2 id="cost-title" class="section-title">A motor factor versus a counter hire</h2>
+    </div>
+    <p class="section-dek">
+      Worked for a mid-Munster two-branch motor factor with ~400 trade accounts. Numbers are
+      published Irish counter-staff ranges for 2026 plus observed peak-hour call overflow from
+      branches using missed-call text-back.
+    </p>
+
+    <div class="cost-compare">
+      <div class="cost-col">
+        <div class="cost-col__kicker">Option A</div>
+        <h3 class="cost-col__head">Second counter hire (40 hrs)</h3>
+        <p>
+          Experienced counter hand who knows fits and trade rates. Full-time 40 hours covers the
+          peak 10am – 4pm stretch. Outside that window — closed, phones ring out.
+        </p>
+        <div class="cost-row"><span class="cost-row__label">Hourly rate (€15–€20/hr)</span><span class="cost-row__value">€15.00 – €20.00</span></div>
+        <div class="cost-row"><span class="cost-row__label">40 hrs × 4.33 wks</span><span class="cost-row__value">€2,600 – €3,466</span></div>
+        <div class="cost-row"><span class="cost-row__label">+ Employer PRSI (11.15%)</span><span class="cost-row__value">€290 – €387</span></div>
+        <div class="cost-row"><span class="cost-row__label">+ Auto-enrolment</span><span class="cost-row__value">€39 – €52</span></div>
+        <div class="cost-row"><span class="cost-row__label">+ Holiday accrual (8.7%)</span><span class="cost-row__value">€226 – €301</span></div>
+        <div class="cost-row"><span class="cost-row__label"><strong>Total monthly</strong></span><span class="cost-row__value">€3,155 – €4,206</span></div>
+        <p class="cost-note">
+          Full-time counter cover for peak hours only. Nights, Saturdays after 2pm, and Sundays — not covered.
+        </p>
+      </div>
+
+      <div class="cost-col">
+        <div class="cost-col__kicker">Option B</div>
+        <h3 class="cost-col__head">CallMeIE — Growth tier</h3>
+        <p>
+          Handles the peak-hour overflow when all counter phones are busy. 24/7 cover for after-hours.
+          Lives in your catalogue and knows your trade accounts.
+        </p>
+        <div class="cost-row"><span class="cost-row__label">Growth (recommended)</span><span class="cost-row__value">€347 / month</span></div>
+        <div class="cost-row"><span class="cost-row__label">Setup (one-time)</span><span class="cost-row__value">€497</span></div>
+        <div class="cost-row"><span class="cost-row__label">Coverage</span><span class="cost-row__value">24 / 7 / 365</span></div>
+        <div class="cost-row"><span class="cost-row__label">Avg. overflow call value (trade)</span><span class="cost-row__value">€60 – €180</span></div>
+        <div class="cost-row"><span class="cost-row__label">Overflow calls handled / month</span><span class="cost-row__value">~120 – 200</span></div>
+        <div class="cost-row"><span class="cost-row__label"><strong>Implied uplift / month</strong></span><span class="cost-row__value">€7,200+ recovered</span></div>
+        <p class="cost-note">
+          About one-tenth the cost of a counter hire. Pays for itself on a single busy Saturday of
+          recovered trade overflow. Not a replacement for the counter lad — a complement that stops
+          the phone ringing out at peak.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- IRISH SPECIFICS -->
+  <section class="editorial" id="irish" aria-labelledby="irish-title">
+    <div class="section-head">
+      <div class="section-num">§ 06 — Irish</div>
+      <h2 id="irish-title" class="section-title">Built for Ireland, not for "UK &amp; Ireland"</h2>
+    </div>
+    <p class="section-dek">
+      The specifics that matter on a parts-counter call — Irish reg format, Irish trade patterns,
+      van-run geography, regional accent handling. Generic global-AI receptionists miss all of this.
+    </p>
+
+    <ul class="irish-list">
+      <li><span>Irish reg plates</span><span>Parses both old (06-L-1234) and new (161-L-2345) formats. Knows Irish county codes L, KK, WW, CE, KY, WD, G, D, etc.</span></li>
+      <li><span>Van-run geography</span><span>Knows your delivery geography — the Limerick run, the Shannon run, the Ennis run, the Galway courier. Honest ETAs, not optimism.</span></li>
+      <li><span>Trade-account tiers</span><span>15% / 20% / 25% discount tiers per account, cached from your PMS. Never leaks tier rates between accounts.</span></li>
+      <li><span>Irish numbers</span><span>Accepts +353 mobile and landline formats interchangeably. Handles 085, 086, 087, 089 prefixes.</span></li>
+      <li><span>Eircode</span><span>Parses Eircodes for delivery addresses — good for van-run booking on courier jobs.</span></li>
+      <li><span>VAT</span><span>Quotes VAT-exclusive to trade accounts, VAT-inclusive to retail. Switchable per-call if asked.</span></li>
+      <li><span>Accents tested</span><span>Munster, Ulster, Leinster, Connacht — tested against real caller recordings. Callers with strong regional accents aren't routed to "press 9 for English".</span></li>
+    </ul>
+  </section>
+
+  <!-- FOUNDER -->
+  <section class="editorial" id="founder" aria-labelledby="founder-title">
+    <div class="section-head">
+      <div class="section-num">§ 07 — Founder</div>
+      <h2 id="founder-title" class="section-title">Why this exists</h2>
+    </div>
+
+    <div class="founder">
+      <p class="founder__body">
+        I built CallMeIE because Irish motor factors lose real money every time the phone
+        rings out on a busy Saturday. The trade caller doesn't leave a message — they ring
+        the competitor down the road. <em>This is the honest alternative: a system that
+        answers every call, quotes the right trade price, knows the van-run schedule, and
+        hands off to the counter the moment a call actually needs a human.</em> Operated
+        from Limerick. Priced so a single-branch shop can justify it without a spreadsheet.
+        No lock-in, no minimum seats, no selling of caller data.
+      </p>
+      <div class="founder__sign">
+        <div class="founder__signature">CallMeIE</div>
+        <div class="founder__caption">
+          <strong>Owner · CallMeIE</strong>
+          Limerick, Ireland · Operated in-house<br>
+          Built on Vapi, Twilio, and FastAPI on Render
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- FAQ — motor factors -->
+  <section class="editorial" id="faq" aria-labelledby="faq-title">
+    <div class="section-head">
+      <div class="section-num">§ 08 — FAQ</div>
+      <h2 id="faq-title" class="section-title">Motor-factor questions we actually get</h2>
+    </div>
+    <p class="section-dek">
+      Written as they're asked — by branch managers and trade sales lads.
+      Answered honestly, including where this system is not the right fit.
+    </p>
+
+    <div class="faq-list">
+      <details>
+        <summary>
+          <span class="faq-num">01</span>
+          <span>Does it integrate with my PMS / inventory system?</span>
+          <span class="faq-toggle"></span>
+        </summary>
+        <div class="faq-body">
+          <p>
+            On <strong>Growth</strong> and Enterprise, yes — we currently integrate with the common
+            Irish motor-factor systems: Kerridge K8 (autoparts), Catalyst, MAM Autopart, and a few
+            others via their APIs or nightly CSV exports. On Starter / Professional the AI runs off
+            a manually-uploaded catalogue that we refresh weekly.
+          </p>
+          <p>
+            If you're on a system we haven't wired yet, send us a sample export at onboarding and
+            we'll scope the integration. Usually 2–5 working days for a new connector.
+          </p>
+        </div>
+      </details>
+
+      <details>
+        <summary>
+          <span class="faq-num">02</span>
+          <span>Will it leak trade prices to retail callers?</span>
+          <span class="faq-toggle"></span>
+        </summary>
+        <div class="faq-body">
+          <p>
+            No. Trade prices are gated by account recognition — Caller-ID match against your trade
+            database, or an explicit "what's the account name?" confirmation. If neither is positive,
+            the caller is handled as retail and quoted RRP.
+          </p>
+          <p>
+            If a trade caller rings from an unrecognised number, they'll be asked to confirm the
+            account name — same as a new counter hand would. No account = no trade price.
+          </p>
+        </div>
+      </details>
+
+      <details>
+        <summary>
+          <span class="faq-num">03</span>
+          <span>What if the part isn't in my catalogue?</span>
+          <span class="faq-toggle"></span>
+        </summary>
+        <div class="faq-body">
+          <p>
+            The AI doesn't guess. If a part lookup returns nothing, it offers to take the caller's
+            requirement and forward it to the counter — by SMS to your nominated mobile, or as a
+            queued call-back. It never invents a part number or a price.
+          </p>
+          <p>
+            A weekly report lists the parts asked for that you didn't stock — useful intelligence
+            on what to add to your range.
+          </p>
+        </div>
+      </details>
+
+      <details>
+        <summary>
+          <span class="faq-num">04</span>
+          <span>Can I keep my existing branch number?</span>
+          <span class="faq-toggle"></span>
+        </summary>
+        <div class="faq-body">
+          <p>
+            Yes. We don't take your number; we sit behind it. Set call forwarding on busy and
+            no-answer (and optionally after-hours) from your existing branch line to a CallMeIE
+            number — standard carrier feature. The number on the van and the shopfront is unchanged.
+          </p>
+          <p>
+            Full porting is available on Growth or Enterprise: we transfer via ComReg, takes about
+            ten working days.
+          </p>
+        </div>
+      </details>
+
+      <details>
+        <summary>
+          <span class="faq-num">05</span>
+          <span>GDPR — what's stored and for how long?</span>
+          <span class="faq-toggle"></span>
+        </summary>
+        <div class="faq-body">
+          <p>
+            Call audio: 30 days, then deleted. Transcripts: 90 days, then deleted. Order data is
+            retained as long as your PMS retains it — we don't add a second copy. Trade-account
+            phone numbers are hashed for Caller-ID lookup; raw numbers are not stored outside Twilio.
+          </p>
+          <p>
+            A caller can request erasure — we purge within 72 hours. DPA on request for Growth /
+            Enterprise; standard processor terms included with Starter / Professional.
+          </p>
+        </div>
+      </details>
+
+      <details>
+        <summary>
+          <span class="faq-num">06</span>
+          <span>Cancellation — am I locked in?</span>
+          <span class="faq-toggle"></span>
+        </summary>
+        <div class="faq-body">
+          <p>
+            Starter and Professional are month-to-month. Growth has a three-month minimum because the
+            catalogue / PMS integration is non-trivial to unwind. After that, Growth is also
+            month-to-month. Cancel by email before the next billing date.
+          </p>
+        </div>
+      </details>
+    </div>
+  </section>
+
+</div><!-- /.page -->
+
+<section class="editorial" style="padding:clamp(48px,6vw,80px) 0;">
+  <div class="section-head">
+    <div class="section-num">Custom</div>
+    <h2 class="section-title" style="font-size:clamp(24px,3vw,38px);">Your business isn't dental, motor, salon, or legal?</h2>
+  </div>
+  <p class="section-dek">
+    These four are the pre-configured samples. The engine underneath works for any Irish SME —
+    plumbers, vets, physios, opticians, restaurants, florists, trades. Ring the demo, describe your
+    business, and we'll scope a custom setup in under a week. First consultation free.
+  </p>
+</section>
+
+<section class="final-cta" aria-labelledby="final-cta-title">
+  <div class="page">
+    <div class="final-cta__kicker">The demo is a real motor-factors instance</div>
+    <h2 id="final-cta-title" class="final-cta__headline">Try to stump it with a VRN</h2>
+    <a class="final-cta__number" href="tel:+16617643212">Ring +1 (661) 764-3212</a>
+    <p class="final-cta__sub">
+      Takes ninety seconds. Pick "motor factors" on the call, read any Irish reg you can
+      think of, and watch the AI resolve it to the part. Or ask for something obscure.
+    </p>
+    <a class="final-cta__secondary" href="/onboard.html?vertical=motor-factors">Start onboarding your branch →</a>
+  </div>
+</section>
+
+<footer role="contentinfo">
+  <div class="page">
+    <div class="footer-grid">
+      <div class="footer-col">
+        <h4>CallMeIE · Motor Factors</h4>
+        <p>AI phone receptionist for Irish motor factors and auto parts suppliers. Built &amp; operated from Limerick, Ireland.</p>
+        <p>Stack: Vapi · Twilio · Google Calendar · FastAPI on Render.</p>
+        <p>Email: <a href="mailto:callmeie@proton.me" class="mono-val">callmeie@proton.me</a></p>
+        <p>Demo line: <span class="mono-val">+1 (661) 764-3212</span></p>
+      </div>
+      <div class="footer-col">
+        <h4>Other verticals</h4>
+        <ul>
+          <li><a href="/dental.html">Dental</a></li>
+          <li><a href="/salon.html">Hair Salon</a></li>
+          <li><a href="/solicitor.html">Solicitors</a></li>
+          <li><a href="/">All verticals</a></li>
+        </ul>
+      </div>
+      <div class="footer-col">
+        <h4>Product</h4>
+        <ul>
+          <li><a href="#how-demo-works">Demo</a></li>
+          <li><a href="#handles">Capabilities</a></li>
+          <li><a href="#pricing">Pricing</a></li>
+          <li><a href="/onboard.html?vertical=motor-factors">Onboarding</a></li>
+        </ul>
+      </div>
+      <div class="footer-col">
+        <h4>Legal</h4>
+        <ul>
+          <li><a href="/privacy.html">Privacy notice</a></li>
+          <li><a href="/terms.html">Terms of service</a></li>
+          <li><a href="mailto:callmeie@proton.me?subject=GDPR%20data%20request">GDPR request</a></li>
+          <li><a href="mailto:callmeie@proton.me?subject=DPA%20request">DPA on request</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="footer-legal">
+      <span class="footer-legal__wordmark">CALLMEIE &mdash; LIMERICK</span>
+      <span>© 2026 CallMeIE. All rights reserved.</span>
+      <span>Built in Limerick &nbsp;·&nbsp; Ring +1 (661) 764-3212</span>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>

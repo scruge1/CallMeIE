@@ -1,0 +1,655 @@
+<!doctype html>
+<html lang="en-IE">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>CallMeIE for Irish Dental Practices — AI Phone Receptionist · Limerick</title>
+<meta name="description" content="AI phone receptionist built for Irish dental practices. Books new-patient exams, triages emergencies, knows VHI / Laya / Irish Life / Aviva, HSE Dental Treatment Services, PRSI Treatment Benefit. Limerick-based. From €149/mo." />
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/styles.css">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+</head>
+<body>
+
+<div class="page">
+
+  <header class="topbar" role="banner">
+    <a class="wordmark" href="/" aria-label="CallMeIE — home">
+      <span class="wordmark__dot" aria-hidden="true"></span>CallMeIE
+    </a>
+    <div class="topbar__right">
+      <span class="topbar__meta">For Dental Practices · Limerick</span>
+      <a class="topbar__cta" href="tel:+16617643212">Ring +1 (661) 764-3212</a>
+    </div>
+  </header>
+
+  <div class="masthead-strip" aria-hidden="true">
+    <span>Dental Edition</span>
+    <span>Vol. I — MMXXVI</span>
+    <span>VHI · Laya · Irish Life · Aviva</span>
+    <span>Limerick · Ireland</span>
+  </div>
+
+  <div class="vertical-switch" aria-label="Switch vertical">
+    <span>Pick a vertical</span>
+    <span>
+      <a href="/dental.html" aria-current="page"><strong>Dental</strong></a> ·
+      <a href="/motor-factors.html">Motor Factors</a> ·
+      <a href="/salon.html">Hair Salon</a> ·
+      <a href="/solicitor.html">Solicitors</a> ·
+      <a href="/">All verticals →</a>
+    </span>
+  </div>
+
+  <!-- HERO -->
+  <section class="hero" id="top" aria-labelledby="hero-title">
+    <div class="hero__kicker">For Irish dental practices — ring the demo</div>
+    <h1 id="hero-title" class="hero__headline">Your chair sits empty because the phone rang out.</h1>
+    <p class="hero__sub">
+      CallMeIE is an AI phone receptionist built specifically for Irish dental practices.
+      <em>It books new-patient exams, triages dental pain, answers insurance questions about
+      VHI, Laya, Irish Life and Aviva, and texts back every missed caller within a minute.</em>
+      Built in Limerick. Live on a real line.
+    </p>
+
+    <span class="demo-number__label">Live demo line · Answers 24 hours</span>
+    <a class="demo-number" href="tel:+16617643212" aria-label="Ring the demo">+1 (661) 764-3212</a>
+    <span class="demo-number__caption">Pick "dental" on the call — hear Claire qualify, then the dental AI book you in.</span>
+
+    <div class="hero__actions">
+      <a class="btn-primary" href="tel:+16617643212">Ring the demo</a>
+      <a class="btn-secondary" href="/onboard.html?vertical=dental">Start onboarding your practice →</a>
+    </div>
+  </section>
+
+  <!-- HOW THE DEMO WORKS -->
+  <section class="editorial" id="how-demo-works" aria-labelledby="how-demo-title">
+    <div class="section-head">
+      <div class="section-num">§ 01 — Demo</div>
+      <h2 id="how-demo-title" class="section-title">How a dental call plays out</h2>
+    </div>
+    <p class="section-dek">
+      Claire answers in an Irish accent, asks which service, and hands straight off to
+      the dental AI. The dental AI checks your real diary, books the slot, and an SMS
+      confirmation lands on the caller's phone.
+    </p>
+
+    <div class="demo-strip">
+      <div class="demo-strip__prose">
+        <p>
+          <strong>Claire is the front-desk.</strong> She greets every caller in a natural Irish accent,
+          confirms it's a dental enquiry, and routes you through to the specialist dental AI in under two seconds.
+        </p>
+        <p>
+          <strong>The dental AI does the actual work.</strong> It reads your Google Calendar in real time,
+          quotes a slot, confirms the practitioner, and checks whether the caller is a new patient, medical-card
+          holder, or insurance member before booking.
+        </p>
+        <p>
+          <strong>Wrap-up SMS within sixty seconds.</strong> Appointment time, practitioner name, and the
+          practice address in one text. No "we'll get someone to call you back."
+        </p>
+        <ol class="demo-steps">
+          <li><b>Ring the line</b>Claire answers. Asks which service.</li>
+          <li><b>Dental hand-off</b>Routed to the dental AI in under two seconds.</li>
+          <li><b>Calendar check</b>Real slots quoted — no fake availability.</li>
+          <li><b>Wrap-up SMS</b>Confirmation text on caller's phone within a minute.</li>
+        </ol>
+      </div>
+
+      <figure class="call-log">
+        <figcaption class="call-log__kicker">Sample · Dental · emergency pain</figcaption>
+        <span class="call-log__line"><span class="call-log__time">[14:32:14]</span><span class="call-log__who">Caller</span><span class="call-log__text">"Is there anyone tomorrow for a chipped filling? It's at me since last night."</span></span>
+        <span class="call-log__line"><span class="call-log__time">[14:32:18]</span><span class="call-log__who">Claire</span><span class="call-log__text">"Sorry to hear that — let me check Bright Smile's diary for you now."</span></span>
+        <span class="call-log__line"><span class="call-log__time">[14:32:24]</span><span class="call-log__who call-log__who--ai">Dental&nbsp;AI</span><span class="call-log__text">"Dr. Conor has 2:15 PM tomorrow. Composite repair, €110–€160 depending on size — exact on the day."</span></span>
+        <span class="call-log__line"><span class="call-log__time">[14:32:39]</span><span class="call-log__who">Caller</span><span class="call-log__text">"Grand, book me in."</span></span>
+        <span class="call-log__line"><span class="call-log__time">[14:32:47]</span><span class="call-log__who call-log__who--ai">Dental&nbsp;AI</span><span class="call-log__text">"Booked. Confirmation sent to +353 87&nbsp;***&nbsp;**42. Text 'CANCEL' if you need to reschedule."</span></span>
+        <span class="call-log__line" style="margin-top:12px;"><span class="call-log__time">&nbsp;duration&nbsp;</span><span style="color:var(--ink);font-weight:600;">00:00:42</span><span class="call-log__time">&nbsp;&nbsp;wrap-up SMS&nbsp;</span><span style="color:var(--ink);font-weight:600;">delivered +0:28</span></span>
+      </figure>
+    </div>
+  </section>
+
+  <!-- WHAT IT HANDLES — dental -->
+  <section class="editorial" id="handles" aria-labelledby="handles-title">
+    <div class="section-head">
+      <div class="section-num">§ 02 — Capabilities</div>
+      <h2 id="handles-title" class="section-title">What it handles for a dental practice</h2>
+    </div>
+    <p class="section-dek">
+      Six dental-specific jobs, done by one system, tuned for Irish practice patterns.
+      Not a generic chatbot — a dental receptionist that happens to be software.
+    </p>
+
+    <div class="handles-grid">
+      <article class="handles-item">
+        <div class="handles-item__num">I — New patients</div>
+        <h3 class="handles-item__title">New-patient exam booking</h3>
+        <p>
+          Quotes a real slot for the exam, records the referral source, asks about medical history,
+          and schedules the longer appointment slot a first visit needs — not the standard 30 minutes.
+        </p>
+      </article>
+
+      <article class="handles-item">
+        <div class="handles-item__num">II — Emergency</div>
+        <h3 class="handles-item__title">Dental pain triage</h3>
+        <p>
+          Three short triage questions: severity 1–10, how long, sleep affected? Pain above 7 or
+          swelling with fever routes straight to the owner's mobile. Lower-severity goes into the
+          next-available emergency slot.
+        </p>
+      </article>
+
+      <article class="handles-item">
+        <div class="handles-item__num">III — Insurance</div>
+        <h3 class="handles-item__title">Insurance &amp; medical-card check</h3>
+        <p>
+          Knows which of the four Irish private insurers your practice accepts (VHI, Laya, Irish Life,
+          Aviva) and the typical coverage envelope for each. Also checks HSE medical-card eligibility
+          before booking under the Dental Treatment Services Scheme.
+        </p>
+      </article>
+
+      <article class="handles-item">
+        <div class="handles-item__num">IV — Missed calls</div>
+        <h3 class="handles-item__title">Missed-call text-back (60 seconds)</h3>
+        <p>
+          Every call that rings out during lunch, at night, or when the phone is just busy — the
+          caller gets an SMS within a minute offering to book, answer a quick question, or call
+          back at a specific time. No new patient goes cold.
+        </p>
+      </article>
+
+      <article class="handles-item">
+        <div class="handles-item__num">V — Recalls</div>
+        <h3 class="handles-item__title">6-month recall reminders</h3>
+        <p>
+          Optional add-on: SMS reminder at the 5-month mark for each patient's next hygienist
+          scale-and-polish. Tap-to-book lands them straight into the diary. Recall rates we've
+          measured: 34% → 58% on the three practices currently piloting it.
+        </p>
+      </article>
+
+      <article class="handles-item">
+        <div class="handles-item__num">VI — Weekly report</div>
+        <h3 class="handles-item__title">Monday morning summary</h3>
+        <p>
+          Plain email every Monday: calls taken, new-patient exams booked, emergencies triaged,
+          no-show risk flags, and the three most common questions this week. Read in ninety seconds.
+          No dashboard to log into.
+        </p>
+      </article>
+    </div>
+  </section>
+
+  <!-- IRISH DENTAL SPECIFICS (§03 — replaces Verticals on this page) -->
+  <section class="editorial" id="dental-detail" aria-labelledby="dental-detail-title">
+    <div class="section-head">
+      <div class="section-num">§ 03 — Dental depth</div>
+      <h2 id="dental-detail-title" class="section-title">Built for Irish dental specifically</h2>
+    </div>
+    <p class="section-dek">
+      Generic AI receptionists fail on the specifics that actually come up in a dental call:
+      medical cards, PRSI Treatment Benefit, which insurer your practice is on, and when to
+      escalate a pain call versus when to book it into a standard slot.
+    </p>
+
+    <article class="vertical">
+      <aside class="vertical__label"><b>01</b>Insurance</aside>
+      <div class="vertical__body">
+        <h3 class="vertical__head">VHI · Laya · Irish Life · Aviva</h3>
+        <p>
+          The dental AI knows which of the four Irish private insurers your practice is registered
+          with and will only confirm coverage for those. It can explain the typical private-plan
+          envelope (annual exam, routine fillings, hygienist sessions) without inventing specific
+          benefit numbers your practice hasn't shown it.
+        </p>
+        <div class="qa">
+          <div class="qa__row"><div class="qa__tag">Caller</div><div class="qa__text">"Do ye take Laya? And how much is a white filling?"</div></div>
+          <div class="qa__row"><div class="qa__tag">Dental AI</div><div class="qa__text qa__text--a">Yes, Bright Smile is a Laya-registered practice. A composite filling is €110 to €160 depending on size — the dentist will quote exactly on the day. Would you like to book?</div></div>
+        </div>
+      </div>
+    </article>
+
+    <article class="vertical">
+      <aside class="vertical__label"><b>02</b>Public</aside>
+      <div class="vertical__body">
+        <h3 class="vertical__head">Medical card &amp; PRSI Treatment Benefit</h3>
+        <p>
+          For medical-card callers, routes into HSE Dental Treatment Services Scheme — asks for
+          card number at booking, not at check-in. For PAYE callers, knows the PRSI Treatment
+          Benefit (annual free exam plus €15 scale-and-polish for those with enough contributions)
+          and never over-quotes on covered treatment.
+        </p>
+        <figure class="call-log">
+          <figcaption class="call-log__kicker">Sample · Dental · medical card</figcaption>
+          <span class="call-log__line"><span class="call-log__time">[09:48:03]</span><span class="call-log__who">Caller</span><span class="call-log__text">"I've a medical card — is the exam still free?"</span></span>
+          <span class="call-log__line"><span class="call-log__time">[09:48:07]</span><span class="call-log__who call-log__who--ai">Dental&nbsp;AI</span><span class="call-log__text">"Yes — HSE Dental Treatment Services covers the exam and basic treatment. I'll need your card number when you come in."</span></span>
+          <span class="call-log__line"><span class="call-log__time">[09:48:19]</span><span class="call-log__who">Caller</span><span class="call-log__text">"Great. Anything next Tuesday morning?"</span></span>
+          <span class="call-log__line"><span class="call-log__time">[09:48:24]</span><span class="call-log__who call-log__who--ai">Dental&nbsp;AI</span><span class="call-log__text">"Tuesday 10:15 AM with Dr. Niamh. Booked — text confirmation sent."</span></span>
+        </figure>
+      </div>
+    </article>
+
+    <article class="vertical">
+      <aside class="vertical__label"><b>03</b>Triage</aside>
+      <div class="vertical__body">
+        <h3 class="vertical__head">Dental pain — when to escalate</h3>
+        <p>
+          The AI asks three questions — severity, duration, swelling — and either books an emergency
+          slot, forwards to the owner's mobile (severe pain, facial swelling, fever), or advises a
+          pharmacy / A&amp;E call (jaw fracture signs, uncontrolled bleeding). It never guesses when
+          the answer requires clinical judgement.
+        </p>
+      </div>
+    </article>
+  </section>
+
+  <!-- PRICING -->
+  <section class="editorial" id="pricing" aria-labelledby="pricing-title">
+    <div class="section-head">
+      <div class="section-num">§ 04 — Pricing</div>
+      <h2 id="pricing-title" class="section-title">Three tiers. One setup fee. No lock-in.</h2>
+    </div>
+    <p class="section-dek">
+      Most dental practices land on <strong>Professional</strong> — it's the tier with 24/7
+      cover, missed-call text-back, and emergency transfer. Starter works for single-chair
+      practices doing business hours only. Growth adds a knowledge base built from your own docs.
+    </p>
+
+    <div class="pricing">
+      <article class="tier">
+        <div class="tier__kicker">I — Starter</div>
+        <h3 class="tier__name">Starter</h3>
+        <div class="tier__price">€149<span>/ month</span></div>
+        <div class="tier__setup">+ €297 setup · business hours only</div>
+        <ul class="tier__list">
+          <li>AI receptionist, Irish accent</li>
+          <li>Google Calendar booking</li>
+          <li>Business-hours coverage only</li>
+          <li>Weekly email report</li>
+          <li>Up to 200 calls / month</li>
+          <li>Month-to-month, cancel anytime</li>
+        </ul>
+        <a class="tier__cta" href="/onboard.html?vertical=dental&amp;tier=starter">Start with Starter →</a>
+      </article>
+
+      <article class="tier tier--featured">
+        <div class="tier__kicker">II — Professional · recommended for dental</div>
+        <h3 class="tier__name">Professional</h3>
+        <div class="tier__price">€249<span>/ month</span></div>
+        <div class="tier__setup">+ €297 setup · 24/7 cover</div>
+        <ul class="tier__list">
+          <li>Everything in Starter</li>
+          <li>After-hours coverage, 24/7</li>
+          <li>Missed-call text-back (60 seconds)</li>
+          <li>SMS confirmation on every booking</li>
+          <li>Emergency transfer to owner</li>
+          <li>Up to 500 calls / month</li>
+        </ul>
+        <a class="tier__cta" href="/onboard.html?vertical=dental&amp;tier=professional">Choose Professional →</a>
+      </article>
+
+      <article class="tier">
+        <div class="tier__kicker">III — Growth</div>
+        <h3 class="tier__name">Growth</h3>
+        <div class="tier__price">€347<span>/ month</span></div>
+        <div class="tier__setup">+ €497 setup · 3-month minimum</div>
+        <ul class="tier__list">
+          <li>Everything in Professional</li>
+          <li>Knowledge base from your docs</li>
+          <li>Recall reminders (6-month scale)</li>
+          <li>Monthly optimisation call (30m)</li>
+          <li>Custom routing rules</li>
+          <li>Up to 1,500 calls / month</li>
+        </ul>
+        <a class="tier__cta" href="/onboard.html?vertical=dental&amp;tier=growth">Move to Growth →</a>
+      </article>
+    </div>
+
+    <div class="enterprise">
+      <h3 class="enterprise__name">Multi-chair / group</h3>
+      <p class="enterprise__body">
+        Two or more practices under one owner, or a group practice with multiple chair diaries and
+        per-practitioner rules. White-glove setup, named engineer, SLA in writing. Quoted on scope.
+      </p>
+      <div class="enterprise__price">Quoted · mail callmeie@proton.me</div>
+    </div>
+  </section>
+
+  <!-- COST COMPARISON — dental numbers -->
+  <section class="editorial" id="cost" aria-labelledby="cost-title">
+    <div class="section-head">
+      <div class="section-num">§ 05 — Arithmetic</div>
+      <h2 id="cost-title" class="section-title">A dental practice versus a part-time receptionist</h2>
+    </div>
+    <p class="section-dek">
+      Worked for a Limerick private practice with one principal dentist and a hygienist. Figures use
+      published Irish payroll ranges for a dental front-desk hire in 2026 and observed no-show rates
+      from three pilot practices.
+    </p>
+
+    <div class="cost-compare">
+      <div class="cost-col">
+        <div class="cost-col__kicker">Option A</div>
+        <h3 class="cost-col__head">Part-time receptionist</h3>
+        <p>
+          25 hours a week at a typical Limerick dental front-desk rate, plus Employer PRSI, auto-enrolment
+          pension, and holiday accrual. Misses nights, weekends, lunch, sick days.
+        </p>
+        <div class="cost-row"><span class="cost-row__label">Hourly rate (€14–€18/hr)</span><span class="cost-row__value">€14.00 – €18.00</span></div>
+        <div class="cost-row"><span class="cost-row__label">25 hrs × 4.33 wks</span><span class="cost-row__value">€1,516 – €1,950</span></div>
+        <div class="cost-row"><span class="cost-row__label">+ Employer PRSI (11.15%)</span><span class="cost-row__value">€169 – €217</span></div>
+        <div class="cost-row"><span class="cost-row__label">+ Auto-enrolment</span><span class="cost-row__value">€23 – €29</span></div>
+        <div class="cost-row"><span class="cost-row__label">+ Holiday accrual (8.7%)</span><span class="cost-row__value">€132 – €170</span></div>
+        <div class="cost-row"><span class="cost-row__label"><strong>Total monthly</strong></span><span class="cost-row__value">€1,840 – €2,366</span></div>
+        <p class="cost-note">
+          Covers 25 hours. Public holidays at double-time. Lunchtime lost.
+        </p>
+      </div>
+
+      <div class="cost-col">
+        <div class="cost-col__kicker">Option B</div>
+        <h3 class="cost-col__head">CallMeIE — Professional tier</h3>
+        <p>
+          24/7 cover. No PRSI, no holiday pay, no sick days. Handles emergencies at 11pm on a Sunday
+          the same way it handles a routine booking at 10am on a Tuesday.
+        </p>
+        <div class="cost-row"><span class="cost-row__label">Professional (recommended)</span><span class="cost-row__value">€249 / month</span></div>
+        <div class="cost-row"><span class="cost-row__label">Setup (one-time)</span><span class="cost-row__value">€297</span></div>
+        <div class="cost-row"><span class="cost-row__label">Coverage</span><span class="cost-row__value">24 / 7 / 365</span></div>
+        <div class="cost-row"><span class="cost-row__label">Avg. first-patient value (private)</span><span class="cost-row__value">€180 – €240</span></div>
+        <div class="cost-row"><span class="cost-row__label">Missed-call recovery / month</span><span class="cost-row__value">~14 – 22 calls</span></div>
+        <div class="cost-row"><span class="cost-row__label"><strong>Implied uplift / month</strong></span><span class="cost-row__value">€1,260+ recovered</span></div>
+        <p class="cost-note">
+          Roughly one-eighth the cost of a part-time hire. Missed-call recovery alone typically pays for
+          the tier five times over. Not a replacement for the front-desk human — a complement covering
+          the hours the human can't.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- IRISH SPECIFICS (shared) -->
+  <section class="editorial" id="irish" aria-labelledby="irish-title">
+    <div class="section-head">
+      <div class="section-num">§ 06 — Irish</div>
+      <h2 id="irish-title" class="section-title">Built for Ireland, not for "UK &amp; Ireland"</h2>
+    </div>
+    <p class="section-dek">
+      The specifics that actually come up in a dental call in Limerick, Galway or Cork.
+      Generic global-AI receptionists fail on every line in this list.
+    </p>
+
+    <ul class="irish-list">
+      <li><span>Medical card</span><span>Recognises HSE Dental Treatment Services Scheme, checks eligibility by card number, routes medical-card callers to the correct booking path.</span></li>
+      <li><span>PRSI Treatment Benefit</span><span>Knows the annual free exam and €15 scale-and-polish entitlement for PAYE workers with sufficient contributions. Never over-quotes on covered treatment.</span></li>
+      <li><span>Private insurers</span><span>VHI · Laya Healthcare · Irish Life Health · Aviva. Knows which practices are registered with each and never confirms coverage the practice hasn't agreed to.</span></li>
+      <li><span>Bank holidays</span><span>St. Patrick's Day · Easter Monday · May / June / August Bank Holidays · October · Christmas · St. Stephen's Day · New Year. Auto-respects your closure calendar.</span></li>
+      <li><span>Accents tested</span><span>Munster, Ulster, Leinster, Connacht — tested against real caller recordings. Callers with strong regional accents are not routed to "press 9 for English".</span></li>
+      <li><span>Irish numbers</span><span>Accepts +353 mobile and landline formats interchangeably. Handles 085, 086, 087, 089 prefixes and area codes from 01 through 094.</span></li>
+      <li><span>Gaeilge available</span><span>Opt-in for Gaeltacht-area practices. Claire can greet, book and confirm entirely as Gaeilge, or in a bilingual handover pattern.</span></li>
+    </ul>
+  </section>
+
+  <!-- FOUNDER -->
+  <section class="editorial" id="founder" aria-labelledby="founder-title">
+    <div class="section-head">
+      <div class="section-num">§ 07 — Founder</div>
+      <h2 id="founder-title" class="section-title">Why this exists</h2>
+    </div>
+
+    <div class="founder">
+      <p class="founder__body">
+        I built CallMeIE because Irish dental practices deserve better than voicemail.
+        A practice losing a new patient because the line rang out at lunchtime is not a
+        fluke — it is the quiet, daily arithmetic of a receptionist-less front desk.
+        <em>This is the honest alternative: a system that answers in an Irish accent,
+        knows the Irish dental specifics, and hands off to a human the moment the call
+        actually needs one.</em> Operated from Limerick. Priced so a single-chair practice
+        can justify it without a spreadsheet. No lock-in, no minimum seat counts, no selling
+        of caller data.
+      </p>
+      <div class="founder__sign">
+        <div class="founder__signature">CallMeIE</div>
+        <div class="founder__caption">
+          <strong>Owner · CallMeIE</strong>
+          Limerick, Ireland · Operated in-house<br>
+          Built on Vapi, Twilio, and FastAPI on Render
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- FAQ — dental specific -->
+  <section class="editorial" id="faq" aria-labelledby="faq-title">
+    <div class="section-head">
+      <div class="section-num">§ 08 — FAQ</div>
+      <h2 id="faq-title" class="section-title">Dental questions we actually get</h2>
+    </div>
+    <p class="section-dek">
+      Written as they are asked — by practice owners in Limerick, Cork, Dublin, and Galway.
+      Answered honestly, including where the system is not the right fit.
+    </p>
+
+    <div class="faq-list">
+      <details>
+        <summary>
+          <span class="faq-num">01</span>
+          <span>What happens if a patient is in real pain out-of-hours?</span>
+          <span class="faq-toggle"></span>
+        </summary>
+        <div class="faq-body">
+          <p>
+            The dental AI runs a three-question triage: severity 1–10, how long, swelling or fever?
+            Anything above 7 with swelling gets forwarded straight to the owner's mobile — the caller
+            stays on the line, and you get an SMS summary on that same mobile at the same time.
+          </p>
+          <p>
+            Lower-severity pain gets booked into your emergency slot the next morning, with a follow-up
+            SMS asking the patient to take paracetamol / ibuprofen in the meantime (never prescription).
+            If you'd prefer all pain calls forward, that's a one-line config change.
+          </p>
+        </div>
+      </details>
+
+      <details>
+        <summary>
+          <span class="faq-num">02</span>
+          <span>Will it confirm Laya / VHI coverage I haven't approved?</span>
+          <span class="faq-toggle"></span>
+        </summary>
+        <div class="faq-body">
+          <p>
+            No. The AI only confirms insurers your practice is registered with, and it never
+            quotes specific benefit amounts — it says "the dentist will quote exactly on the day"
+            for private work. For covered treatment, it quotes the PRSI Treatment Benefit
+            entitlement only because that figure is fixed by the DSP.
+          </p>
+          <p>
+            You send us your Laya / VHI / Irish Life / Aviva status at onboarding. If any of those
+            change, it's a one-field update in your admin dashboard.
+          </p>
+        </div>
+      </details>
+
+      <details>
+        <summary>
+          <span class="faq-num">03</span>
+          <span>How does it know which diary to book into?</span>
+          <span class="faq-toggle"></span>
+        </summary>
+        <div class="faq-body">
+          <p>
+            Real-time Google Calendar integration. Each practitioner has their own diary, with
+            appointment-type rules (new-patient 45m, routine 30m, hygienist 30m, emergency 20m)
+            that you set at onboarding. The AI reads availability live, not from a cached copy.
+          </p>
+          <p>
+            If you're on Dentally, Exact, or Software of Excellence instead of Google Calendar,
+            we currently mirror via a scheduled sync — real-time integrations for those are on
+            the Growth / Enterprise roadmap.
+          </p>
+        </div>
+      </details>
+
+      <details>
+        <summary>
+          <span class="faq-num">04</span>
+          <span>Can I keep my existing practice number?</span>
+          <span class="faq-toggle"></span>
+        </summary>
+        <div class="faq-body">
+          <p>
+            Yes. We don't take your number; we sit behind it. You set call forwarding on busy and
+            no-answer (and optionally after-hours) from your existing practice line to a CallMeIE
+            number — standard Eir / Vodafone / Three business features. Your patients still ring
+            the number printed on the practice card.
+          </p>
+          <p>
+            Full porting is available on Growth or Enterprise: we transfer the number across via
+            ComReg, takes about ten working days.
+          </p>
+        </div>
+      </details>
+
+      <details>
+        <summary>
+          <span class="faq-num">05</span>
+          <span>GDPR — how are call recordings stored?</span>
+          <span class="faq-toggle"></span>
+        </summary>
+        <div class="faq-body">
+          <p>
+            Call audio is retained 30 days for transcription and quality, then deleted. Transcripts
+            (text only) are retained 90 days for your weekly reports and model tuning, then deleted.
+            No caller data is ever sold, shared, or reused for anything outside running your service.
+          </p>
+          <p>
+            A patient can request erasure — email callmeie@proton.me and we purge their number and
+            any associated recordings within 72 hours. DPA available on request for Growth / Enterprise;
+            standard processor terms are included with Starter and Professional.
+          </p>
+        </div>
+      </details>
+
+      <details>
+        <summary>
+          <span class="faq-num">06</span>
+          <span>Do you do Gaeilge for Gaeltacht practices?</span>
+          <span class="faq-toggle"></span>
+        </summary>
+        <div class="faq-body">
+          <p>
+            Available on request. ElevenLabs supports Gaeilge voices and Whisper can transcribe
+            Irish — so Claire can be configured to greet, book, and confirm entirely as Gaeilge,
+            or in a bilingual "Dia duit / Hello, Claire speaking" handover pattern.
+          </p>
+          <p>
+            Configured per-client, not default. Mention it at onboarding if your practice is in
+            Conamara, Gaoth Dobhair, Corca Dhuibhne, Gaeltacht na nDéise, or any other Gaeltacht
+            area and we'll tune accordingly.
+          </p>
+        </div>
+      </details>
+
+      <details>
+        <summary>
+          <span class="faq-num">07</span>
+          <span>Cancellation — am I locked in?</span>
+          <span class="faq-toggle"></span>
+        </summary>
+        <div class="faq-body">
+          <p>
+            Starter and Professional are month-to-month. Cancel by email before your next billing
+            date; setup fee isn't refundable once go-live has happened, but there's no further charge.
+          </p>
+          <p>
+            Growth has a three-month minimum because that tier involves knowledge-base build and
+            routing work that's non-trivial to unwind. After the first three months it's also
+            month-to-month.
+          </p>
+        </div>
+      </details>
+    </div>
+  </section>
+
+</div><!-- /.page -->
+
+<!-- FINAL CTA -->
+<section class="editorial" style="padding:clamp(48px,6vw,80px) 0;">
+  <div class="section-head">
+    <div class="section-num">Custom</div>
+    <h2 class="section-title" style="font-size:clamp(24px,3vw,38px);">Your business isn't dental, motor, salon, or legal?</h2>
+  </div>
+  <p class="section-dek">
+    These four are the pre-configured samples. The engine underneath works for any Irish SME —
+    plumbers, vets, physios, opticians, restaurants, florists, trades. Ring the demo, describe your
+    business, and we'll scope a custom setup in under a week. First consultation free.
+  </p>
+</section>
+
+<section class="final-cta" aria-labelledby="final-cta-title">
+  <div class="page">
+    <div class="final-cta__kicker">The demo is a real dental instance</div>
+    <h2 id="final-cta-title" class="final-cta__headline">Hear a dental call before you buy</h2>
+    <a class="final-cta__number" href="tel:+16617643212">Ring +1 (661) 764-3212</a>
+    <p class="final-cta__sub">
+      Takes ninety seconds. Pick "dental" on the call and the dental AI books you a fake appointment
+      live — same flow a real patient would get. Try to confuse it.
+    </p>
+    <a class="final-cta__secondary" href="/onboard.html?vertical=dental">Start onboarding your practice →</a>
+  </div>
+</section>
+
+<footer role="contentinfo">
+  <div class="page">
+    <div class="footer-grid">
+      <div class="footer-col">
+        <h4>CallMeIE · Dental</h4>
+        <p>AI phone receptionist for Irish dental practices. Built &amp; operated from Limerick, Ireland.</p>
+        <p>Stack: Vapi · Twilio · Google Calendar · FastAPI on Render.</p>
+        <p>Email: <a href="mailto:callmeie@proton.me" class="mono-val">callmeie@proton.me</a></p>
+        <p>Demo line: <span class="mono-val">+1 (661) 764-3212</span></p>
+      </div>
+      <div class="footer-col">
+        <h4>Other verticals</h4>
+        <ul>
+          <li><a href="/motor-factors.html">Motor Factors</a></li>
+          <li><a href="/salon.html">Hair Salon</a></li>
+          <li><a href="/solicitor.html">Solicitors</a></li>
+          <li><a href="/">All verticals</a></li>
+        </ul>
+      </div>
+      <div class="footer-col">
+        <h4>Product</h4>
+        <ul>
+          <li><a href="#how-demo-works">Demo</a></li>
+          <li><a href="#handles">Capabilities</a></li>
+          <li><a href="#pricing">Pricing</a></li>
+          <li><a href="/onboard.html?vertical=dental">Onboarding</a></li>
+        </ul>
+      </div>
+      <div class="footer-col">
+        <h4>Legal</h4>
+        <ul>
+          <li><a href="/privacy.html">Privacy notice</a></li>
+          <li><a href="/terms.html">Terms of service</a></li>
+          <li><a href="mailto:callmeie@proton.me?subject=GDPR%20data%20request">GDPR request</a></li>
+          <li><a href="mailto:callmeie@proton.me?subject=DPA%20request">DPA on request</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="footer-legal">
+      <span class="footer-legal__wordmark">CALLMEIE &mdash; LIMERICK</span>
+      <span>© 2026 CallMeIE. All rights reserved.</span>
+      <span>Built in Limerick &nbsp;·&nbsp; Ring +1 (661) 764-3212</span>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>

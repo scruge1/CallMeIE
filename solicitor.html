@@ -1,0 +1,660 @@
+<!doctype html>
+<html lang="en-IE">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>CallMeIE for Irish Solicitors — AI Phone Receptionist · Limerick</title>
+<meta name="description" content="AI phone receptionist for Irish solicitors and legal practices. Conflict-check prompts, matter-type routing, confidential call handling, after-hours escalation, never gives legal advice. From €149/mo." />
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/styles.css">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+</head>
+<body>
+
+<div class="page">
+
+  <header class="topbar" role="banner">
+    <a class="wordmark" href="/" aria-label="CallMeIE — home">
+      <span class="wordmark__dot" aria-hidden="true"></span>CallMeIE
+    </a>
+    <div class="topbar__right">
+      <span class="topbar__meta">For Solicitors · Limerick</span>
+      <a class="topbar__cta" href="tel:+16617643212">Ring +1 (661) 764-3212</a>
+    </div>
+  </header>
+
+  <div class="masthead-strip" aria-hidden="true">
+    <span>Solicitors Edition</span>
+    <span>Vol. I — MMXXVI</span>
+    <span>Conveyancing · Family · PI · Probate</span>
+    <span>Limerick · Ireland</span>
+  </div>
+
+  <div class="vertical-switch" aria-label="Switch vertical">
+    <span>Pick a vertical</span>
+    <span>
+      <a href="/dental.html">Dental</a> ·
+      <a href="/motor-factors.html">Motor Factors</a> ·
+      <a href="/salon.html">Hair Salon</a> ·
+      <a href="/solicitor.html" aria-current="page"><strong>Solicitors</strong></a> ·
+      <a href="/">All verticals →</a>
+    </span>
+  </div>
+
+  <!-- HERO -->
+  <section class="hero" id="top" aria-labelledby="hero-title">
+    <div class="hero__kicker">For Irish solicitors — ring the demo</div>
+    <h1 id="hero-title" class="hero__headline">New clients ring once. If the line is busy they try the next firm.</h1>
+    <p class="hero__sub">
+      CallMeIE is an AI phone receptionist for Irish solicitors and legal practices.
+      <em>It routes callers by matter type, captures the information a fee-earner needs
+      before returning the call, runs a conflict-check prompt, and never offers legal
+      advice — that's for the solicitor, not the software.</em>
+      Built in Limerick. Live on a real line.
+    </p>
+
+    <span class="demo-number__label">Live demo line · Answers 24 hours</span>
+    <a class="demo-number" href="tel:+16617643212" aria-label="Ring the demo">+1 (661) 764-3212</a>
+    <span class="demo-number__caption">Pick "solicitor" — describe a made-up matter, see what it captures before escalating.</span>
+
+    <div class="hero__actions">
+      <a class="btn-primary" href="tel:+16617643212">Ring the demo</a>
+      <a class="btn-secondary" href="/onboard.html?vertical=solicitor">Start onboarding your practice →</a>
+    </div>
+  </section>
+
+  <!-- HOW THE DEMO WORKS -->
+  <section class="editorial" id="how-demo-works" aria-labelledby="how-demo-title">
+    <div class="section-head">
+      <div class="section-num">§ 01 — Demo</div>
+      <h2 id="how-demo-title" class="section-title">How a legal enquiry plays out</h2>
+    </div>
+    <p class="section-dek">
+      Claire answers formally, confirms it's a legal enquiry, hands off to the solicitor AI.
+      The AI identifies matter type, runs a conflict-check prompt, captures the brief facts,
+      and queues the callback into the correct fee-earner's list — never gives legal advice.
+    </p>
+
+    <div class="demo-strip">
+      <div class="demo-strip__prose">
+        <p>
+          <strong>Formal greeting, Irish accent.</strong> "Good afternoon, Hennessy &amp; Byrne
+          solicitors — how may I help?" No upselling, no sales language, no chat. Professional
+          tone matched to the caller's expectation of a law firm.
+        </p>
+        <p>
+          <strong>Matter-type routing.</strong> The AI asks what the call is about — conveyancing,
+          family, personal injury, probate, employment, criminal — and routes to the fee-earner
+          who handles that matter type. Never assumes urgency or triages medically; that's not
+          the AI's job.
+        </p>
+        <p>
+          <strong>Conflict-check prompt.</strong> Captures the caller's name and, if relevant, the
+          other party's name. Warns the caller "we may not be able to act if we already represent
+          another party" — and flags the conflict in the callback brief.
+        </p>
+        <ol class="demo-steps">
+          <li><b>Formal answer</b>Claire, then routed to solicitor AI.</li>
+          <li><b>Matter-type routing</b>Conveyancing / family / PI / probate / employment.</li>
+          <li><b>Conflict-check prompt</b>Names captured for the fee-earner.</li>
+          <li><b>Callback booked</b>Fee-earner rings back within the window promised.</li>
+        </ol>
+      </div>
+
+      <figure class="call-log">
+        <figcaption class="call-log__kicker">Sample · Solicitor · conveyancing</figcaption>
+        <span class="call-log__line"><span class="call-log__time">[10:42:17]</span><span class="call-log__who">Caller</span><span class="call-log__text">"Hi, I'm buying a house and I need a solicitor."</span></span>
+        <span class="call-log__line"><span class="call-log__time">[10:42:21]</span><span class="call-log__who call-log__who--ai">Sol.&nbsp;AI</span><span class="call-log__text">"Certainly — conveyancing. Who is the seller, and what's the approximate purchase price? I'll pass it to Ms. Byrne for a callback this afternoon."</span></span>
+        <span class="call-log__line"><span class="call-log__time">[10:42:34]</span><span class="call-log__who">Caller</span><span class="call-log__text">"Seller is a Mr. Gerard O'Reilly. Price around €320,000."</span></span>
+        <span class="call-log__line"><span class="call-log__time">[10:42:41]</span><span class="call-log__who call-log__who--ai">Sol.&nbsp;AI</span><span class="call-log__text">"Understood. Ms. Byrne will ring you back before 5pm today. Is +353 87&nbsp;***&nbsp;**42 the best number?"</span></span>
+        <span class="call-log__line"><span class="call-log__time">[10:42:52]</span><span class="call-log__who">Caller</span><span class="call-log__text">"Yes, that's grand."</span></span>
+        <span class="call-log__line" style="margin-top:12px;"><span class="call-log__time">&nbsp;duration&nbsp;</span><span style="color:var(--ink);font-weight:600;">00:00:48</span><span class="call-log__time">&nbsp;&nbsp;fee-earner SMS&nbsp;</span><span style="color:var(--ink);font-weight:600;">delivered +0:22</span></span>
+      </figure>
+    </div>
+  </section>
+
+  <!-- WHAT IT HANDLES — solicitor -->
+  <section class="editorial" id="handles" aria-labelledby="handles-title">
+    <div class="section-head">
+      <div class="section-num">§ 02 — Capabilities</div>
+      <h2 id="handles-title" class="section-title">What it handles for a legal practice</h2>
+    </div>
+    <p class="section-dek">
+      Six practice-specific jobs, all firmly inside the lines. The AI answers, routes,
+      captures, and escalates. It never advises. The line between receptionist and
+      solicitor is not crossed.
+    </p>
+
+    <div class="handles-grid">
+      <article class="handles-item">
+        <div class="handles-item__num">I — Matter routing</div>
+        <h3 class="handles-item__title">Matter-type to fee-earner</h3>
+        <p>
+          Conveyancing, family, personal injury, probate, employment, criminal, commercial,
+          wills. Each mapped to the right partner or associate, with their preferred callback
+          window honoured (e.g. "PI enquiries go to Mr. Hennessy after 2pm only").
+        </p>
+      </article>
+
+      <article class="handles-item">
+        <div class="handles-item__num">II — Conflict-check</div>
+        <h3 class="handles-item__title">Conflict prompt, not check</h3>
+        <p>
+          Captures the caller's name and the other party's name before booking the callback.
+          Sends that brief to the fee-earner before the call — they run the actual conflict
+          check in the PMS. The AI never pretends to resolve a conflict itself.
+        </p>
+      </article>
+
+      <article class="handles-item">
+        <div class="handles-item__num">III — No advice</div>
+        <h3 class="handles-item__title">Never gives legal advice</h3>
+        <p>
+          Hard-coded refusal on "what should I do?" "am I entitled to?" "can I sue them?"
+          Response: "That's a question for the solicitor — let me take a few details and
+          Ms. Byrne will ring you back." Liability surface stays at zero.
+        </p>
+      </article>
+
+      <article class="handles-item">
+        <div class="handles-item__num">IV — Missed calls</div>
+        <h3 class="handles-item__title">Missed-call text-back (60s)</h3>
+        <p>
+          Every missed call gets an SMS within sixty seconds — "Sorry we missed you. Best time
+          to ring you back is?" Captures the window before the caller rings the next firm on
+          their shortlist.
+        </p>
+      </article>
+
+      <article class="handles-item">
+        <div class="handles-item__num">V — Existing matter</div>
+        <h3 class="handles-item__title">Existing-matter recognition</h3>
+        <p>
+          Existing clients get routed by Caller-ID to their fee-earner directly, skipping the
+          matter-type question. Confidentiality-first: the AI never reads matter details out;
+          it just routes the call.
+        </p>
+      </article>
+
+      <article class="handles-item">
+        <div class="handles-item__num">VI — Weekly report</div>
+        <h3 class="handles-item__title">Monday partner summary</h3>
+        <p>
+          Email to the managing partner: new enquiries by matter type, conversion from enquiry
+          to instruction (where you track it), most common matter keywords, average callback
+          response time. Two minutes to read. No dashboards.
+        </p>
+      </article>
+    </div>
+  </section>
+
+  <!-- DEPTH — solicitor -->
+  <section class="editorial" id="solicitor-detail" aria-labelledby="solicitor-detail-title">
+    <div class="section-head">
+      <div class="section-num">§ 03 — Depth</div>
+      <h2 id="solicitor-detail-title" class="section-title">Built for Irish legal practice specifically</h2>
+    </div>
+    <p class="section-dek">
+      Generic AI receptionists are dangerous in a legal setting — they volunteer advice,
+      create implied retainers, or cross confidentiality lines. CallMeIE's solicitor AI is
+      designed to be a very disciplined receptionist: polite, precise, and silent where
+      silence is the only safe answer.
+    </p>
+
+    <article class="vertical">
+      <aside class="vertical__label"><b>01</b>Silence</aside>
+      <div class="vertical__body">
+        <h3 class="vertical__head">Where silence is the answer</h3>
+        <p>
+          The AI refuses — politely — to answer questions that belong to a solicitor. "Can I sue
+          them?" "Am I entitled to legal aid?" "Is this a case?" all get the same response: a firm
+          redirect to a callback with the fee-earner. No filler opinions, no "I'm just an AI but…",
+          no chat.
+        </p>
+        <div class="qa">
+          <div class="qa__row"><div class="qa__tag">Caller</div><div class="qa__text">"Do I have a case if a lad hit me with his van?"</div></div>
+          <div class="qa__row"><div class="qa__tag">Sol. AI</div><div class="qa__text qa__text--a">That's a question for Mr. Hennessy — he specialises in PI. I'll take your name and the date of the accident, and he'll ring you back this afternoon with an honest answer.</div></div>
+        </div>
+      </div>
+    </article>
+
+    <article class="vertical">
+      <aside class="vertical__label"><b>02</b>Conflicts</aside>
+      <div class="vertical__body">
+        <h3 class="vertical__head">Conflict prompts — done at the door</h3>
+        <p>
+          Before accepting a callback booking, the AI captures the other party's name and flags
+          it to the fee-earner before the callback happens. If the PMS shows a conflict, the
+          fee-earner calls back to decline and refer — before the caller has shared anything
+          privileged. This is the legal profession's "first minute" handled correctly.
+        </p>
+        <figure class="call-log">
+          <figcaption class="call-log__kicker">Sample · Solicitor · potential conflict</figcaption>
+          <span class="call-log__line"><span class="call-log__time">[14:03:18]</span><span class="call-log__who">Caller</span><span class="call-log__text">"I want to start a dispute with a former employer."</span></span>
+          <span class="call-log__line"><span class="call-log__time">[14:03:24]</span><span class="call-log__who call-log__who--ai">Sol.&nbsp;AI</span><span class="call-log__text">"Understood — employment. Before I book the callback: what's the name of the employer? We check for conflicts before the call, not during."</span></span>
+          <span class="call-log__line"><span class="call-log__time">[14:03:39]</span><span class="call-log__who">Caller</span><span class="call-log__text">"Munster Logistics."</span></span>
+          <span class="call-log__line"><span class="call-log__time">[14:03:44]</span><span class="call-log__who call-log__who--ai">Sol.&nbsp;AI</span><span class="call-log__text">"Noted. Ms. Byrne will check and ring you back either way within the hour — either to take the matter or to refer you on."</span></span>
+        </figure>
+      </div>
+    </article>
+
+    <article class="vertical">
+      <aside class="vertical__label"><b>03</b>Confidential</aside>
+      <div class="vertical__body">
+        <h3 class="vertical__head">Confidentiality by default</h3>
+        <p>
+          Existing-client calls get routed to their fee-earner by Caller-ID or by a polite "what
+          firm file is this regarding?" The AI never reads matter details, never confirms case
+          status, never discusses fees. It's a routing layer. Everything substantive stays between
+          client and solicitor.
+        </p>
+      </div>
+    </article>
+  </section>
+
+  <!-- PRICING -->
+  <section class="editorial" id="pricing" aria-labelledby="pricing-title">
+    <div class="section-head">
+      <div class="section-num">§ 04 — Pricing</div>
+      <h2 id="pricing-title" class="section-title">Three tiers. One setup fee. No lock-in.</h2>
+    </div>
+    <p class="section-dek">
+      Most legal practices land on <strong>Professional</strong> — matter-type routing, missed-call
+      text-back, 24/7 cover. Starter works for sole practitioners doing business-hours-only
+      retainer work. Growth adds PMS integration (Keyhouse, OSG, etc).
+    </p>
+
+    <div class="pricing">
+      <article class="tier">
+        <div class="tier__kicker">I — Starter</div>
+        <h3 class="tier__name">Starter</h3>
+        <div class="tier__price">€149<span>/ month</span></div>
+        <div class="tier__setup">+ €297 setup · business hours only</div>
+        <ul class="tier__list">
+          <li>AI receptionist, Irish accent</li>
+          <li>Basic matter-type routing</li>
+          <li>Business-hours coverage only</li>
+          <li>Weekly email report</li>
+          <li>Up to 200 calls / month</li>
+          <li>Month-to-month, cancel anytime</li>
+        </ul>
+        <a class="tier__cta" href="/onboard.html?vertical=solicitor&amp;tier=starter">Start with Starter →</a>
+      </article>
+
+      <article class="tier tier--featured">
+        <div class="tier__kicker">II — Professional · recommended for legal</div>
+        <h3 class="tier__name">Professional</h3>
+        <div class="tier__price">€249<span>/ month</span></div>
+        <div class="tier__setup">+ €297 setup · 24/7 cover</div>
+        <ul class="tier__list">
+          <li>Everything in Starter</li>
+          <li>Full matter-type routing</li>
+          <li>Conflict-check prompts</li>
+          <li>Missed-call text-back (60s)</li>
+          <li>Existing-client Caller-ID routing</li>
+          <li>Up to 500 calls / month</li>
+        </ul>
+        <a class="tier__cta" href="/onboard.html?vertical=solicitor&amp;tier=professional">Choose Professional →</a>
+      </article>
+
+      <article class="tier">
+        <div class="tier__kicker">III — Growth</div>
+        <h3 class="tier__name">Growth</h3>
+        <div class="tier__price">€347<span>/ month</span></div>
+        <div class="tier__setup">+ €497 setup · 3-month minimum</div>
+        <ul class="tier__list">
+          <li>Everything in Professional</li>
+          <li>Keyhouse / OSG / proclaim PMS sync</li>
+          <li>Custom matter-type taxonomy</li>
+          <li>Fee-earner rota awareness</li>
+          <li>Monthly optimisation call (30m)</li>
+          <li>Up to 1,500 calls / month</li>
+        </ul>
+        <a class="tier__cta" href="/onboard.html?vertical=solicitor&amp;tier=growth">Move to Growth →</a>
+      </article>
+    </div>
+
+    <div class="enterprise">
+      <h3 class="enterprise__name">Multi-partner / multi-office</h3>
+      <p class="enterprise__body">
+        Three or more partners, multiple offices, custom PMS integrations, named engineer, SLA
+        in writing. Quoted on scope.
+      </p>
+      <div class="enterprise__price">Quoted · mail callmeie@proton.me</div>
+    </div>
+  </section>
+
+  <!-- COST COMPARISON — solicitor numbers -->
+  <section class="editorial" id="cost" aria-labelledby="cost-title">
+    <div class="section-head">
+      <div class="section-num">§ 05 — Arithmetic</div>
+      <h2 id="cost-title" class="section-title">A legal practice versus a legal secretary</h2>
+    </div>
+    <p class="section-dek">
+      Worked for a two-partner general practice in the mid-west. Figures use Irish legal-secretary
+      ranges for 2026 plus observed new-enquiry conversion rates from practices running missed-call
+      text-back.
+    </p>
+
+    <div class="cost-compare">
+      <div class="cost-col">
+        <div class="cost-col__kicker">Option A</div>
+        <h3 class="cost-col__head">Part-time legal secretary</h3>
+        <p>
+          25 hours a week at typical Irish legal-secretary rates, plus PRSI, auto-enrolment, holiday
+          accrual. Covers 9–2 typically. After 2pm — phones to voicemail.
+        </p>
+        <div class="cost-row"><span class="cost-row__label">Hourly rate (€16–€22/hr)</span><span class="cost-row__value">€16.00 – €22.00</span></div>
+        <div class="cost-row"><span class="cost-row__label">25 hrs × 4.33 wks</span><span class="cost-row__value">€1,733 – €2,382</span></div>
+        <div class="cost-row"><span class="cost-row__label">+ Employer PRSI (11.15%)</span><span class="cost-row__value">€193 – €266</span></div>
+        <div class="cost-row"><span class="cost-row__label">+ Auto-enrolment</span><span class="cost-row__value">€26 – €36</span></div>
+        <div class="cost-row"><span class="cost-row__label">+ Holiday accrual (8.7%)</span><span class="cost-row__value">€151 – €207</span></div>
+        <div class="cost-row"><span class="cost-row__label"><strong>Total monthly</strong></span><span class="cost-row__value">€2,103 – €2,891</span></div>
+        <p class="cost-note">
+          25 hours a week. Out-of-hours enquiries rely on the partner's mobile or get missed.
+        </p>
+      </div>
+
+      <div class="cost-col">
+        <div class="cost-col__kicker">Option B</div>
+        <h3 class="cost-col__head">CallMeIE — Professional tier</h3>
+        <p>
+          24/7 answering. Matter-type routing. Conflict-check prompts. Missed-call text-back.
+          Does not replace the legal secretary — covers the hours she can't, and captures the
+          enquiries that would otherwise ring out.
+        </p>
+        <div class="cost-row"><span class="cost-row__label">Professional (recommended)</span><span class="cost-row__value">€249 / month</span></div>
+        <div class="cost-row"><span class="cost-row__label">Setup (one-time)</span><span class="cost-row__value">€297</span></div>
+        <div class="cost-row"><span class="cost-row__label">Coverage</span><span class="cost-row__value">24 / 7 / 365</span></div>
+        <div class="cost-row"><span class="cost-row__label">Avg. new-enquiry value (conv)</span><span class="cost-row__value">€1,800 – €4,500</span></div>
+        <div class="cost-row"><span class="cost-row__label">Recovered enquiries / month</span><span class="cost-row__value">~2 – 4 instructions</span></div>
+        <div class="cost-row"><span class="cost-row__label"><strong>Implied fee uplift</strong></span><span class="cost-row__value">€3,600+ per month</span></div>
+        <p class="cost-note">
+          Roughly one-tenth the cost of a part-time secretary. A single new conveyancing
+          instruction recovered per year pays for the tier seven times over. Not a replacement
+          for the secretary — a complement covering the hours the office is closed.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- IRISH SPECIFICS -->
+  <section class="editorial" id="irish" aria-labelledby="irish-title">
+    <div class="section-head">
+      <div class="section-num">§ 06 — Irish</div>
+      <h2 id="irish-title" class="section-title">Built for Ireland, not for "UK &amp; Ireland"</h2>
+    </div>
+    <p class="section-dek">
+      Legal practice is jurisdictional. A global AI receptionist conflating Ireland with England
+      and Wales is dangerous — different professional code, different court system, different
+      legal aid structure. CallMeIE's solicitor AI is tuned to Ireland.
+    </p>
+
+    <ul class="irish-list">
+      <li><span>Law Society code</span><span>Boundaries aligned to Law Society of Ireland professional code — no advice, no implied retainer, no confidentiality breach.</span></li>
+      <li><span>Irish matter types</span><span>Conveyancing with s.72 / s.46 awareness · PI with Book of Quantum pre-2020 and Personal Injuries Guidelines post-2021 · probate / administration of estates · employment under WRC routing.</span></li>
+      <li><span>Legal aid</span><span>Knows when to mention the Legal Aid Board for civil matters and whether the practice accepts legal aid certificates.</span></li>
+      <li><span>Courts</span><span>District · Circuit · High · Court of Appeal · Supreme. Routes matter queries to the practice-appropriate level.</span></li>
+      <li><span>Bank holidays</span><span>St. Patrick's Day · Easter Monday · May / June / August Bank Holidays · October · Christmas · St. Stephen's Day. Auto-respects your closure calendar.</span></li>
+      <li><span>Accents tested</span><span>Munster, Ulster, Leinster, Connacht — tested against real caller recordings.</span></li>
+      <li><span>Gaeilge available</span><span>Opt-in for Gaeltacht-area practices. Claire can greet, route and confirm as Gaeilge, or bilingually.</span></li>
+    </ul>
+  </section>
+
+  <!-- FOUNDER -->
+  <section class="editorial" id="founder" aria-labelledby="founder-title">
+    <div class="section-head">
+      <div class="section-num">§ 07 — Founder</div>
+      <h2 id="founder-title" class="section-title">Why this exists</h2>
+    </div>
+
+    <div class="founder">
+      <p class="founder__body">
+        I built CallMeIE because Irish legal practices lose instructions every day to firms
+        whose phone is answered on the third ring. The caller doesn't leave a message, they
+        ring the next firm on their shortlist. <em>This is the honest alternative: a system
+        that answers in a formal Irish accent, never gives advice, captures what the fee-earner
+        needs, and hands off the moment the call needs a solicitor.</em> Operated from Limerick.
+        Priced so a sole-practitioner can justify it without a spreadsheet. No lock-in, no
+        minimum seats, no selling of caller data.
+      </p>
+      <div class="founder__sign">
+        <div class="founder__signature">CallMeIE</div>
+        <div class="founder__caption">
+          <strong>Owner · CallMeIE</strong>
+          Limerick, Ireland · Operated in-house<br>
+          Built on Vapi, Twilio, and FastAPI on Render
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- FAQ — solicitor -->
+  <section class="editorial" id="faq" aria-labelledby="faq-title">
+    <div class="section-head">
+      <div class="section-num">§ 08 — FAQ</div>
+      <h2 id="faq-title" class="section-title">Legal-practice questions we actually get</h2>
+    </div>
+    <p class="section-dek">
+      Written as they're asked — by managing partners and office managers.
+      Answered honestly, including where this system is not the right fit.
+    </p>
+
+    <div class="faq-list">
+      <details>
+        <summary>
+          <span class="faq-num">01</span>
+          <span>Will it ever give legal advice by accident?</span>
+          <span class="faq-toggle"></span>
+        </summary>
+        <div class="faq-body">
+          <p>
+            No. The AI has a hard-coded refusal pattern on advice-seeking questions — "can I sue,"
+            "am I entitled to," "what should I do," "is this a case." The response is always: a
+            polite redirect to the solicitor and a request for the basic facts needed to book the
+            callback. We tested this against 400+ adversarial prompts before go-live.
+          </p>
+          <p>
+            Every response is logged and reviewable. If you spot even one instance of the AI
+            straying near advice, email the transcript and we'll tighten the prompt within 24
+            hours.
+          </p>
+        </div>
+      </details>
+
+      <details>
+        <summary>
+          <span class="faq-num">02</span>
+          <span>Does it integrate with Keyhouse / OSG / Proclaim?</span>
+          <span class="faq-toggle"></span>
+        </summary>
+        <div class="faq-body">
+          <p>
+            On <strong>Growth</strong>, yes — we integrate with the common Irish legal PMS systems
+            via their APIs for existing-client lookup, matter routing, and fee-earner rota sync.
+            The AI reads client status only; it never reads matter details, fees, or notes.
+          </p>
+          <p>
+            On Starter / Professional, the AI routes on matter type without PMS knowledge. Works
+            fine for small practices where fee-earner specialisations are stable.
+          </p>
+        </div>
+      </details>
+
+      <details>
+        <summary>
+          <span class="faq-num">03</span>
+          <span>How does the conflict-check prompt work?</span>
+          <span class="faq-toggle"></span>
+        </summary>
+        <div class="faq-body">
+          <p>
+            Before booking the callback, the AI captures the other party's name and any additional
+            identifiers (company name for commercial matters, for example). That information goes
+            into the fee-earner's callback brief <em>before</em> the fee-earner rings back.
+          </p>
+          <p>
+            The actual conflict check happens in the PMS, by a human, before the callback. If a
+            conflict exists, the fee-earner rings back either to politely decline and refer, or
+            to explain the limitation — before any privileged information has been shared.
+          </p>
+        </div>
+      </details>
+
+      <details>
+        <summary>
+          <span class="faq-num">04</span>
+          <span>What about urgent after-hours calls — injunctions, arrests?</span>
+          <span class="faq-toggle"></span>
+        </summary>
+        <div class="faq-body">
+          <p>
+            For declared urgencies (caller uses "arrested," "injunction," "emergency," "Garda
+            station"), the AI forwards to the duty partner's mobile immediately, with an SMS
+            summary. The partner chooses whether to take the call live or let it route to their
+            voicemail.
+          </p>
+          <p>
+            For non-urgent after-hours (general enquiries, civil matters), the AI takes the brief
+            and books the callback for the next morning. The partner isn't woken unless they've
+            said they want to be.
+          </p>
+        </div>
+      </details>
+
+      <details>
+        <summary>
+          <span class="faq-num">05</span>
+          <span>Can I keep my existing practice number?</span>
+          <span class="faq-toggle"></span>
+        </summary>
+        <div class="faq-body">
+          <p>
+            Yes. We sit behind your existing number. Set call forwarding on busy / no-answer /
+            after-hours from your practice line to a CallMeIE number — standard carrier feature.
+            The number on the letterhead is unchanged.
+          </p>
+          <p>
+            Full porting is available on Growth — we transfer via ComReg, takes about ten working
+            days.
+          </p>
+        </div>
+      </details>
+
+      <details>
+        <summary>
+          <span class="faq-num">06</span>
+          <span>GDPR + privilege — how is call data handled?</span>
+          <span class="faq-toggle"></span>
+        </summary>
+        <div class="faq-body">
+          <p>
+            Call audio: 30 days, then deleted. Transcripts: 90 days, then deleted. Legal-privileged
+            content is never retained — if a caller starts disclosing matter detail, the AI politely
+            redirects back to "let me just take your number and the fee-earner will ring back."
+            Privilege is preserved by getting the substantive conversation out of the AI layer
+            entirely.
+          </p>
+          <p>
+            DPA available on request for all tiers — we know legal practices need one signed before
+            go-live. Standard processor terms otherwise. Caller erasure requests honoured within 72
+            hours.
+          </p>
+        </div>
+      </details>
+
+      <details>
+        <summary>
+          <span class="faq-num">07</span>
+          <span>Cancellation — am I locked in?</span>
+          <span class="faq-toggle"></span>
+        </summary>
+        <div class="faq-body">
+          <p>
+            Starter and Professional are month-to-month. Growth has a three-month minimum because
+            the PMS integration is non-trivial to unwind. After that, Growth is also month-to-month.
+            Cancel any time by email before the next billing date.
+          </p>
+        </div>
+      </details>
+    </div>
+  </section>
+
+</div><!-- /.page -->
+
+<section class="editorial" style="padding:clamp(48px,6vw,80px) 0;">
+  <div class="section-head">
+    <div class="section-num">Custom</div>
+    <h2 class="section-title" style="font-size:clamp(24px,3vw,38px);">Your business isn't dental, motor, salon, or legal?</h2>
+  </div>
+  <p class="section-dek">
+    These four are the pre-configured samples. The engine underneath works for any Irish SME —
+    plumbers, vets, physios, opticians, restaurants, florists, trades. Ring the demo, describe your
+    business, and we'll scope a custom setup in under a week. First consultation free.
+  </p>
+</section>
+
+<section class="final-cta" aria-labelledby="final-cta-title">
+  <div class="page">
+    <div class="final-cta__kicker">The demo is a real solicitor instance</div>
+    <h2 id="final-cta-title" class="final-cta__headline">Try to get it to give advice</h2>
+    <a class="final-cta__number" href="tel:+16617643212">Ring +1 (661) 764-3212</a>
+    <p class="final-cta__sub">
+      Takes ninety seconds. Pick "solicitor" — describe a made-up matter, try asking "can I sue,"
+      watch the AI refuse politely every time. Liability surface at zero.
+    </p>
+    <a class="final-cta__secondary" href="/onboard.html?vertical=solicitor">Start onboarding your practice →</a>
+  </div>
+</section>
+
+<footer role="contentinfo">
+  <div class="page">
+    <div class="footer-grid">
+      <div class="footer-col">
+        <h4>CallMeIE · Solicitors</h4>
+        <p>AI phone receptionist for Irish solicitors and legal practices. Built &amp; operated from Limerick, Ireland.</p>
+        <p>Stack: Vapi · Twilio · Google Calendar · FastAPI on Render.</p>
+        <p>Email: <a href="mailto:callmeie@proton.me" class="mono-val">callmeie@proton.me</a></p>
+        <p>Demo line: <span class="mono-val">+1 (661) 764-3212</span></p>
+      </div>
+      <div class="footer-col">
+        <h4>Other verticals</h4>
+        <ul>
+          <li><a href="/dental.html">Dental</a></li>
+          <li><a href="/motor-factors.html">Motor Factors</a></li>
+          <li><a href="/salon.html">Hair Salon</a></li>
+          <li><a href="/">All verticals</a></li>
+        </ul>
+      </div>
+      <div class="footer-col">
+        <h4>Product</h4>
+        <ul>
+          <li><a href="#how-demo-works">Demo</a></li>
+          <li><a href="#handles">Capabilities</a></li>
+          <li><a href="#pricing">Pricing</a></li>
+          <li><a href="/onboard.html?vertical=solicitor">Onboarding</a></li>
+        </ul>
+      </div>
+      <div class="footer-col">
+        <h4>Legal</h4>
+        <ul>
+          <li><a href="/privacy.html">Privacy notice</a></li>
+          <li><a href="/terms.html">Terms of service</a></li>
+          <li><a href="mailto:callmeie@proton.me?subject=GDPR%20data%20request">GDPR request</a></li>
+          <li><a href="mailto:callmeie@proton.me?subject=DPA%20request">DPA on request</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="footer-legal">
+      <span class="footer-legal__wordmark">CALLMEIE &mdash; LIMERICK</span>
+      <span>© 2026 CallMeIE. All rights reserved.</span>
+      <span>Built in Limerick &nbsp;·&nbsp; Ring +1 (661) 764-3212</span>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>
