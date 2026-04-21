@@ -197,3 +197,11 @@ For each active client, report to owner:
 - Suggestions: "Client X has high call volume — consider upgrading their plan"
 
 **Upgrade path:** Once first client revenue: own API credits + run hourly health checks + send weekly digest automatically.
+
+---
+
+## Operational state
+
+**Canonical infrastructure reference:** `INFRA.md` in this repo.
+Every secret location, every service, every deploy endpoint, every runbook lives there.
+When anything changes in infra, update INFRA.md in the same commit — no exceptions.
