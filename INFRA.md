@@ -440,8 +440,25 @@ Shipped: custom domain cascade, sample forms, Business Profile schema, Day 4 rep
 
 Bugs fixed: PRAGMA (SQLite-only) + row[0] (dict_row) both wrapped in dialect guards.
 
+**2026-04-21 -- trades swap (session tail):**
+
+User said *"I know a lot of people in rubbish removal, man-with-a-van, powerwashing, plumbers, carpenters, electricians etc."* -- swapped two samples to cover the trades/sole-trader audience:
+
+| # | Before | After | Aesthetic |
+|---|---|---|---|
+| 06 | `06-audiologist-aurora` · Hear Clear Audiology · Aurora Calm | `06-trade-pro-dark-oled` · Murphy Plumbing & Heating · Dark OLED · Industrial | amber #FFB547 warmth on black, RGI/OFTEC creds |
+| 10 | `10-aesthetic-clinic-aurora-luxe` · Molyneux Aesthetics · Aurora Luxe | `10-local-services-brutalism` · Clear-Out Limerick · Mondrian Brutalism | primary colours, Archivo Black, WCP-2021-00472 |
+
+Executed by two parallel agents (skill dispatch per `feedback_parallel-skill-dispatch.md`) -- not one template × recolour. Atomic migration via `scripts/swap-trade-samples.py` updated `_owl-nav.js`, `_owl-form.js`, `provision-sample-sites.py`, and `interactive-gallery.html` in one pass.
+
+New admin tokens in vault:
+- `OWL_ADMIN_TOKEN_MURPHY_PLUMBING=REVOKED_2026-04-29_AUD-001`
+- `OWL_ADMIN_TOKEN_CLEAR_OUT_LIMERICK=REVOKED_2026-04-29_AUD-001`
+
+Old tokens suffixed `_RETIRED` in vault; `hear-clear-demo` + `molyneux-aesthetics-demo` rows set `status='off'` in Postgres (paper trail kept, admin URLs 401 cleanly). PNGs re-rendered at 2x retina (2880×1800) via Playwright.
+
 Deferred backlog:
-- P4: template-ise 9 more industry samples -- on-demand per vertical at signup time (not upfront).
+- P4: template-ise 8 more industry samples (was 9; 2 now live as trades) -- on-demand per vertical at signup time (not upfront).
 - P5: Payload CMS on Coolify -- when first Pro client signs.
 - One-time manual: add OWL_OWNER_TOKEN to GitHub scruge1/CallMeIE Actions secrets so monthly-owl-digest.yml can fire.
 
