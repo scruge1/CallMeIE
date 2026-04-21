@@ -2236,6 +2236,155 @@ def owl_health(site_id: str) -> JSONResponse:
     return JSONResponse({"ok": True, "site_id": site_id, "live_url": site["live_url"]})
 
 
+# ---------------- Stripe webhook -----------------------------------------
+# Handles: checkout.session.completed, customer.subscription.*,
+# invoice.paid, invoice.payment_failed. Signature verified against
+# OWL_STRIPE_WEBHOOK_SECRET env var (set in Render Environment).
+
+import hashlib as _hashlib
+import hmac as _hmac
+import time as _time
+
+OWL_STRIPE_WEBHOOK_SECRET = os.environ.get("OWL_STRIPE_WEBHOOK_SECRET", "").strip()
+
+
+def _owl_init_payments_table() -> None:
+    with get_db() as conn:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS owl_payments (
+                id                INTEGER PRIMARY KEY AUTOINCREMENT,
+                stripe_event_id   TEXT UNIQUE,
+                event_type        TEXT NOT NULL,
+                ts                TEXT NOT NULL DEFAULT (datetime('now')),
+                site_id           TEXT,
+                customer_id       TEXT,
+                subscription_id   TEXT,
+                product_key       TEXT,
+                amount            INTEGER,
+                currency          TEXT,
+                status            TEXT,
+                payload_json      TEXT
+            )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_owl_pay_site ON owl_payments(site_id, ts)")
+
+
+_owl_init_payments_table()
+
+
+def _owl_verify_stripe_sig(payload: bytes, sig_header: str, secret: str, tolerance_seconds: int = 300) -> bool:
+    """Stripe signature check per their spec — no stripe-python dep needed."""
+    if not secret or not sig_header:
+        return False
+    parts = dict(p.split("=", 1) for p in sig_header.split(",") if "=" in p)
+    t = parts.get("t", "")
+    v1 = parts.get("v1", "")
+    if not t or not v1:
+        return False
+    try:
+        t_int = int(t)
+    except ValueError:
+        return False
+    if abs(_time.time() - t_int) > tolerance_seconds:
+        return False  # replay protection
+    signed = f"{t}.{payload.decode('utf-8', errors='replace')}"
+    expected = _hmac.new(secret.encode(), signed.encode(), _hashlib.sha256).hexdigest()
+    return _hmac.compare_digest(expected, v1)
+
+
+# Map Stripe product metadata.owl_key -> care_tier column value on owl_sites
+_OWL_KEY_TO_CARE_TIER = {
+    "care-essential": "essential",
+    "care-growth": "growth",
+    "care-concierge": "concierge",
+}
+
+
+@app.post("/owl/stripe/webhook")
+async def owl_stripe_webhook(request: Request, background_tasks: BackgroundTasks) -> JSONResponse:
+    """Stripe webhook receiver. Verifies signature, dedupes by event id,
+    logs to owl_payments, and updates owl_sites.care_tier on subscription
+    lifecycle events."""
+    payload = await request.body()
+    sig = request.headers.get("stripe-signature", "")
+    if not _owl_verify_stripe_sig(payload, sig, OWL_STRIPE_WEBHOOK_SECRET):
+        raise HTTPException(status_code=401, detail="invalid signature")
+
+    try:
+        event = json.loads(payload.decode("utf-8"))
+    except Exception:
+        raise HTTPException(status_code=400, detail="invalid JSON")
+
+    event_id = event.get("id", "")
+    event_type = event.get("type", "")
+    obj = event.get("data", {}).get("object", {}) or {}
+
+    # Extract common fields (tolerant — many missing fields across event types)
+    customer_id = obj.get("customer") or ""
+    subscription_id = obj.get("subscription") or (obj.get("id") if event_type.startswith("customer.subscription") else "")
+    amount = obj.get("amount_total") or obj.get("amount_paid") or obj.get("amount") or 0
+    currency = obj.get("currency") or ""
+    status = obj.get("status") or ""
+
+    # Metadata on the Checkout Session (one-off payments) or on the Subscription's item price
+    meta = obj.get("metadata") or {}
+    product_key = meta.get("owl_key") or ""
+    site_id = meta.get("site_id") or ""
+
+    # For subscription events, the product_key lives on the first item's price.lookup_key
+    if event_type.startswith("customer.subscription") and not product_key:
+        items = (obj.get("items") or {}).get("data") or []
+        if items:
+            price = items[0].get("price") or {}
+            product_key = price.get("lookup_key") or (price.get("metadata") or {}).get("owl_key") or ""
+
+    # Dedupe: the UNIQUE constraint on stripe_event_id handles accidental replays
+    try:
+        with get_db() as conn:
+            conn.execute(
+                """INSERT INTO owl_payments
+                    (stripe_event_id, event_type, site_id, customer_id, subscription_id,
+                     product_key, amount, currency, status, payload_json)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (event_id, event_type, site_id, customer_id, subscription_id,
+                 product_key, amount, currency, status,
+                 json.dumps(obj, ensure_ascii=False)[:8000]),
+            )
+    except sqlite3.IntegrityError:
+        return JSONResponse({"ok": True, "deduped": True})
+
+    # Subscription lifecycle -> update owl_sites.care_tier if site_id was attached
+    care_tier_map = None
+    if event_type in ("customer.subscription.created", "customer.subscription.updated"):
+        # Active or trialing = care plan is "on"
+        if status in ("active", "trialing"):
+            # product_key is one of care-essential / care-growth / care-concierge
+            # strip the monthly/yearly suffix for the site_tier mapping
+            base = product_key.rsplit("-", 1)[0] if "-monthly" in product_key or "-yearly" in product_key else product_key
+            care_tier_map = _OWL_KEY_TO_CARE_TIER.get(base)
+    elif event_type == "customer.subscription.deleted":
+        care_tier_map = "none"
+
+    if site_id and care_tier_map:
+        with get_db() as conn:
+            conn.execute(
+                "UPDATE owl_sites SET care_tier = ? WHERE site_id = ?",
+                (None if care_tier_map == "none" else care_tier_map, site_id),
+            )
+
+    # Owner SMS on notable events
+    if event_type == "checkout.session.completed":
+        sms = f"OwlStudio Stripe * paid * {product_key} * {amount/100:.0f} {currency} * cust {customer_id[:12]}"
+        if OWNER_NUMBER:
+            background_tasks.add_task(send_sms, OWNER_NUMBER, sms)
+    elif event_type == "invoice.payment_failed":
+        sms = f"OwlStudio Stripe * PAYMENT FAILED * {product_key or subscription_id[:12]} * cust {customer_id[:12]}"
+        if OWNER_NUMBER:
+            background_tasks.add_task(send_sms, OWNER_NUMBER, sms)
+
+    return JSONResponse({"ok": True, "event_type": event_type, "product_key": product_key})
+
+
 if __name__ == "__main__":
     import uvicorn
     port = int(os.environ.get("PORT", 8080))
