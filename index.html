@@ -3,17 +3,17 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>CallMeIE — AI Phone Receptionist for Irish SMBs · Limerick</title>
+<title>CallMeIE — AI Phone Receptionist for Irish SMEs · Limerick</title>
 <meta name="description" content="CallMeIE is an AI phone receptionist for Irish dental practices, motor factors, hair salons, and solicitors. Built in Limerick. Handles bookings, missed-call text-back, after-hours cover. From €149/mo." />
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,700;1,9..144,400;1,9..144,500&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
 
 <style>
   /* CallMeIE — Brutalism Editorial × Telephonic Mono
      Paper cream + deep ink + single burgundy accent.
-     Archivo Black display · Fraunces body · JetBrains Mono for phone numbers, timestamps, prices.
+     Archivo Black display · IBM Plex Sans body · JetBrains Mono for phone numbers, timestamps, prices.
      The phone number IS the hero visual. */
 
   :root {
@@ -33,9 +33,8 @@
   html { -webkit-text-size-adjust: 100%; }
   body {
     margin: 0; background: var(--paper); color: var(--ink);
-    font-family: 'Fraunces', Georgia, 'Times New Roman', serif;
-    font-optical-sizing: auto;
-    font-variation-settings: "opsz" 36, "SOFT" 30;
+    font-family: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-feature-settings: "ss01", "cv11";
     font-size: 18px; line-height: 1.58;
     -webkit-font-smoothing: antialiased;
   }
@@ -113,12 +112,12 @@
     margin: 0 0 24px; color: var(--ink); max-width: 14ch;
   }
   .hero__sub {
-    font-family: 'Fraunces', Georgia, serif;
-    font-style: italic; font-weight: 400;
+    font-family: 'IBM Plex Sans', system-ui, sans-serif;
+    font-weight: 400;
     font-size: clamp(18px, 2vw, 24px); line-height: 1.42;
     color: var(--ink-soft); max-width: 620px; margin: 0 0 clamp(36px, 5vw, 56px);
   }
-  .hero__sub em { font-style: normal; font-weight: 500; color: var(--ink); }
+  .hero__sub em { font-style: normal; font-weight: 600; color: var(--ink); }
 
   .demo-number {
     font-family: 'JetBrains Mono', ui-monospace, monospace;
@@ -160,7 +159,7 @@
   }
   .btn-primary:hover { background: var(--burgundy); border-color: var(--burgundy); color: var(--paper); }
   .btn-secondary {
-    font-family: 'Fraunces', serif; font-style: italic;
+    font-family: 'IBM Plex Sans', system-ui, sans-serif; font-weight: 400;
     font-size: 16px; color: var(--ink);
     text-decoration: none; border-bottom: 2px solid var(--ink);
     padding-bottom: 2px;
@@ -189,7 +188,7 @@
     letter-spacing: -0.015em; text-transform: uppercase; margin: 0; color: var(--ink);
   }
   .section-dek {
-    font-family: 'Fraunces', serif; font-style: italic;
+    font-family: 'IBM Plex Sans', system-ui, sans-serif; font-weight: 400;
     font-size: clamp(17px, 1.6vw, 20px); line-height: 1.5;
     color: var(--ink-soft); max-width: var(--measure); margin: 20px 0 0 102px;
   }
@@ -202,7 +201,7 @@
   }
   @media (max-width: 860px) { .demo-strip { grid-template-columns: 1fr; gap: 36px; } }
   .demo-strip__prose p {
-    font-family: 'Fraunces', serif; font-size: 18px; line-height: 1.62;
+    font-family: 'IBM Plex Sans', system-ui, sans-serif; font-size: 18px; line-height: 1.62;
     margin: 0 0 16px; color: var(--ink-soft); max-width: 540px;
   }
   .demo-strip__prose strong { color: var(--ink); font-weight: 600; }
@@ -214,7 +213,7 @@
     counter-increment: demo;
     padding: 14px 0 14px 44px; border-bottom: 1px solid var(--ink);
     position: relative;
-    font-family: 'Fraunces', serif; font-size: 16px; line-height: 1.5; color: var(--ink);
+    font-family: 'IBM Plex Sans', system-ui, sans-serif; font-size: 16px; line-height: 1.5; color: var(--ink);
   }
   .demo-steps li::before {
     content: counter(demo, decimal-leading-zero);
@@ -246,7 +245,7 @@
   .call-log__time { color: var(--ink-muted); margin-right: 10px; }
   .call-log__who { font-weight: 600; color: var(--burgundy); margin-right: 8px; }
   .call-log__who--ai { color: var(--ink); }
-  .call-log__text { color: var(--ink-soft); font-family: 'Fraunces', serif; font-style: italic; font-size: 16px; }
+  .call-log__text { color: var(--ink-soft); font-family: 'IBM Plex Sans', system-ui, sans-serif; font-weight: 400; font-size: 16px; }
 
   /* What it handles — editorial 2-column list */
   .handles-grid {
@@ -280,7 +279,7 @@
     margin: 0 0 12px; color: var(--ink);
   }
   .handles-item p {
-    font-family: 'Fraunces', serif; font-size: 16px; line-height: 1.55;
+    font-family: 'IBM Plex Sans', system-ui, sans-serif; font-size: 16px; line-height: 1.55;
     color: var(--ink-soft); margin: 0; max-width: 480px;
   }
 
@@ -309,7 +308,7 @@
     margin: 0 0 16px; color: var(--ink);
   }
   .vertical__body > p {
-    font-family: 'Fraunces', serif; font-size: 17px; line-height: 1.6;
+    font-family: 'IBM Plex Sans', system-ui, sans-serif; font-size: 17px; line-height: 1.6;
     margin: 0 0 16px; color: var(--ink-soft);
   }
   .qa {
@@ -323,7 +322,7 @@
     color: var(--burgundy); padding-top: 4px;
   }
   .qa__text {
-    font-family: 'Fraunces', serif; font-style: italic; font-size: 16px;
+    font-family: 'IBM Plex Sans', system-ui, sans-serif; font-weight: 400; font-size: 16px;
     line-height: 1.5; color: var(--ink);
   }
   .qa__text--a { font-style: normal; }
@@ -370,7 +369,7 @@
   }
   .tier__list { list-style: none; padding: 0; margin: 0 0 24px; }
   .tier__list li {
-    font-family: 'Fraunces', serif; font-size: 15px; line-height: 1.5;
+    font-family: 'IBM Plex Sans', system-ui, sans-serif; font-size: 15px; line-height: 1.5;
     color: var(--ink-soft); padding: 8px 0;
     border-bottom: 1px dashed rgba(11,10,8,0.2);
   }
@@ -399,7 +398,7 @@
     font-size: clamp(22px, 2.4vw, 30px); text-transform: uppercase; margin: 0;
   }
   .enterprise__body {
-    font-family: 'Fraunces', serif; font-size: 16px; color: var(--ink-soft); line-height: 1.5; margin: 0;
+    font-family: 'IBM Plex Sans', system-ui, sans-serif; font-size: 16px; color: var(--ink-soft); line-height: 1.5; margin: 0;
   }
   .enterprise__price {
     font-family: 'JetBrains Mono', monospace; font-weight: 600;
@@ -437,7 +436,7 @@
     margin: 0 0 18px; color: var(--ink);
   }
   .cost-col p {
-    font-family: 'Fraunces', serif; font-size: 16px; line-height: 1.55;
+    font-family: 'IBM Plex Sans', system-ui, sans-serif; font-size: 16px; line-height: 1.55;
     color: var(--ink-soft); margin: 0 0 14px; max-width: 480px;
   }
   .cost-row {
@@ -448,7 +447,7 @@
   .cost-row__label { color: var(--ink); }
   .cost-row__value { color: var(--ink); font-weight: 600; text-align: right; letter-spacing: 0.02em; }
   .cost-note {
-    font-family: 'Fraunces', serif; font-style: italic; font-size: 14px;
+    font-family: 'IBM Plex Sans', system-ui, sans-serif; font-weight: 400; font-size: 14px;
     color: var(--ink-muted); margin-top: 14px; line-height: 1.5;
   }
 
@@ -469,7 +468,7 @@
     color: var(--burgundy); font-weight: 500;
   }
   .irish-list li > span:last-child {
-    font-family: 'Fraunces', serif; font-size: 16px; color: var(--ink-soft); line-height: 1.5;
+    font-family: 'IBM Plex Sans', system-ui, sans-serif; font-size: 16px; color: var(--ink-soft); line-height: 1.5;
   }
 
   /* Founder statement */
@@ -479,10 +478,9 @@
     text-align: left;
   }
   .founder__body {
-    font-family: 'Fraunces', serif; font-style: italic; font-weight: 400;
+    font-family: 'IBM Plex Sans', system-ui, sans-serif; font-weight: 400;
     font-size: clamp(20px, 2.2vw, 28px); line-height: 1.42;
     color: var(--ink); margin: 0 0 28px;
-    font-variation-settings: "opsz" 144, "SOFT" 40;
   }
   .founder__body em { font-style: normal; font-weight: 500; }
   .founder__sign {
@@ -490,7 +488,7 @@
     align-items: center; padding-top: 24px; border-top: 2px solid var(--ink);
   }
   .founder__signature {
-    font-family: 'Fraunces', serif; font-style: italic; font-weight: 500;
+    font-family: 'IBM Plex Sans', system-ui, sans-serif; font-weight: 500;
     font-size: 28px; color: var(--ink); line-height: 1;
     padding-right: 22px; border-right: 1px solid var(--ink);
   }
@@ -534,7 +532,7 @@
   .faq-list details[open] summary span.faq-toggle::before { content: "−"; }
   .faq-list details:not([open]) summary span.faq-toggle::before { content: "+"; }
   .faq-list .faq-body {
-    font-family: 'Fraunces', serif; font-size: 17px; line-height: 1.6;
+    font-family: 'IBM Plex Sans', system-ui, sans-serif; font-size: 17px; line-height: 1.6;
     color: var(--ink-soft); max-width: var(--measure);
     margin: 18px 0 0 98px; padding-left: 0;
   }
@@ -574,7 +572,7 @@
   }
   .final-cta__number:hover { color: #c89b9e; }
   .final-cta__sub {
-    font-family: 'Fraunces', serif; font-style: italic;
+    font-family: 'IBM Plex Sans', system-ui, sans-serif; font-weight: 400;
     font-size: clamp(16px, 1.8vw, 20px); color: rgba(245,241,232,0.85);
     max-width: 540px; margin: 0 0 32px; line-height: 1.5;
   }
@@ -608,7 +606,7 @@
     color: var(--ink); margin: 0 0 14px;
   }
   .footer-col p, .footer-col li {
-    font-family: 'Fraunces', serif; font-size: 13px; line-height: 1.55;
+    font-family: 'IBM Plex Sans', system-ui, sans-serif; font-size: 13px; line-height: 1.55;
     letter-spacing: 0; text-transform: none; color: var(--ink-soft); margin: 0 0 6px;
   }
   .footer-col ul { list-style: none; padding: 0; margin: 0; }
@@ -675,7 +673,7 @@ img, video, iframe, svg, canvas { max-width: 100%; height: auto; display: block;
   <div class="masthead-strip" aria-hidden="true">
     <span>AI Phone Receptionist</span>
     <span>Vol. I — MMXXVI</span>
-    <span>Built for Irish SMBs</span>
+    <span>Built for Irish SMEs</span>
     <span>Limerick · Ireland</span>
   </div>
 
@@ -1037,7 +1035,7 @@ img, video, iframe, svg, canvas { max-width: 100%; height: auto; display: block;
       <h2 id="cost-title" class="section-title">Versus a part-time receptionist</h2>
     </div>
     <p class="section-dek">
-      Not hype. Just the maths for an Irish SMB weighing a part-time human receptionist
+      Not hype. Just the maths for an Irish SME weighing a part-time human receptionist
       against CallMeIE. Figures reflect published Irish payroll ranges for a part-time
       front-desk hire in 2026.
     </p>
@@ -1193,6 +1191,29 @@ img, video, iframe, svg, canvas { max-width: 100%; height: auto; display: block;
 
       <details>
         <summary>
+          <span class="faq-num">02a</span>
+          <span>Can Claire answer in Irish (as Gaeilge)?</span>
+          <span class="faq-toggle"></span>
+        </summary>
+        <div class="faq-body">
+          <p>
+            Available on request for Gaeltacht-area businesses. The underlying
+            voice stack (ElevenLabs + Whisper) supports Gaeilge, so Claire can
+            be configured to greet, take bookings, and leave voicemails entirely
+            <em>as Gaeilge</em> — or in a bilingual "Dia duit / Hello, Claire speaking"
+            handover pattern if the business serves both language communities.
+          </p>
+          <p>
+            This is a per-client configuration, not the default. If you operate
+            in Gaeltacht na nDéise, Conamara, Gaoth Dobhair, Corca Dhuibhne, or
+            any other Gaeltacht region, mention it when onboarding and we'll
+            tune the voice, greetings, and routing to match.
+          </p>
+        </div>
+      </details>
+
+      <details>
+        <summary>
           <span class="faq-num">03</span>
           <span>Can I keep my existing number?</span>
           <span class="faq-toggle"></span>
@@ -1304,7 +1325,7 @@ img, video, iframe, svg, canvas { max-width: 100%; height: auto; display: block;
     <div class="footer-grid">
       <div class="footer-col">
         <h4>CallMeIE</h4>
-        <p>AI phone receptionist for Irish SMBs. Built &amp; operated from Limerick, Ireland.</p>
+        <p>AI phone receptionist for Irish SMEs. Built &amp; operated from Limerick, Ireland.</p>
         <p>Stack: Vapi · Twilio · Google Calendar · FastAPI on Render.</p>
         <p>Email: <a href="mailto:callmeie@proton.me" class="mono-val">callmeie@proton.me</a></p>
         <p>Demo line: <span class="mono-val">+1 (661) 764-3212</span></p>
