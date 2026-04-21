@@ -404,7 +404,7 @@ Full spec: `BUSINESS-PROFILE-SCHEMA.md`.
 - [ ] **Weekly/monthly PDF report cron** (Day 4) — leads + uptime + tickets per site
 - [ ] **Full onboarding CLI** (Day 5) — `python onboard.py --site X …` chains site registration + UptimeRobot/Uptime-Kuma monitor creation + Stripe customer + Vaultwarden vault folder + admin-URL email
 - [ ] **Wire the 10 industry sample contact forms** to `/owl/submit` — demonstrate "your leads would land here"
-- [ ] **URGENT — Migrate `/tmp/callmeie.db` → persistent Postgres** (verified wiped 2026-04-21 during Render redeploy — lost 9 of 10 registered sample sites; had to re-run scripts/provision-sample-sites.py to restore) on Coolify box (Render wipes on redeploy)
+- [x] **DONE 2026-04-21 - migrated to Postgres.** Coolify-hosted `owl-studio-postgres` (UUID jcgjvf0o55exgw69akj0uk5d, Postgres 16, public port 5433 on 178.104.205.255). server.py now auto-switches backends via `DATABASE_URL` env var: psycopg if set, sqlite3 fallback for local dev. DDL translated in-flight via `_ddl_fix()`. 11 sites re-registered durably on Postgres. Next Render redeploy won't wipe.
 - [ ] **Payload CMS** — deploy on Coolify when first Pro client signs
 - [ ] **Migrate callmeie FastAPI off Render onto Coolify** — when Render free tier gets tight
 
