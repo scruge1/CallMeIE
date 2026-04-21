@@ -2,7 +2,16 @@
 
 AI phone receptionist agency for Irish SMBs. Stack: Vapi + Twilio + Google Calendar + FastAPI on Render.
 
-**Full system reference:** `SYSTEM.md` — read this first for all IDs, credentials, pricing, client list.
+## ⚡ Read on entry — HIGHEST PRIORITY (session-boot load)
+
+Every session must load **two** reference files before acting:
+
+1. `SYSTEM.md` (this repo) — original CallMeIE system reference (Vapi IDs, Twilio creds, client list, pricing — focused on the AI phone receptionist product).
+2. **`INFRA.md`** (this repo, mirrored from owl-studio-website-directions) — **shared Owl Studio + CallMeIE infrastructure reference**: Hetzner VPS, Coolify services, `/owl/*` FastAPI routes, Stripe products + webhook, Porkbun DNS, 10+ registered Owl Studio client sites, `~/.claude/routes/.env` vault, runbooks, known workarounds, session-end log.
+
+Without both loaded: you will miss the Owl Studio multi-tenant backend riding on this same FastAPI, not know which Stripe webhook endpoint is registered, not know Vaultwarden/Uptime Kuma/Umami are deployed on the sister Hetzner box, or duplicate the Coolify fqdn-cascade debugging cycle we already solved. Load both, cover to cover, before infra work.
+
+If INFRA.md lacks detail you need, add it there BEFORE continuing so the next session has it.
 
 ---
 
