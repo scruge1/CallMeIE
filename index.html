@@ -1,178 +1,1353 @@
-<!DOCTYPE html>
-<html lang="en">
+<!doctype html>
+<html lang="en-IE">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>CallMe.ie — AI Phone Answering for Irish Businesses</title>
-<meta name="description" content="Never miss a customer call again. AI-powered phone answering, appointment booking, and customer service for Irish businesses. 24/7 coverage from Limerick.">
-<link rel="icon" href="/favicon.svg" type="image/svg+xml">
-<link rel="alternate icon" href="/favicon.ico">
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>CallMeIE — AI Phone Receptionist for Irish SMBs · Limerick</title>
+<meta name="description" content="CallMeIE is an AI phone receptionist for Irish dental practices, motor factors, hair salons, and solicitors. Built in Limerick. Handles bookings, missed-call text-back, after-hours cover. From €149/mo." />
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,700;1,9..144,400;1,9..144,500&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+
 <style>
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; color: #1a1a2e; line-height: 1.6; }
+  /* CallMeIE — Brutalism Editorial × Telephonic Mono
+     Paper cream + deep ink + single burgundy accent.
+     Archivo Black display · Fraunces body · JetBrains Mono for phone numbers, timestamps, prices.
+     The phone number IS the hero visual. */
 
-  .hero { background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0f172a 100%); color: #fff; padding: 80px 20px 100px; text-align: center; }
-  .hero h1 { font-size: clamp(2rem, 5vw, 3.5rem); font-weight: 800; margin-bottom: 16px; letter-spacing: -0.5px; }
-  .hero h1 span { color: #22d3ee; }
-  .hero p { font-size: 1.2rem; color: #94a3b8; max-width: 600px; margin: 0 auto 32px; }
-  .hero .cta { display: inline-block; background: #22d3ee; color: #0f172a; padding: 16px 40px; border-radius: 8px; font-size: 1.1rem; font-weight: 700; text-decoration: none; transition: transform 0.2s, box-shadow 0.2s; }
-  .hero .cta:hover { transform: translateY(-2px); box-shadow: 0 8px 30px rgba(34,211,238,0.3); }
-  .hero .cta-secondary { display: inline-block; margin-left: 16px; color: #94a3b8; font-size: 0.95rem; text-decoration: none; border-bottom: 1px solid #475569; padding-bottom: 2px; }
-  .hero .cta-secondary:hover { color: #22d3ee; border-color: #22d3ee; }
-  .demo-banner { background: #0e7490; color: #fff; text-align: center; padding: 16px 20px; font-size: 1rem; }
-  .demo-banner strong { font-size: 1.15rem; }
-  .demo-banner a { color: #fff; font-weight: 700; text-decoration: underline; }
+  :root {
+    --paper: #F5F1E8;
+    --paper-deep: #ECE7D9;
+    --ink: #0b0a08;
+    --ink-soft: #2a2622;
+    --ink-muted: #545454;
+    --burgundy: #5A1420;
+    --measure: 640px;
+    --section-gap: clamp(56px, 8vw, 112px);
+    --rule-heavy: 3px;
+    --rule-thick: 4px;
+  }
 
-  .stats { display: flex; justify-content: center; gap: 48px; padding: 40px 20px; background: #f8fafc; flex-wrap: wrap; }
-  .stat { text-align: center; }
-  .stat .num { font-size: 2.5rem; font-weight: 800; color: #0f172a; }
-  .stat .label { font-size: 0.9rem; color: #64748b; }
+  *, *::before, *::after { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0; background: var(--paper); color: var(--ink);
+    font-family: 'Fraunces', Georgia, 'Times New Roman', serif;
+    font-optical-sizing: auto;
+    font-variation-settings: "opsz" 36, "SOFT" 30;
+    font-size: 18px; line-height: 1.58;
+    -webkit-font-smoothing: antialiased;
+  }
 
-  .section { max-width: 900px; margin: 0 auto; padding: 80px 20px; }
-  .section h2 { font-size: 2rem; font-weight: 700; margin-bottom: 40px; text-align: center; }
+  a { color: inherit; }
+  a:hover { text-decoration-thickness: 2px; }
+  ::selection { background: var(--burgundy); color: var(--paper); }
 
-  .features { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 32px; }
-  .feature { background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 32px; }
-  .feature .icon { font-size: 2rem; margin-bottom: 12px; }
-  .feature h3 { font-size: 1.1rem; font-weight: 700; margin-bottom: 8px; }
-  .feature p { color: #64748b; font-size: 0.95rem; }
+  /* Layout scaffold */
+  .page { max-width: 1280px; margin: 0 auto; padding: 0 clamp(20px, 4vw, 48px); position: relative; }
 
-  .how { background: #f8fafc; }
-  .steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 32px; max-width: 900px; margin: 0 auto; }
-  .step { text-align: center; padding: 24px; }
-  .step .num { display: inline-block; width: 48px; height: 48px; line-height: 48px; background: #0f172a; color: #22d3ee; border-radius: 50%; font-weight: 800; font-size: 1.2rem; margin-bottom: 16px; }
-  .step h3 { font-size: 1rem; font-weight: 700; margin-bottom: 8px; }
-  .step p { color: #64748b; font-size: 0.9rem; }
+  /* Topbar */
+  .topbar {
+    position: relative; z-index: 5;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 22px 0 18px; border-bottom: var(--rule-heavy) solid var(--ink);
+    gap: 16px;
+  }
+  .wordmark {
+    font-family: 'Archivo Black', 'Arial Black', sans-serif;
+    font-size: clamp(18px, 1.6vw, 22px); letter-spacing: 0.01em;
+    text-transform: uppercase; color: var(--ink); text-decoration: none;
+  }
+  .wordmark__dot {
+    display: inline-block; width: 8px; height: 8px;
+    background: var(--burgundy); margin: 0 6px 2px 0; vertical-align: middle;
+  }
+  .topbar__right { display: flex; align-items: center; gap: 24px; flex-wrap: wrap; justify-content: flex-end; }
+  .topbar__meta {
+    font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace;
+    font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-muted);
+  }
+  @media (max-width: 720px) { .topbar__meta { display: none; } }
+  .topbar__cta {
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-size: 12px; font-weight: 600; letter-spacing: 0.04em;
+    color: var(--ink); text-decoration: none;
+    padding: 10px 14px; border: 2px solid var(--ink);
+    transition: background 0.15s ease, color 0.15s ease;
+    white-space: nowrap;
+  }
+  .topbar__cta:hover { background: var(--ink); color: var(--paper); }
 
-  .industries { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; margin-bottom: 40px; }
-  .ind { background: #f1f5f9; padding: 8px 20px; border-radius: 20px; font-size: 0.9rem; color: #475569; }
+  /* Masthead strip */
+  .masthead-strip {
+    display: flex; justify-content: space-between; align-items: baseline;
+    padding: 14px 0; border-bottom: 1px solid var(--ink);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-soft);
+    gap: 18px; flex-wrap: wrap;
+  }
+  @media (max-width: 720px) {
+    .masthead-strip { flex-direction: column; gap: 4px; align-items: flex-start; }
+  }
 
-  .cta-section { background: #0f172a; color: #fff; text-align: center; padding: 80px 20px; }
-  .cta-section h2 { font-size: 2rem; margin-bottom: 16px; }
-  .cta-section p { color: #94a3b8; margin-bottom: 32px; max-width: 500px; margin-left: auto; margin-right: auto; }
-  .cta-section .cta { display: inline-block; background: #22d3ee; color: #0f172a; padding: 16px 40px; border-radius: 8px; font-size: 1.1rem; font-weight: 700; text-decoration: none; }
+  /* HERO — the phone number is the visual */
+  .hero {
+    position: relative;
+    padding: clamp(44px, 8vw, 96px) 0 clamp(56px, 9vw, 120px);
+    border-bottom: var(--rule-thick) solid var(--ink);
+  }
+  .hero__kicker {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px; letter-spacing: 0.22em; text-transform: uppercase;
+    color: var(--burgundy); margin-bottom: 28px;
+    display: flex; align-items: center; gap: 14px;
+  }
+  .hero__kicker::before {
+    content: ""; display: inline-block; width: 48px; height: 2px; background: var(--burgundy);
+  }
+  .hero__headline {
+    font-family: 'Archivo Black', 'Arial Black', sans-serif;
+    font-size: clamp(36px, 6.4vw, 88px); line-height: 0.96;
+    letter-spacing: -0.015em; text-transform: uppercase;
+    margin: 0 0 24px; color: var(--ink); max-width: 14ch;
+  }
+  .hero__sub {
+    font-family: 'Fraunces', Georgia, serif;
+    font-style: italic; font-weight: 400;
+    font-size: clamp(18px, 2vw, 24px); line-height: 1.42;
+    color: var(--ink-soft); max-width: 620px; margin: 0 0 clamp(36px, 5vw, 56px);
+  }
+  .hero__sub em { font-style: normal; font-weight: 500; color: var(--ink); }
 
-  footer { padding: 40px 20px; text-align: center; color: #94a3b8; font-size: 0.85rem; background: #0f172a; border-top: 1px solid #1e293b; }
-  footer a { color: #22d3ee; text-decoration: none; }
+  .demo-number {
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-weight: 700;
+    font-size: clamp(44px, 12vw, 128px);
+    line-height: 1.0; letter-spacing: -0.03em;
+    color: var(--ink);
+    display: block;
+    margin: 0 0 16px;
+    word-break: break-all;
+    font-variant-numeric: tabular-nums;
+    text-decoration: none;
+  }
+  .demo-number:hover { color: var(--burgundy); }
+  .demo-number__label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px; font-weight: 500; letter-spacing: 0.22em; text-transform: uppercase;
+    color: var(--ink-muted);
+    display: block; margin-bottom: 10px;
+  }
+  .demo-number__caption {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px; letter-spacing: 0.1em; text-transform: uppercase;
+    color: var(--ink-muted); margin-top: 8px;
+  }
 
-  @media (max-width: 600px) {
-    .stats { gap: 24px; }
-    .stat .num { font-size: 1.8rem; }
+  .hero__actions {
+    margin-top: clamp(28px, 4vw, 44px);
+    display: flex; gap: 28px; align-items: center; flex-wrap: wrap;
+  }
+  .btn-primary {
+    font-family: 'Archivo Black', sans-serif;
+    font-size: 13px; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--paper); background: var(--ink);
+    padding: 16px 22px; text-decoration: none;
+    border: 2px solid var(--ink);
+    transition: background 0.15s ease, color 0.15s ease;
+    display: inline-block;
+  }
+  .btn-primary:hover { background: var(--burgundy); border-color: var(--burgundy); color: var(--paper); }
+  .btn-secondary {
+    font-family: 'Fraunces', serif; font-style: italic;
+    font-size: 16px; color: var(--ink);
+    text-decoration: none; border-bottom: 2px solid var(--ink);
+    padding-bottom: 2px;
+  }
+  .btn-secondary:hover { color: var(--burgundy); border-bottom-color: var(--burgundy); }
+
+  /* Section scaffolding */
+  section.editorial {
+    padding: var(--section-gap) 0;
+    border-bottom: var(--rule-thick) solid var(--ink);
+    position: relative; z-index: 2;
+  }
+  .section-head {
+    display: grid; grid-template-columns: 80px 1fr;
+    gap: 22px; align-items: baseline; margin-bottom: 48px;
+  }
+  @media (max-width: 640px) { .section-head { grid-template-columns: 56px 1fr; gap: 14px; } }
+  .section-num {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px; letter-spacing: 0.16em; color: var(--ink-muted);
+    padding-top: 0.6em; border-top: 2px solid var(--ink);
+  }
+  .section-title {
+    font-family: 'Archivo Black', sans-serif;
+    font-size: clamp(30px, 4.6vw, 62px); line-height: 0.95;
+    letter-spacing: -0.015em; text-transform: uppercase; margin: 0; color: var(--ink);
+  }
+  .section-dek {
+    font-family: 'Fraunces', serif; font-style: italic;
+    font-size: clamp(17px, 1.6vw, 20px); line-height: 1.5;
+    color: var(--ink-soft); max-width: var(--measure); margin: 20px 0 0 102px;
+  }
+  @media (max-width: 640px) { .section-dek { margin-left: 70px; } }
+
+  /* Demo strip — how the demo works */
+  .demo-strip {
+    display: grid; grid-template-columns: 1.2fr 1fr; gap: clamp(32px, 5vw, 72px);
+    align-items: start; border-top: 1px solid var(--ink); padding-top: 44px;
+  }
+  @media (max-width: 860px) { .demo-strip { grid-template-columns: 1fr; gap: 36px; } }
+  .demo-strip__prose p {
+    font-family: 'Fraunces', serif; font-size: 18px; line-height: 1.62;
+    margin: 0 0 16px; color: var(--ink-soft); max-width: 540px;
+  }
+  .demo-strip__prose strong { color: var(--ink); font-weight: 600; }
+  .demo-steps {
+    list-style: none; padding: 0; margin: 24px 0 0; counter-reset: demo;
+    border-top: 1px solid var(--ink);
+  }
+  .demo-steps li {
+    counter-increment: demo;
+    padding: 14px 0 14px 44px; border-bottom: 1px solid var(--ink);
+    position: relative;
+    font-family: 'Fraunces', serif; font-size: 16px; line-height: 1.5; color: var(--ink);
+  }
+  .demo-steps li::before {
+    content: counter(demo, decimal-leading-zero);
+    position: absolute; left: 0; top: 14px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px; font-weight: 500; letter-spacing: 0.1em;
+    color: var(--burgundy);
+  }
+  .demo-steps li b {
+    font-family: 'Archivo Black', sans-serif; font-weight: 400;
+    text-transform: uppercase; letter-spacing: 0.02em; font-size: 14px;
+    display: block; margin-bottom: 2px; color: var(--ink);
+  }
+
+  /* Call log excerpt — editorial pull-quote styled like a terminal */
+  .call-log {
+    border-top: 2px solid var(--ink); border-bottom: 2px solid var(--ink);
+    padding: 24px 0; margin: 0;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: clamp(13px, 1.3vw, 15px); line-height: 1.9;
+    color: var(--ink);
+  }
+  .call-log__kicker {
+    font-size: 10px; letter-spacing: 0.22em; text-transform: uppercase;
+    color: var(--burgundy); margin-bottom: 14px;
+    padding-bottom: 10px; border-bottom: 1px solid var(--ink);
+  }
+  .call-log__line { display: block; }
+  .call-log__time { color: var(--ink-muted); margin-right: 10px; }
+  .call-log__who { font-weight: 600; color: var(--burgundy); margin-right: 8px; }
+  .call-log__who--ai { color: var(--ink); }
+  .call-log__text { color: var(--ink-soft); font-family: 'Fraunces', serif; font-style: italic; font-size: 16px; }
+
+  /* What it handles — editorial 2-column list */
+  .handles-grid {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 0;
+    border-top: 1px solid var(--ink);
+  }
+  @media (max-width: 860px) { .handles-grid { grid-template-columns: 1fr; } }
+  .handles-item {
+    padding: 36px 28px 40px 0; border-bottom: 1px solid var(--ink);
+  }
+  .handles-item:nth-child(odd) { padding-right: 40px; border-right: 1px solid var(--ink); }
+  .handles-item:nth-child(even) { padding-left: 40px; padding-right: 0; }
+  @media (max-width: 860px) {
+    .handles-item, .handles-item:nth-child(odd), .handles-item:nth-child(even) {
+      padding: 28px 0; border-right: 0;
+    }
+  }
+  .handles-item__num {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px; letter-spacing: 0.22em; text-transform: uppercase;
+    color: var(--burgundy); margin-bottom: 12px;
+    display: flex; align-items: center; gap: 12px;
+  }
+  .handles-item__num::before {
+    content: ""; width: 24px; height: 2px; background: var(--burgundy); display: inline-block;
+  }
+  .handles-item__title {
+    font-family: 'Archivo Black', sans-serif;
+    font-size: clamp(22px, 2.2vw, 28px); line-height: 1.05;
+    letter-spacing: -0.005em; text-transform: uppercase;
+    margin: 0 0 12px; color: var(--ink);
+  }
+  .handles-item p {
+    font-family: 'Fraunces', serif; font-size: 16px; line-height: 1.55;
+    color: var(--ink-soft); margin: 0; max-width: 480px;
+  }
+
+  /* Verticals — editorial blocks */
+  .vertical {
+    display: grid; grid-template-columns: 180px 1fr; gap: 48px;
+    padding: 48px 0; border-top: 1px solid var(--ink); align-items: start;
+  }
+  .vertical:last-of-type { border-bottom: 1px solid var(--ink); }
+  @media (max-width: 860px) { .vertical { grid-template-columns: 1fr; gap: 20px; padding: 40px 0; } }
+  .vertical__label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px; letter-spacing: 0.2em; text-transform: uppercase;
+    color: var(--ink-muted); padding-top: 6px;
+  }
+  .vertical__label b {
+    display: block; font-family: 'Archivo Black', sans-serif;
+    font-size: clamp(24px, 2.4vw, 30px); letter-spacing: -0.01em; color: var(--burgundy);
+    margin-bottom: 8px; font-weight: 400; line-height: 1;
+  }
+  .vertical__body { max-width: var(--measure); }
+  .vertical__head {
+    font-family: 'Archivo Black', sans-serif;
+    font-size: clamp(20px, 2.2vw, 28px); line-height: 1.05;
+    text-transform: uppercase; letter-spacing: -0.005em;
+    margin: 0 0 16px; color: var(--ink);
+  }
+  .vertical__body > p {
+    font-family: 'Fraunces', serif; font-size: 17px; line-height: 1.6;
+    margin: 0 0 16px; color: var(--ink-soft);
+  }
+  .qa {
+    border-top: 1px solid var(--ink); border-bottom: 1px solid var(--ink);
+    margin: 20px 0; padding: 14px 0;
+  }
+  .qa__row { display: grid; grid-template-columns: 80px 1fr; gap: 14px; padding: 6px 0; }
+  .qa__tag {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px; letter-spacing: 0.2em; text-transform: uppercase;
+    color: var(--burgundy); padding-top: 4px;
+  }
+  .qa__text {
+    font-family: 'Fraunces', serif; font-style: italic; font-size: 16px;
+    line-height: 1.5; color: var(--ink);
+  }
+  .qa__text--a { font-style: normal; }
+
+  /* Pricing — typographic 3-column list */
+  .pricing {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 0;
+    border-top: 1px solid var(--ink);
+  }
+  @media (max-width: 860px) { .pricing { grid-template-columns: 1fr; } }
+  .tier {
+    padding: 40px 28px 44px; border-bottom: 1px solid var(--ink);
+    border-right: 1px solid var(--ink);
+  }
+  .tier:last-child { border-right: 0; }
+  @media (max-width: 860px) {
+    .tier { border-right: 0; padding: 32px 0; }
+  }
+  .tier--featured { background: var(--paper-deep); }
+  .tier__kicker {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px; letter-spacing: 0.22em; text-transform: uppercase;
+    color: var(--burgundy); margin-bottom: 14px;
+  }
+  .tier__name {
+    font-family: 'Archivo Black', sans-serif;
+    font-size: clamp(28px, 3vw, 40px); line-height: 1;
+    text-transform: uppercase; letter-spacing: -0.01em;
+    margin: 0 0 20px; color: var(--ink);
+  }
+  .tier__price {
+    font-family: 'JetBrains Mono', monospace; font-weight: 600;
+    font-size: clamp(28px, 3.2vw, 44px); color: var(--ink);
+    letter-spacing: -0.02em; line-height: 1; margin-bottom: 6px;
+  }
+  .tier__price span {
+    font-size: 14px; font-weight: 400; color: var(--ink-muted);
+    letter-spacing: 0; margin-left: 4px;
+  }
+  .tier__setup {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px; letter-spacing: 0.06em; color: var(--ink-muted);
+    margin-bottom: 22px; padding-bottom: 16px; border-bottom: 1px solid var(--ink);
+  }
+  .tier__list { list-style: none; padding: 0; margin: 0 0 24px; }
+  .tier__list li {
+    font-family: 'Fraunces', serif; font-size: 15px; line-height: 1.5;
+    color: var(--ink-soft); padding: 8px 0;
+    border-bottom: 1px dashed rgba(11,10,8,0.2);
+  }
+  .tier__list li:last-child { border-bottom: 0; }
+  .tier__list li::before {
+    content: "+"; font-family: 'JetBrains Mono', monospace; font-weight: 600;
+    color: var(--burgundy); margin-right: 10px;
+  }
+  .tier__cta {
+    display: inline-block; margin-top: 12px;
+    font-family: 'Archivo Black', sans-serif;
+    font-size: 12px; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--ink); text-decoration: none;
+    padding: 12px 16px; border: 2px solid var(--ink);
+    transition: background 0.15s, color 0.15s;
+  }
+  .tier__cta:hover { background: var(--ink); color: var(--paper); }
+
+  .enterprise {
+    margin-top: 32px; padding: 32px 0 0; border-top: 2px solid var(--ink);
+    display: grid; grid-template-columns: 220px 1fr auto; gap: 32px; align-items: baseline;
+  }
+  @media (max-width: 760px) { .enterprise { grid-template-columns: 1fr; gap: 14px; } }
+  .enterprise__name {
+    font-family: 'Archivo Black', sans-serif;
+    font-size: clamp(22px, 2.4vw, 30px); text-transform: uppercase; margin: 0;
+  }
+  .enterprise__body {
+    font-family: 'Fraunces', serif; font-size: 16px; color: var(--ink-soft); line-height: 1.5; margin: 0;
+  }
+  .enterprise__price {
+    font-family: 'JetBrains Mono', monospace; font-weight: 600;
+    font-size: 16px; color: var(--ink); letter-spacing: 0.04em; text-transform: uppercase;
+    white-space: nowrap;
+  }
+
+  /* Cost comparison */
+  .cost-compare {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 0;
+    border-top: 2px solid var(--ink); border-bottom: 2px solid var(--ink);
+  }
+  @media (max-width: 760px) { .cost-compare { grid-template-columns: 1fr; } }
+  .cost-col {
+    padding: 36px 32px 40px 0;
+  }
+  .cost-col:first-child { border-right: 1px solid var(--ink); padding-right: 40px; }
+  .cost-col:last-child { padding-left: 40px; padding-right: 0; background: var(--paper-deep); }
+  @media (max-width: 760px) {
+    .cost-col, .cost-col:first-child, .cost-col:last-child {
+      padding: 28px 20px; border-right: 0;
+      border-bottom: 1px solid var(--ink);
+    }
+    .cost-col:last-child { border-bottom: 0; }
+  }
+  .cost-col__kicker {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px; letter-spacing: 0.22em; text-transform: uppercase;
+    color: var(--burgundy); margin-bottom: 12px;
+  }
+  .cost-col__head {
+    font-family: 'Archivo Black', sans-serif;
+    font-size: clamp(22px, 2.4vw, 30px); line-height: 1.05;
+    text-transform: uppercase; letter-spacing: -0.005em;
+    margin: 0 0 18px; color: var(--ink);
+  }
+  .cost-col p {
+    font-family: 'Fraunces', serif; font-size: 16px; line-height: 1.55;
+    color: var(--ink-soft); margin: 0 0 14px; max-width: 480px;
+  }
+  .cost-row {
+    display: flex; justify-content: space-between; align-items: baseline;
+    padding: 10px 0; border-bottom: 1px solid var(--ink);
+    gap: 16px; font-family: 'JetBrains Mono', monospace; font-size: 13px;
+  }
+  .cost-row__label { color: var(--ink); }
+  .cost-row__value { color: var(--ink); font-weight: 600; text-align: right; letter-spacing: 0.02em; }
+  .cost-note {
+    font-family: 'Fraunces', serif; font-style: italic; font-size: 14px;
+    color: var(--ink-muted); margin-top: 14px; line-height: 1.5;
+  }
+
+  /* Irish specifics */
+  .irish-list {
+    list-style: none; padding: 0; margin: 0;
+    border-top: 1px solid var(--ink);
+  }
+  .irish-list li {
+    display: grid; grid-template-columns: 200px 1fr;
+    padding: 18px 0; border-bottom: 1px solid var(--ink);
+    gap: 24px; align-items: baseline;
+  }
+  @media (max-width: 640px) { .irish-list li { grid-template-columns: 1fr; gap: 4px; padding: 14px 0; } }
+  .irish-list li > span:first-child {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase;
+    color: var(--burgundy); font-weight: 500;
+  }
+  .irish-list li > span:last-child {
+    font-family: 'Fraunces', serif; font-size: 16px; color: var(--ink-soft); line-height: 1.5;
+  }
+
+  /* Founder statement */
+  .founder {
+    max-width: 720px; margin: 0 auto;
+    padding: clamp(24px, 4vw, 48px) 0 0;
+    text-align: left;
+  }
+  .founder__body {
+    font-family: 'Fraunces', serif; font-style: italic; font-weight: 400;
+    font-size: clamp(20px, 2.2vw, 28px); line-height: 1.42;
+    color: var(--ink); margin: 0 0 28px;
+    font-variation-settings: "opsz" 144, "SOFT" 40;
+  }
+  .founder__body em { font-style: normal; font-weight: 500; }
+  .founder__sign {
+    display: grid; grid-template-columns: auto 1fr; gap: 22px;
+    align-items: center; padding-top: 24px; border-top: 2px solid var(--ink);
+  }
+  .founder__signature {
+    font-family: 'Fraunces', serif; font-style: italic; font-weight: 500;
+    font-size: 28px; color: var(--ink); line-height: 1;
+    padding-right: 22px; border-right: 1px solid var(--ink);
+  }
+  .founder__caption {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase;
+    color: var(--ink-muted); line-height: 1.55;
+  }
+  .founder__caption strong {
+    font-family: 'Archivo Black', sans-serif;
+    color: var(--ink); font-weight: 400; letter-spacing: 0.04em;
+    display: block; margin-bottom: 2px;
+  }
+
+  /* FAQ */
+  .faq-list { border-top: 1px solid var(--ink); }
+  .faq-list details {
+    border-bottom: 1px solid var(--ink);
+    padding: 22px 0; cursor: pointer;
+  }
+  .faq-list summary {
+    list-style: none; cursor: pointer;
+    display: grid; grid-template-columns: 80px 1fr 24px;
+    gap: 18px; align-items: baseline;
+    font-family: 'Archivo Black', sans-serif;
+    font-size: clamp(18px, 2vw, 22px);
+    text-transform: uppercase; letter-spacing: -0.005em;
+    color: var(--ink); line-height: 1.25;
+  }
+  @media (max-width: 640px) { .faq-list summary { grid-template-columns: 56px 1fr 20px; gap: 12px; } }
+  .faq-list summary::-webkit-details-marker { display: none; }
+  .faq-list summary span.faq-num {
+    font-family: 'JetBrains Mono', monospace; font-weight: 500;
+    font-size: 11px; letter-spacing: 0.16em; color: var(--burgundy);
+    padding-top: 0.4em;
+  }
+  .faq-list summary span.faq-toggle {
+    font-family: 'JetBrains Mono', monospace; font-weight: 600;
+    font-size: 20px; color: var(--ink); text-align: right; line-height: 1;
+  }
+  .faq-list details[open] summary span.faq-toggle::before { content: "−"; }
+  .faq-list details:not([open]) summary span.faq-toggle::before { content: "+"; }
+  .faq-list .faq-body {
+    font-family: 'Fraunces', serif; font-size: 17px; line-height: 1.6;
+    color: var(--ink-soft); max-width: var(--measure);
+    margin: 18px 0 0 98px; padding-left: 0;
+  }
+  @media (max-width: 640px) { .faq-list .faq-body { margin-left: 68px; } }
+  .faq-list .faq-body p { margin: 0 0 10px; }
+  .faq-list .faq-body p:last-child { margin-bottom: 0; }
+
+  /* Final CTA */
+  .final-cta {
+    padding: clamp(64px, 10vw, 128px) 0;
+    border-bottom: var(--rule-thick) solid var(--ink);
+    background: var(--ink); color: var(--paper);
+  }
+  .final-cta__kicker {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px; letter-spacing: 0.22em; text-transform: uppercase;
+    color: #c89b9e; margin-bottom: 28px;
+    display: flex; align-items: center; gap: 14px;
+  }
+  .final-cta__kicker::before {
+    content: ""; display: inline-block; width: 48px; height: 2px; background: #c89b9e;
+  }
+  .final-cta__headline {
+    font-family: 'Archivo Black', sans-serif;
+    font-size: clamp(28px, 4vw, 52px); line-height: 1;
+    text-transform: uppercase; letter-spacing: -0.01em;
+    margin: 0 0 28px; color: var(--paper); max-width: 18ch;
+  }
+  .final-cta__number {
+    font-family: 'JetBrains Mono', monospace; font-weight: 700;
+    font-size: clamp(36px, 10vw, 112px);
+    line-height: 1.0; letter-spacing: -0.03em;
+    color: var(--paper); text-decoration: none;
+    display: block; margin: 0 0 24px;
+    word-break: break-all;
+    font-variant-numeric: tabular-nums;
+  }
+  .final-cta__number:hover { color: #c89b9e; }
+  .final-cta__sub {
+    font-family: 'Fraunces', serif; font-style: italic;
+    font-size: clamp(16px, 1.8vw, 20px); color: rgba(245,241,232,0.85);
+    max-width: 540px; margin: 0 0 32px; line-height: 1.5;
+  }
+  .final-cta__secondary {
+    font-family: 'Archivo Black', sans-serif;
+    font-size: 13px; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--paper); background: transparent;
+    padding: 14px 20px; text-decoration: none;
+    border: 2px solid var(--paper);
+    transition: background 0.15s, color 0.15s;
+    display: inline-block;
+  }
+  .final-cta__secondary:hover { background: var(--paper); color: var(--ink); }
+
+  /* Footer */
+  footer {
+    background: var(--paper); padding: 56px 0 36px;
+    border-top: var(--rule-thick) solid var(--ink);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-muted);
+  }
+  .footer-grid {
+    display: grid; grid-template-columns: 2fr 1fr 1fr 1fr;
+    gap: 40px; margin-bottom: 40px;
+  }
+  @media (max-width: 860px) { .footer-grid { grid-template-columns: 1fr 1fr; gap: 28px; } }
+  @media (max-width: 520px) { .footer-grid { grid-template-columns: 1fr; } }
+  .footer-col h4 {
+    font-family: 'Archivo Black', sans-serif;
+    font-size: 12px; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--ink); margin: 0 0 14px;
+  }
+  .footer-col p, .footer-col li {
+    font-family: 'Fraunces', serif; font-size: 13px; line-height: 1.55;
+    letter-spacing: 0; text-transform: none; color: var(--ink-soft); margin: 0 0 6px;
+  }
+  .footer-col ul { list-style: none; padding: 0; margin: 0; }
+  .footer-col a { color: inherit; text-decoration: none; border-bottom: 1px solid rgba(11,10,8,0.25); }
+  .footer-col a:hover { border-bottom-color: var(--ink); }
+  .footer-col .mono-val {
+    font-family: 'JetBrains Mono', monospace; font-size: 12px; letter-spacing: 0.04em;
+    color: var(--ink); text-transform: none;
+  }
+  .footer-admin {
+    padding: 14px 16px; margin-top: 10px;
+    border: 1px dashed var(--ink-muted);
+    font-family: 'JetBrains Mono', monospace; font-size: 11px;
+    color: var(--ink-muted); text-transform: none; letter-spacing: 0;
+    line-height: 1.5;
+  }
+  .footer-admin strong { color: var(--ink); font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; font-size: 10px; display: block; margin-bottom: 4px; }
+  .footer-admin a { color: var(--ink); border-bottom: 1px solid var(--ink-muted); word-break: break-all; }
+  .footer-legal {
+    border-top: 1px solid var(--ink); padding-top: 22px;
+    display: flex; justify-content: space-between; align-items: baseline;
+    gap: 24px; flex-wrap: wrap;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px; letter-spacing: 0.12em; color: var(--ink-muted);
+  }
+  .footer-legal__wordmark {
+    font-family: 'Archivo Black', sans-serif;
+    color: var(--ink); font-size: 11px; letter-spacing: 0.16em;
   }
 </style>
+
+<!-- mobile-fit-safety -->
+<style>
+html { overflow-x: hidden; }
+body { max-width: 100vw; overflow-x: hidden; }
+*, *::before, *::after { box-sizing: border-box; }
+* { min-width: 0; }
+img, video, iframe, svg, canvas { max-width: 100%; height: auto; display: block; }
+@media (max-width: 640px) {
+  [class*="grid"], [class*="cols"], [class*="row"], [class*="columns"] { grid-template-columns: 1fr !important; flex-direction: column !important; }
+  [class*="container"] { max-width: 100% !important; padding-inline: 16px !important; }
+  section, header, main, footer, article, aside, nav { max-width: 100% !important; padding-inline: clamp(12px, 4vw, 24px) !important; }
+  h1 { font-size: clamp(30px, 8vw, 44px) !important; line-height: 1.05 !important; }
+  h2 { font-size: clamp(24px, 6vw, 34px) !important; }
+}
+</style>
 </head>
+
 <body>
 
-<div class="demo-banner">
-  Ring our live demo now: <strong><a href="tel:+16617643212">+1 (661) 764-3212</a></strong> &mdash; hear exactly what your customers would experience
-</div>
+<div class="page">
 
-<div class="hero">
-  <h1>Never Miss a <span>Customer Call</span> Again</h1>
-  <p>AI-powered phone answering for Irish businesses. Your customers get a friendly voice 24/7. You get every booking, every lead, every time.</p>
-  <a href="tel:+16617643212" class="cta">Ring the Live Demo</a>
-  <br><br>
-  <a href="/onboard.html" class="cta-secondary">Get started &rarr;</a>
-</div>
+  <!-- TOPBAR -->
+  <header class="topbar" role="banner">
+    <a class="wordmark" href="#top" aria-label="CallMeIE — home">
+      <span class="wordmark__dot" aria-hidden="true"></span>CallMeIE
+    </a>
+    <div class="topbar__right">
+      <span class="topbar__meta">Limerick — Est. 2026</span>
+      <a class="topbar__cta" href="tel:+16617643212">Ring +1 (661) 764-3212</a>
+    </div>
+  </header>
 
-<div class="stats">
-  <div class="stat"><div class="num">24/7</div><div class="label">Call Coverage</div></div>
-  <div class="stat"><div class="num">85%</div><div class="label">Of callers never call back after voicemail</div></div>
-  <div class="stat"><div class="num">62%</div><div class="label">Of calls missed by busy businesses</div></div>
-  <div class="stat"><div class="num">&lt;2s</div><div class="label">Answer Time</div></div>
-</div>
+  <div class="masthead-strip" aria-hidden="true">
+    <span>AI Phone Receptionist</span>
+    <span>Vol. I — MMXXVI</span>
+    <span>Built for Irish SMBs</span>
+    <span>Limerick · Ireland</span>
+  </div>
 
-<div class="section">
-  <h2>What CallMe Does</h2>
-  <div class="features">
-    <div class="feature">
-      <div class="icon">📞</div>
-      <h3>Answers Every Call</h3>
-      <p>Your AI receptionist picks up instantly — during business hours, after hours, weekends, and bank holidays. No more voicemail.</p>
+  <!-- HERO -->
+  <section class="hero" id="top" aria-labelledby="hero-title">
+    <div class="hero__kicker">Ring the demo. Hear it work.</div>
+    <h1 id="hero-title" class="hero__headline">The phone gets answered. Every time.</h1>
+    <p class="hero__sub">
+      CallMeIE is an AI phone receptionist for Irish dental practices, motor factors, hair salons,
+      and solicitors. <em>It books appointments, triages after-hours calls, texts back
+      missed callers, and escalates the ones that need a human.</em> Built in Limerick. Live on a real line.
+    </p>
+
+    <span class="demo-number__label">Live demo line · Answers 24 hours</span>
+    <a class="demo-number" href="tel:+16617643212" aria-label="Ring the demo on plus one six six one seven six four three two one two">+1 (661) 764-3212</a>
+    <span class="demo-number__caption">Ring it now — this number is a real CallMeIE instance running in receptionist mode.</span>
+
+    <div class="hero__actions">
+      <a class="btn-primary" href="tel:+16617643212">Ring the demo</a>
+      <a class="btn-secondary" href="/onboard.html">See it onboard a business →</a>
     </div>
-    <div class="feature">
-      <div class="icon">📅</div>
-      <h3>Books Appointments</h3>
-      <p>Checks your real calendar, finds available slots, and books directly. Your patients see appointments appear on their phone.</p>
+  </section>
+
+  <!-- HOW THE DEMO WORKS + sample call excerpt (dental) -->
+  <section class="editorial" id="how-demo-works" aria-labelledby="how-demo-title">
+    <div class="section-head">
+      <div class="section-num">§ 01 — Demo</div>
+      <h2 id="how-demo-title" class="section-title">How the demo works</h2>
     </div>
-    <div class="feature">
-      <div class="icon">💬</div>
-      <h3>Sends Confirmations</h3>
-      <p>Texts the customer a booking confirmation immediately. Sends reminders 24 hours before. Follows up on no-shows.</p>
+    <p class="section-dek">
+      Pick a vertical in the call. Claire qualifies you, transfers you to that vertical's
+      receptionist, and a wrap-up SMS follows. The number is US (+1) because Irish
+      +353 is pending IEDR and Twilio regulatory approval — the behaviour is identical.
+    </p>
+
+    <div class="demo-strip">
+      <div class="demo-strip__prose">
+        <p>
+          <strong>Claire is the front-desk.</strong> She answers in an Irish accent, asks one question
+          to qualify the call, and routes you to the right specialist AI — dental, motor factors,
+          salon, or solicitor.
+        </p>
+        <p>
+          The specialist AI does the actual work: checks the calendar, quotes a price, takes a deposit,
+          or triages pain. If anything is unclear, it escalates to the owner via SMS rather than guessing.
+        </p>
+        <p>
+          After the call: a wrap-up text lands on the caller's phone with the booking confirmation or
+          next step. The whole thing takes ninety seconds.
+        </p>
+        <ol class="demo-steps">
+          <li><b>Ring the line</b>Claire answers. Irish accent. Asks which service.</li>
+          <li><b>Transfer</b>Routed to the dental / motor / salon / solicitor AI.</li>
+          <li><b>Booking or triage</b>Slot confirmed, or escalated to owner if complex.</li>
+          <li><b>Wrap-up SMS</b>Confirmation text on the caller's phone within a minute.</li>
+        </ol>
+      </div>
+
+      <figure class="call-log">
+        <figcaption class="call-log__kicker">Sample · Dental · Bright Smile, Limerick</figcaption>
+        <span class="call-log__line"><span class="call-log__time">[14:32:14]</span><span class="call-log__who">Caller</span><span class="call-log__text">"Is there anyone tomorrow for a chipped filling?"</span></span>
+        <span class="call-log__line"><span class="call-log__time">[14:32:18]</span><span class="call-log__who">Claire</span><span class="call-log__text">"Let me check Bright Smile Dental's diary for you."</span></span>
+        <span class="call-log__line"><span class="call-log__time">[14:32:24]</span><span class="call-log__who">Caller</span><span class="call-log__text">"Perfect, thanks."</span></span>
+        <span class="call-log__line"><span class="call-log__time">[14:32:47]</span><span class="call-log__who call-log__who--ai">Dental&nbsp;AI</span><span class="call-log__text">"Thursday at 2:15 PM with Dr. Conor. Confirmation sent to +353 87&nbsp;***&nbsp;**42."</span></span>
+        <span class="call-log__line"><span class="call-log__time">[14:33:02]</span><span class="call-log__who">Caller</span><span class="call-log__text">"Grand, thanks a million."</span></span>
+        <span class="call-log__line" style="margin-top:12px;"><span class="call-log__time">&nbsp;duration&nbsp;</span><span style="color:var(--ink);font-weight:600;">00:00:48</span><span class="call-log__time">&nbsp;&nbsp;wrap-up SMS&nbsp;</span><span style="color:var(--ink);font-weight:600;">delivered +0:32</span></span>
+      </figure>
     </div>
-    <div class="feature">
-      <div class="icon">🚨</div>
-      <h3>Handles Emergencies</h3>
-      <p>Detects urgent calls and transfers them to your on-call number immediately. No delays, no missed emergencies.</p>
+  </section>
+
+  <!-- WHAT IT HANDLES -->
+  <section class="editorial" id="handles" aria-labelledby="handles-title">
+    <div class="section-head">
+      <div class="section-num">§ 02 — Capabilities</div>
+      <h2 id="handles-title" class="section-title">What it handles</h2>
     </div>
-    <div class="feature">
-      <div class="icon">📦</div>
-      <h3>Answers Product Questions</h3>
-      <p>Knows your inventory, services, and prices. Checks stock levels in real-time. Answers questions your receptionist would.</p>
+    <p class="section-dek">
+      Six disciplines done by one system, tuned per-vertical. Not a chatbot dressed up
+      as a phone — a receptionist that happens to be software.
+    </p>
+
+    <div class="handles-grid">
+      <article class="handles-item">
+        <div class="handles-item__num">I — Appointments</div>
+        <h3 class="handles-item__title">Calendar booking</h3>
+        <p>
+          Reads your Google Calendar in real time. Quotes genuine available slots,
+          respects practitioner-specific diaries, and writes the event back with the
+          caller's name, number, and reason.
+        </p>
+      </article>
+
+      <article class="handles-item">
+        <div class="handles-item__num">II — Missed calls</div>
+        <h3 class="handles-item__title">Missed-call text-back</h3>
+        <p>
+          Every missed call triggers an SMS within sixty seconds — offering to book,
+          answer a question, or send the caller back to voicemail if that is what
+          they want. No lead goes cold.
+        </p>
+      </article>
+
+      <article class="handles-item">
+        <div class="handles-item__num">III — Emergency</div>
+        <h3 class="handles-item__title">Emergency transfer</h3>
+        <p>
+          Dental pain, motor breakdown, legal urgency — the AI recognises the tone and
+          either triages for severity or forwards straight to the owner's mobile. No
+          "press 9 for reception" voicemail tree.
+        </p>
+      </article>
+
+      <article class="handles-item">
+        <div class="handles-item__num">IV — Products</div>
+        <h3 class="handles-item__title">Stock &amp; product queries</h3>
+        <p>
+          For motor factors and retail: live inventory lookups answered on the call.
+          Part number, fit, price, availability, delivery window. No "I'll get someone
+          to ring you back."
+        </p>
+      </article>
+
+      <article class="handles-item">
+        <div class="handles-item__num">V — Hours</div>
+        <h3 class="handles-item__title">Opening-hours queries</h3>
+        <p>
+          Honest answers to "are you open tomorrow?" including Irish bank holidays,
+          half-days, seasonal hours, and the annual Christmas shutdown the old
+          voicemail never remembered to update.
+        </p>
+      </article>
+
+      <article class="handles-item">
+        <div class="handles-item__num">VI — Report</div>
+        <h3 class="handles-item__title">Weekly report</h3>
+        <p>
+          Every Monday: a plain email — calls handled, bookings made, calls escalated,
+          common questions asked. Enough signal to see whether this is earning its
+          keep. No dashboards to log into.
+        </p>
+      </article>
     </div>
-    <div class="feature">
-      <div class="icon">📊</div>
-      <h3>Reports Back to You</h3>
-      <p>Weekly report showing calls handled, appointments booked, and revenue captured. See exactly what the AI did for you.</p>
+  </section>
+
+  <!-- VERTICALS IN DEPTH -->
+  <section class="editorial" id="verticals" aria-labelledby="verticals-title">
+    <div class="section-head">
+      <div class="section-num">§ 03 — Verticals</div>
+      <h2 id="verticals-title" class="section-title">Four specialists, one line</h2>
+    </div>
+    <p class="section-dek">
+      Each vertical AI is trained on the language, the common questions, and the
+      Irish-specific details that make the conversation sound right — not like a
+      call-centre script translated to Dublin.
+    </p>
+
+    <!-- DENTAL -->
+    <article class="vertical">
+      <aside class="vertical__label"><b>01</b>Dental</aside>
+      <div class="vertical__body">
+        <h3 class="vertical__head">Dental practices</h3>
+        <p>
+          The dental AI books new-patient exams, emergency pain slots, hygienist
+          appointments, and follow-up checks. It knows the four Irish private
+          insurers — VHI, Laya, Irish Life, Aviva — and can explain what each
+          plan typically covers without quoting specific benefit figures it hasn't
+          been shown.
+        </p>
+        <p>
+          It knows the PRSI Treatment Benefit: a free annual exam plus a €15
+          scale and polish for PAYE workers with enough contributions. It checks
+          medical card eligibility before booking, and it triages dental pain
+          by asking three short questions about severity and duration.
+        </p>
+
+        <div class="qa">
+          <div class="qa__row"><div class="qa__tag">Caller</div><div class="qa__text">"Do ye take Laya? And how much is a filling?"</div></div>
+          <div class="qa__row"><div class="qa__tag">Dental AI</div><div class="qa__text qa__text--a">Yes, Bright Smile is a Laya-registered practice. A white composite filling is €110 to €160 depending on size — the dentist will quote exactly on the day. Would you like me to book you in?</div></div>
+        </div>
+
+        <figure class="call-log">
+          <figcaption class="call-log__kicker">Sample · Dental · medical card</figcaption>
+          <span class="call-log__line"><span class="call-log__time">[09:48:03]</span><span class="call-log__who">Caller</span><span class="call-log__text">"I've a medical card — is the exam still free?"</span></span>
+          <span class="call-log__line"><span class="call-log__time">[09:48:07]</span><span class="call-log__who call-log__who--ai">Dental&nbsp;AI</span><span class="call-log__text">"Yes — HSE Dental Treatment Services covers the exam and basic treatment. I'll need your card number when you come in."</span></span>
+          <span class="call-log__line"><span class="call-log__time">[09:48:19]</span><span class="call-log__who">Caller</span><span class="call-log__text">"Great. Anything next Tuesday morning?"</span></span>
+          <span class="call-log__line"><span class="call-log__time">[09:48:24]</span><span class="call-log__who call-log__who--ai">Dental&nbsp;AI</span><span class="call-log__text">"Tuesday 10:15 AM with Dr. Niamh. Booked — text confirmation sent."</span></span>
+        </figure>
+      </div>
+    </article>
+
+    <!-- MOTOR FACTORS -->
+    <article class="vertical">
+      <aside class="vertical__label"><b>02</b>Motor Factors</aside>
+      <div class="vertical__body">
+        <h3 class="vertical__head">Motor factors</h3>
+        <p>
+          The motor factors AI checks stock by part number or by reg + year + model.
+          It quotes current price, confirms delivery-run availability for that
+          afternoon, and handles account-customer queries versus walk-in pricing.
+        </p>
+        <p>
+          It can source parts from main-factor catalogues when a SKU isn't in local
+          stock, note the lead time, and ring the customer back when it lands —
+          without any human lifting the phone in between. Unusual request? It takes
+          the reg, the customer's number, and queues an owner callback by SMS.
+        </p>
+
+        <div class="qa">
+          <div class="qa__row"><div class="qa__tag">Caller</div><div class="qa__text">"Have ye a front pad set for an '18 Octavia?"</div></div>
+          <div class="qa__row"><div class="qa__tag">Motor AI</div><div class="qa__text qa__text--a">Two options — OEM-equivalent Brembo at €68.40, or Comline at €42.80. Both in stock. Account price? You'd be Kelly's Motors in Castletroy — €54.70 trade on the Brembo. On the 2pm run today if you confirm now.</div></div>
+        </div>
+
+        <figure class="call-log">
+          <figcaption class="call-log__kicker">Sample · Motor Factors · unusual part</figcaption>
+          <span class="call-log__line"><span class="call-log__time">[11:17:48]</span><span class="call-log__who">Caller</span><span class="call-log__text">"Window regulator for a 2009 Saab 9-3. Long shot."</span></span>
+          <span class="call-log__line"><span class="call-log__time">[11:17:55]</span><span class="call-log__who call-log__who--ai">Motor&nbsp;AI</span><span class="call-log__text">"Not in local stock. FB Euro lists it — €184 inc VAT, Thursday AM delivery to us. Want me to source it?"</span></span>
+          <span class="call-log__line"><span class="call-log__time">[11:18:09]</span><span class="call-log__who">Caller</span><span class="call-log__text">"Go on then, yeah."</span></span>
+          <span class="call-log__line"><span class="call-log__time">[11:18:14]</span><span class="call-log__who call-log__who--ai">Motor&nbsp;AI</span><span class="call-log__text">"Logged against your account. I'll SMS when it arrives Thursday."</span></span>
+        </figure>
+      </div>
+    </article>
+
+    <!-- SALON -->
+    <article class="vertical">
+      <aside class="vertical__label"><b>03</b>Salon</aside>
+      <div class="vertical__body">
+        <h3 class="vertical__head">Hair salons</h3>
+        <p>
+          The salon AI books stylist-specific appointments — "Aoife on a Saturday"
+          is not the same as "anyone on a Saturday". It knows service durations
+          down to the quarter-hour (cut &amp; blow-dry 45m, full head of highlights
+          2h15m, balayage 3h), and it takes a deposit on the phone for services
+          over ninety minutes.
+        </p>
+        <p>
+          No-show recovery is built-in: a polite SMS at the 24-hour mark, a second
+          at two hours, and the AI re-fills the slot from the waiting list if the
+          confirmation doesn't come back. The stylist's day stays full without
+          anyone chasing by hand.
+        </p>
+
+        <div class="qa">
+          <div class="qa__row"><div class="qa__tag">Caller</div><div class="qa__text">"Can I get Aoife for balayage on a Saturday?"</div></div>
+          <div class="qa__row"><div class="qa__tag">Salon AI</div><div class="qa__text qa__text--a">Aoife has Saturday the 9th at 10:30 AM — she'll need the full three hours for balayage. €40 deposit to secure, refundable up to 24 hours. Card now or pay-link by text?</div></div>
+        </div>
+      </div>
+    </article>
+
+    <!-- SOLICITOR -->
+    <article class="vertical">
+      <aside class="vertical__label"><b>04</b>Solicitor</aside>
+      <div class="vertical__body">
+        <h3 class="vertical__head">Solicitors</h3>
+        <p>
+          The solicitor AI handles first-contact intake for property, family,
+          probate, and litigation matters. It takes the caller's name, the broad
+          nature of the matter, the other party's name if relevant, and runs a
+          conflict check against the firm's client list before offering to book
+          a first consultation.
+        </p>
+        <p>
+          If there's a conflict, it says so politely and doesn't take any further
+          detail. If there's no conflict, it books the first-appointment slot and
+          emails the intake form. Confidentiality-compliant by design: it never
+          transmits case detail over SMS, only meeting-logistics messages.
+        </p>
+
+        <div class="qa">
+          <div class="qa__row"><div class="qa__tag">Caller</div><div class="qa__text">"I'm thinking of separation. Does the firm do that?"</div></div>
+          <div class="qa__row"><div class="qa__tag">Legal AI</div><div class="qa__text qa__text--a">Yes, family law including judicial separation and divorce. I'll take your name and a contact number now for the conflict check, then book a first consultation — typically €180 for the first hour, which covers general advice and whether we can act for you.</div></div>
+        </div>
+
+        <figure class="call-log">
+          <figcaption class="call-log__kicker">Sample · Solicitor · probate</figcaption>
+          <span class="call-log__line"><span class="call-log__time">[15:04:22]</span><span class="call-log__who">Caller</span><span class="call-log__text">"My father passed. I need to sort probate."</span></span>
+          <span class="call-log__line"><span class="call-log__time">[15:04:30]</span><span class="call-log__who call-log__who--ai">Legal&nbsp;AI</span><span class="call-log__text">"I'm sorry to hear that. I'll take a few details for the conflict check, then we'll book a first appointment — no charge for the initial thirty-minute probate call."</span></span>
+          <span class="call-log__line"><span class="call-log__time">[15:05:11]</span><span class="call-log__who call-log__who--ai">Legal&nbsp;AI</span><span class="call-log__text">"No conflict found. Tuesday 11:00 AM with Ms. Fitzgerald. Confirmation and intake form by email now."</span></span>
+        </figure>
+      </div>
+    </article>
+  </section>
+
+  <!-- PRICING -->
+  <section class="editorial" id="pricing" aria-labelledby="pricing-title">
+    <div class="section-head">
+      <div class="section-num">§ 04 — Pricing</div>
+      <h2 id="pricing-title" class="section-title">Three tiers. Setup fee. No lock-in.</h2>
+    </div>
+    <p class="section-dek">
+      Month-to-month on Starter and Professional. Three-month minimum on Growth, because
+      that tier includes integration work we do by hand. Setup fee one-time, transparent,
+      billed before go-live.
+    </p>
+
+    <div class="pricing">
+      <article class="tier">
+        <div class="tier__kicker">I — Starter</div>
+        <h3 class="tier__name">Starter</h3>
+        <div class="tier__price">€149<span>/ month</span></div>
+        <div class="tier__setup">+ €297 setup · business hours only</div>
+        <ul class="tier__list">
+          <li>AI receptionist, Irish accent</li>
+          <li>Google Calendar booking</li>
+          <li>Business-hours coverage only</li>
+          <li>Weekly email report</li>
+          <li>Up to 200 calls / month</li>
+          <li>Month-to-month, cancel anytime</li>
+        </ul>
+        <a class="tier__cta" href="/onboard.html">Start with Starter →</a>
+      </article>
+
+      <article class="tier tier--featured">
+        <div class="tier__kicker">II — Professional</div>
+        <h3 class="tier__name">Professional</h3>
+        <div class="tier__price">€249<span>/ month</span></div>
+        <div class="tier__setup">+ €297 setup · 24/7 cover</div>
+        <ul class="tier__list">
+          <li>Everything in Starter</li>
+          <li>After-hours coverage, 24/7</li>
+          <li>Missed-call text-back (60 seconds)</li>
+          <li>SMS confirmation on every booking</li>
+          <li>Emergency transfer to owner</li>
+          <li>Up to 500 calls / month</li>
+        </ul>
+        <a class="tier__cta" href="/onboard.html">Choose Professional →</a>
+      </article>
+
+      <article class="tier">
+        <div class="tier__kicker">III — Growth</div>
+        <h3 class="tier__name">Growth</h3>
+        <div class="tier__price">€347<span>/ month</span></div>
+        <div class="tier__setup">+ €497 setup · 3-month minimum</div>
+        <ul class="tier__list">
+          <li>Everything in Professional</li>
+          <li>Knowledge base from your docs</li>
+          <li>Live inventory / catalogue sync</li>
+          <li>Monthly optimisation call (30m)</li>
+          <li>Custom routing rules</li>
+          <li>Up to 1,500 calls / month</li>
+        </ul>
+        <a class="tier__cta" href="/onboard.html">Move to Growth →</a>
+      </article>
+    </div>
+
+    <div class="enterprise">
+      <h3 class="enterprise__name">Enterprise</h3>
+      <p class="enterprise__body">
+        Multi-location franchises, custom integrations (PMS, CRM, ERP), white-glove
+        setup, named engineer, SLA in writing. Quoted on scope.
+      </p>
+      <div class="enterprise__price">Quoted · mail callmeie@proton.me</div>
+    </div>
+  </section>
+
+  <!-- COST COMPARISON -->
+  <section class="editorial" id="cost" aria-labelledby="cost-title">
+    <div class="section-head">
+      <div class="section-num">§ 05 — Arithmetic</div>
+      <h2 id="cost-title" class="section-title">Versus a part-time receptionist</h2>
+    </div>
+    <p class="section-dek">
+      Not hype. Just the maths for an Irish SMB weighing a part-time human receptionist
+      against CallMeIE. Figures reflect published Irish payroll ranges for a part-time
+      front-desk hire in 2026.
+    </p>
+
+    <div class="cost-compare">
+      <div class="cost-col">
+        <div class="cost-col__kicker">Option A</div>
+        <h3 class="cost-col__head">Part-time receptionist</h3>
+        <p>
+          25 hours a week at typical Irish front-desk rates, plus Employer PRSI and
+          pension auto-enrolment — the real cost is higher than the hourly rate on
+          the offer letter.
+        </p>
+        <div class="cost-row"><span class="cost-row__label">Hourly rate (€14–€18/hr)</span><span class="cost-row__value">€14.00 – €18.00</span></div>
+        <div class="cost-row"><span class="cost-row__label">25 hrs × 4.33 wks</span><span class="cost-row__value">€1,516 – €1,950</span></div>
+        <div class="cost-row"><span class="cost-row__label">+ Employer PRSI (11.15%)</span><span class="cost-row__value">€169 – €217</span></div>
+        <div class="cost-row"><span class="cost-row__label">+ Auto-enrolment (My Future Fund)</span><span class="cost-row__value">€23 – €29</span></div>
+        <div class="cost-row"><span class="cost-row__label">+ Holiday accrual (8.7%)</span><span class="cost-row__value">€132 – €170</span></div>
+        <div class="cost-row"><span class="cost-row__label"><strong>Total monthly</strong></span><span class="cost-row__value">€1,840 – €2,366</span></div>
+        <p class="cost-note">
+          Covers 25 hours a week. Nights, weekends, lunch breaks, sick days — not
+          covered. Public holidays at double-time.
+        </p>
+      </div>
+
+      <div class="cost-col">
+        <div class="cost-col__kicker">Option B</div>
+        <h3 class="cost-col__head">CallMeIE</h3>
+        <p>
+          The AI receptionist answers 24/7 with no PRSI, no holiday pay, no sick days,
+          no lunch. It handles every call, every hour, every day — including Christmas.
+        </p>
+        <div class="cost-row"><span class="cost-row__label">Starter</span><span class="cost-row__value">€149 / month</span></div>
+        <div class="cost-row"><span class="cost-row__label">Professional</span><span class="cost-row__value">€249 / month</span></div>
+        <div class="cost-row"><span class="cost-row__label">Growth</span><span class="cost-row__value">€347 / month</span></div>
+        <div class="cost-row"><span class="cost-row__label">Setup (one-time)</span><span class="cost-row__value">€297 – €497</span></div>
+        <div class="cost-row"><span class="cost-row__label">Coverage</span><span class="cost-row__value">24 / 7 / 365</span></div>
+        <div class="cost-row"><span class="cost-row__label"><strong>Total monthly</strong></span><span class="cost-row__value">€149 – €347</span></div>
+        <p class="cost-note">
+          About one-tenth the cost and roughly four times the coverage hours. Not a
+          replacement for judgement — a complement that escalates to a human when
+          judgement is actually needed.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- IRISH SPECIFICS -->
+  <section class="editorial" id="irish" aria-labelledby="irish-title">
+    <div class="section-head">
+      <div class="section-num">§ 06 — Irish</div>
+      <h2 id="irish-title" class="section-title">Built for Ireland specifically</h2>
+    </div>
+    <p class="section-dek">
+      Generic AI receptionists fail on the specifics. Medical cards, PRSI benefits,
+      Irish insurers, bank holidays, regional accents. CallMeIE is tuned for each.
+    </p>
+
+    <ul class="irish-list">
+      <li><span>Medical card</span><span>Recognises HSE Dental Treatment Services, checks eligibility by card number, routes medical-card callers to the correct booking path.</span></li>
+      <li><span>PRSI Treatment Benefit</span><span>Knows the annual free exam and €15 scale-and-polish entitlement for PAYE workers with sufficient contributions. Never over-quotes on covered treatment.</span></li>
+      <li><span>Private insurers</span><span>VHI · Laya Healthcare · Irish Life Health · Aviva. Knows which practices are registered with each and never confirms coverage the practice hasn't agreed to.</span></li>
+      <li><span>Bank holidays</span><span>St. Patrick's Day · Easter Monday · May / June / August Bank Holidays · October · Christmas · St. Stephen's Day · New Year. Auto-respects your closure calendar.</span></li>
+      <li><span>Accents tested</span><span>Munster, Ulster, Leinster, Connacht — tested against real caller recordings. Callers with strong regional accents are not routed to "press 9 for English".</span></li>
+      <li><span>Irish numbers</span><span>Accepts +353 mobile and landline formats interchangeably. Handles 085, 086, 087, 089 prefixes and area codes from 01 through 094.</span></li>
+      <li><span>Eircode</span><span>Parses Eircodes when asked for an address — for delivery-run motor factors and home-visit services.</span></li>
+      <li><span>Currency &amp; VAT</span><span>Quotes in euro, VAT-inclusive by default, with the option to switch to VAT-exclusive for B2B trade customers.</span></li>
+    </ul>
+  </section>
+
+  <!-- FOUNDER STATEMENT -->
+  <section class="editorial" id="founder" aria-labelledby="founder-title">
+    <div class="section-head">
+      <div class="section-num">§ 07 — Founder</div>
+      <h2 id="founder-title" class="section-title">Why this exists</h2>
+    </div>
+
+    <div class="founder">
+      <p class="founder__body">
+        I built CallMeIE because Irish small businesses deserve better than voicemail.
+        A dental practice losing a new patient because the line rang out at lunchtime
+        is not a fluke — it is the quiet, daily arithmetic of a receptionist-less
+        front desk. <em>This is the honest alternative: a system that answers in
+        an Irish accent, knows the local specifics, and hands off to a human the
+        moment the call actually needs one.</em> Operated from Limerick. Priced so a
+        single-chair practice can justify it without a spreadsheet. No lock-in, no
+        minimum seat counts, no selling of caller data.
+      </p>
+      <div class="founder__sign">
+        <div class="founder__signature">CallMeIE</div>
+        <div class="founder__caption">
+          <strong>Owner · CallMeIE</strong>
+          Limerick, Ireland · Operated in-house<br>
+          Built on Vapi, Twilio, and FastAPI on Render
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- FAQ -->
+  <section class="editorial" id="faq" aria-labelledby="faq-title">
+    <div class="section-head">
+      <div class="section-num">§ 08 — FAQ</div>
+      <h2 id="faq-title" class="section-title">Questions we actually get</h2>
+    </div>
+    <p class="section-dek">
+      Written as they are asked. Answered honestly — including where the system is
+      not the right fit.
+    </p>
+
+    <div class="faq-list">
+      <details>
+        <summary>
+          <span class="faq-num">01</span>
+          <span>What happens if the AI can't handle a call?</span>
+          <span class="faq-toggle"></span>
+        </summary>
+        <div class="faq-body">
+          <p>
+            It escalates. The moment the AI detects uncertainty — an unusual request, a
+            confused caller, an angry tone, a missing fact — it uses the <span style="font-family:'JetBrains Mono',monospace;font-size:14px;">transferToOwner</span>
+            tool: the owner's mobile rings directly with the caller still on the line, and
+            an SMS summary of the call lands on that mobile at the same time.
+          </p>
+          <p>
+            If the owner doesn't pick up, the AI apologises politely and takes a callback
+            number, not a voicemail. The owner then has everything needed to return the
+            call in context.
+          </p>
+        </div>
+      </details>
+
+      <details>
+        <summary>
+          <span class="faq-num">02</span>
+          <span>Do you do Irish accents?</span>
+          <span class="faq-toggle"></span>
+        </summary>
+        <div class="faq-body">
+          <p>
+            Yes. Claire speaks in an Irish accent (Leinster-neutral by default; a
+            Munster variant is available for Limerick and Cork practices). More importantly
+            she <em>understands</em> Irish accents — the AI is tested against real caller
+            recordings from Munster, Ulster, Leinster, and Connacht.
+          </p>
+          <p>
+            If a specific caller is ever misheard, the transcript is logged, and the
+            recognition model is re-tuned against that recording. This happens weekly,
+            not once at launch.
+          </p>
+        </div>
+      </details>
+
+      <details>
+        <summary>
+          <span class="faq-num">03</span>
+          <span>Can I keep my existing number?</span>
+          <span class="faq-toggle"></span>
+        </summary>
+        <div class="faq-body">
+          <p>
+            Yes. We don't take your number; we sit behind it. You set call forwarding
+            on busy and no-answer (and optionally after-hours) from your existing line
+            to a CallMeIE number — standard Irish carrier features. Your customers
+            still ring the number printed on the van or the shopfront.
+          </p>
+          <p>
+            If you prefer full routing through CallMeIE, we can port the number across
+            as part of Growth or Enterprise setup — that takes about ten working days
+            through ComReg.
+          </p>
+        </div>
+      </details>
+
+      <details>
+        <summary>
+          <span class="faq-num">04</span>
+          <span>What happens if your server is down?</span>
+          <span class="faq-toggle"></span>
+        </summary>
+        <div class="faq-body">
+          <p>
+            Honest answer: our server is on Render, and Render occasionally does cold-starts
+            — typically around five seconds after a long idle period. During those five
+            seconds, the call falls through to your mobile directly via a Twilio fallback
+            rule. The caller never hears dead air.
+          </p>
+          <p>
+            In the rare case of a full Render outage, Twilio fallback keeps your
+            existing phone ringing as if CallMeIE wasn't there. Nothing gets worse
+            than the old behaviour; it just stops getting better for the length of
+            the outage.
+          </p>
+        </div>
+      </details>
+
+      <details>
+        <summary>
+          <span class="faq-num">05</span>
+          <span>GDPR — how do you handle call data?</span>
+          <span class="faq-toggle"></span>
+        </summary>
+        <div class="faq-body">
+          <p>
+            Call audio is retained for 30 days for transcription and quality purposes,
+            then deleted. Transcripts (text only) are retained 90 days for your weekly
+            reports and for model improvement, then deleted.
+          </p>
+          <p>
+            A caller can request erasure at any time — email callmeie@proton.me
+            and we purge that caller's number and associated recordings within 72 hours.
+            We do not sell, share, or reuse call data for anything other than running
+            your service.
+          </p>
+          <p>
+            Data Processing Agreement available on request for Growth and Enterprise
+            clients; standard processor terms included with Starter and Professional.
+          </p>
+        </div>
+      </details>
+
+      <details>
+        <summary>
+          <span class="faq-num">06</span>
+          <span>Cancellation — am I locked in?</span>
+          <span class="faq-toggle"></span>
+        </summary>
+        <div class="faq-body">
+          <p>
+            Starter and Professional are month-to-month. Cancel any time before the next
+            billing date by email; your setup fee is not refundable once go-live has happened,
+            but there is no further charge.
+          </p>
+          <p>
+            Growth has a three-month minimum, because that tier involves integration work
+            (knowledge base build, inventory sync wiring, custom routing) that is
+            non-trivial to unwind. After the initial three months, Growth is also
+            month-to-month.
+          </p>
+        </div>
+      </details>
+    </div>
+  </section>
+
+</div><!-- /.page -->
+
+<!-- FINAL CTA -->
+<section class="final-cta" aria-labelledby="final-cta-title">
+  <div class="page">
+    <div class="final-cta__kicker">The demo is live right now</div>
+    <h2 id="final-cta-title" class="final-cta__headline">Hear it before you hire it</h2>
+    <a class="final-cta__number" href="tel:+16617643212">Ring +1 (661) 764-3212</a>
+    <p class="final-cta__sub">
+      Takes about ninety seconds. You'll get a real call from a real CallMeIE instance in
+      receptionist mode. Try to confuse it.
+    </p>
+    <a class="final-cta__secondary" href="/onboard.html">Or submit the onboarding form →</a>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer role="contentinfo">
+  <div class="page">
+    <div class="footer-grid">
+      <div class="footer-col">
+        <h4>CallMeIE</h4>
+        <p>AI phone receptionist for Irish SMBs. Built &amp; operated from Limerick, Ireland.</p>
+        <p>Stack: Vapi · Twilio · Google Calendar · FastAPI on Render.</p>
+        <p>Email: <a href="mailto:callmeie@proton.me" class="mono-val">callmeie@proton.me</a></p>
+        <p>Demo line: <span class="mono-val">+1 (661) 764-3212</span></p>
+      </div>
+      <div class="footer-col">
+        <h4>Product</h4>
+        <ul>
+          <li><a href="#how-demo-works">How the demo works</a></li>
+          <li><a href="#handles">What it handles</a></li>
+          <li><a href="#verticals">Verticals</a></li>
+          <li><a href="#pricing">Pricing</a></li>
+          <li><a href="/onboard.html">Onboarding form</a></li>
+        </ul>
+      </div>
+      <div class="footer-col">
+        <h4>Support</h4>
+        <ul>
+          <li><a href="#faq">FAQ</a></li>
+          <li><a href="#cost">Cost comparison</a></li>
+          <li><a href="#irish">Irish-specifics</a></li>
+          <li>Owner SMS: <span class="mono-val">+353 85 786 3564</span></li>
+        </ul>
+      </div>
+      <div class="footer-col">
+        <h4>Legal</h4>
+        <ul>
+          <li><a href="/privacy.html">Privacy notice</a></li>
+          <li><a href="/terms.html">Terms of service</a></li>
+          <li><a href="mailto:callmeie@proton.me?subject=GDPR%20data%20request">GDPR request</a></li>
+          <li><a href="mailto:callmeie@proton.me?subject=DPA%20request">DPA on request</a></li>
+        </ul>
+        <div class="footer-admin">
+          <strong>Admin portal (owner only)</strong>
+          <a href="https://callmeie.onrender.com/admin?token=YOUR_TOKEN">callmeie.onrender.com/admin?token=YOUR_TOKEN</a>
+        </div>
+      </div>
+    </div>
+    <div class="footer-legal">
+      <span class="footer-legal__wordmark">CALLMEIE &mdash; LIMERICK</span>
+      <span>© 2026 CallMeIE. All rights reserved.</span>
+      <span>Built in Limerick &nbsp;·&nbsp; Ring +1 (661) 764-3212</span>
     </div>
   </div>
-</div>
-
-<div class="how section" style="max-width:100%;background:#f8fafc;">
-  <h2>How It Works</h2>
-  <div class="steps">
-    <div class="step">
-      <div class="num">1</div>
-      <h3>We Set It Up</h3>
-      <p>We configure your AI receptionist with your business details, hours, services, and diary. Takes one session.</p>
-    </div>
-    <div class="step">
-      <div class="num">2</div>
-      <h3>Forward Your Calls</h3>
-      <p>Your existing number stays the same. Calls forward to the AI when you are busy or after hours. Simple phone setting.</p>
-    </div>
-    <div class="step">
-      <div class="num">3</div>
-      <h3>AI Handles Everything</h3>
-      <p>Answers calls, books appointments, sends texts, transfers emergencies. You just check your diary.</p>
-    </div>
-    <div class="step">
-      <div class="num">4</div>
-      <h3>You Get Results</h3>
-      <p>New bookings appear in your calendar. Weekly reports show how many calls and bookings the AI captured.</p>
-    </div>
-  </div>
-</div>
-
-<div class="section">
-  <h2>Built for Irish Businesses</h2>
-  <div class="industries">
-    <span class="ind">Dental Practices</span>
-    <span class="ind">Hair Salons</span>
-    <span class="ind">Plumbers &amp; HVAC</span>
-    <span class="ind">Restaurants</span>
-    <span class="ind">Motor Factors</span>
-    <span class="ind">Medical Clinics</span>
-    <span class="ind">Law Firms</span>
-    <span class="ind">Auto Repair</span>
-    <span class="ind">Estate Agents</span>
-    <span class="ind">Veterinary Clinics</span>
-  </div>
-  <p style="text-align:center;color:#64748b;max-width:600px;margin:0 auto;">Based in Limerick, serving businesses across Ireland. We understand medical cards, PRSI, Irish insurance providers, and how Irish businesses actually work.</p>
-</div>
-
-<div class="cta-section">
-  <h2>Ready to Stop Missing Calls?</h2>
-  <p>Ring the demo number and hear it yourself. Then get set up in one session.</p>
-  <a href="tel:+16617643212" class="cta" style="margin-right:16px;">Ring +1 (661) 764-3212</a>
-  <a href="/onboard.html" class="cta" style="background:#1e293b;color:#22d3ee;border:2px solid #22d3ee;">Get Started</a>
-</div>
-
-<footer>
-  <p>CallMe.ie — AI Phone Answering for Irish Businesses</p>
-  <p style="margin-top:8px;">Limerick, Ireland | <a href="mailto:callmeie@proton.me">callmeie@proton.me</a></p>
-  <p style="margin-top:8px;"><a href="/privacy">Privacy Policy</a> &middot; <a href="/terms">Terms of Service</a> &middot; <a href="/onboard.html">Get Started</a></p>
-  <p style="margin-top:16px;">&copy; 2026 CallMe. All rights reserved.</p>
 </footer>
 
 </body>
