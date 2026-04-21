@@ -1890,6 +1890,352 @@ async def health():
     }
 
 
+# =========================================================================
+# OWL STUDIO routes — multi-tenant lead/ticket backend for client sites
+# See PDR-BACKEND.md in owl-studio-website-directions repo.
+# =========================================================================
+
+import secrets as _secrets
+
+OWL_OWNER_TOKEN = os.environ.get("OWL_OWNER_TOKEN", "").strip()
+
+
+def _owl_init_tables() -> None:
+    """Create the Owl Studio tables if they don't exist yet."""
+    with get_db() as conn:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS owl_sites (
+                site_id            TEXT PRIMARY KEY,
+                display_name       TEXT NOT NULL,
+                tier               TEXT NOT NULL,
+                care_tier          TEXT,
+                lead_email         TEXT NOT NULL,
+                lead_sms           TEXT,
+                edit_emails        TEXT NOT NULL DEFAULT '[]',
+                admin_token        TEXT NOT NULL,
+                live_url           TEXT NOT NULL,
+                status             TEXT NOT NULL DEFAULT 'active',
+                created_at         TEXT NOT NULL DEFAULT (datetime('now'))
+            )
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS owl_leads (
+                id               INTEGER PRIMARY KEY AUTOINCREMENT,
+                site_id          TEXT NOT NULL,
+                ts               TEXT NOT NULL DEFAULT (datetime('now')),
+                form_type        TEXT NOT NULL DEFAULT 'contact',
+                payload_json     TEXT NOT NULL,
+                submitter_ip     TEXT,
+                submitted_from   TEXT,
+                status           TEXT NOT NULL DEFAULT 'new'
+            )
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS owl_tickets (
+                id               INTEGER PRIMARY KEY AUTOINCREMENT,
+                site_id          TEXT NOT NULL,
+                ts               TEXT NOT NULL DEFAULT (datetime('now')),
+                submitter_email  TEXT NOT NULL,
+                subject          TEXT NOT NULL,
+                body             TEXT NOT NULL,
+                priority         TEXT NOT NULL DEFAULT 'normal',
+                status           TEXT NOT NULL DEFAULT 'open',
+                sla_due          TEXT
+            )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_owl_leads_site_ts ON owl_leads(site_id, ts)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_owl_tickets_site_ts ON owl_tickets(site_id, ts)")
+
+
+_owl_init_tables()
+
+
+def _owl_site_by_id(site_id: str) -> dict | None:
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT * FROM owl_sites WHERE site_id = ? AND status = 'active'",
+            (site_id,),
+        ).fetchone()
+    return dict(row) if row else None
+
+
+def _owl_site_by_token(token: str) -> dict | None:
+    if not token or len(token) < 20:
+        return None
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT * FROM owl_sites WHERE admin_token = ? AND status = 'active'",
+            (token,),
+        ).fetchone()
+    return dict(row) if row else None
+
+
+def _owl_check_owner(token: str) -> bool:
+    return bool(OWL_OWNER_TOKEN) and _secrets.compare_digest(token, OWL_OWNER_TOKEN)
+
+
+@app.post("/owl/submit")
+async def owl_submit(request: Request, background_tasks: BackgroundTasks) -> JSONResponse:
+    """Public form submission endpoint — called by every Owl Studio client site.
+
+    Request body: { site_id, form_data (obj), form_type?, submitted_from? }
+    """
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="invalid JSON")
+
+    site_id = str(body.get("site_id", "")).strip()
+    form_data = body.get("form_data", {})
+    form_type = str(body.get("form_type", "contact")).strip().lower() or "contact"
+    submitted_from = str(body.get("submitted_from", ""))[:400]
+
+    # Honeypot: silently accept + drop if bots filled it
+    if isinstance(form_data, dict) and form_data.get("nickname"):
+        return JSONResponse({"ok": True})
+
+    if not site_id or not isinstance(form_data, dict):
+        raise HTTPException(status_code=400, detail="site_id and form_data required")
+
+    site = _owl_site_by_id(site_id)
+    if not site:
+        # Don't leak valid site_ids; return generic error
+        raise HTTPException(status_code=404, detail="unknown site")
+
+    client_ip = request.client.host if request.client else ""
+    payload_json = json.dumps(form_data, ensure_ascii=False)[:8000]
+
+    with get_db() as conn:
+        conn.execute(
+            "INSERT INTO owl_leads (site_id, form_type, payload_json, submitter_ip, submitted_from) VALUES (?, ?, ?, ?, ?)",
+            (site_id, form_type, payload_json, client_ip, submitted_from),
+        )
+
+    # Notify owner via SMS in background (existing Twilio infra)
+    summary_bits = []
+    for k in ("name", "contact_name", "phone", "email", "contact_phone", "contact_email"):
+        v = form_data.get(k)
+        if v:
+            summary_bits.append(f"{k}: {v}")
+            if len(summary_bits) >= 3:
+                break
+    msg_tail = " · ".join(summary_bits)[:120] if summary_bits else "(see dashboard)"
+    sms_body = f"OwlStudio · new {form_type} on {site['display_name']} · {msg_tail}"
+    owner_sms = site.get("lead_sms") or OWNER_NUMBER
+    if owner_sms:
+        background_tasks.add_task(send_sms, owner_sms, sms_body)
+
+    return JSONResponse({"ok": True, "message": "We'll reply within 24 hours."})
+
+
+@app.post("/owl/care/ticket")
+async def owl_care_ticket(request: Request, background_tasks: BackgroundTasks) -> JSONResponse:
+    """Care-plan edit request. Body: site_id, submitter_email, subject, body, priority?"""
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="invalid JSON")
+
+    site_id = str(body.get("site_id", "")).strip()
+    submitter_email = str(body.get("submitter_email", "")).strip().lower()
+    subject = str(body.get("subject", "")).strip()[:200]
+    msg = str(body.get("body", "")).strip()[:4000]
+    priority = str(body.get("priority", "normal")).strip().lower()
+    if priority not in ("low", "normal", "high"):
+        priority = "normal"
+
+    if not all([site_id, submitter_email, subject, msg]):
+        raise HTTPException(status_code=400, detail="site_id, submitter_email, subject, body all required")
+
+    site = _owl_site_by_id(site_id)
+    if not site:
+        raise HTTPException(status_code=404, detail="unknown site")
+
+    # Verify submitter is authorised to open tickets for this site
+    try:
+        allowed = json.loads(site.get("edit_emails") or "[]")
+    except Exception:
+        allowed = []
+    if submitter_email not in [e.lower() for e in allowed]:
+        raise HTTPException(status_code=403, detail="email not authorised for this site")
+
+    # SLA by care tier
+    care = site.get("care_tier") or ""
+    days = {"concierge": 1, "growth": 2, "essential": 5}.get(care, 5)
+    sla_due = (datetime.now() + timedelta(days=days)).isoformat()
+
+    with get_db() as conn:
+        cur = conn.execute(
+            """INSERT INTO owl_tickets (site_id, submitter_email, subject, body, priority, sla_due)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (site_id, submitter_email, subject, msg, priority, sla_due),
+        )
+        ticket_id = cur.lastrowid
+
+    sms_body = f"OwlStudio · ticket #{ticket_id} {priority.upper()} for {site['display_name']} · SLA {days}d · {subject[:60]}"
+    if OWNER_NUMBER:
+        background_tasks.add_task(send_sms, OWNER_NUMBER, sms_body)
+
+    return JSONResponse({"ok": True, "ticket_id": ticket_id, "sla_due": sla_due})
+
+
+@app.get("/owl/admin", response_class=HTMLResponse)
+def owl_admin(token: str = Query("")) -> HTMLResponse:
+    """Per-client dashboard — shows leads + tickets for the site matched by token."""
+    site = _owl_site_by_token(token)
+    if not site:
+        return HTMLResponse("<h1>401 · invalid or missing token</h1>", status_code=401)
+
+    with get_db() as conn:
+        leads = [dict(r) for r in conn.execute(
+            "SELECT id, ts, form_type, payload_json, status FROM owl_leads WHERE site_id = ? ORDER BY ts DESC LIMIT 100",
+            (site["site_id"],),
+        ).fetchall()]
+        tickets = [dict(r) for r in conn.execute(
+            "SELECT id, ts, subject, body, priority, status, sla_due FROM owl_tickets WHERE site_id = ? ORDER BY ts DESC LIMIT 50",
+            (site["site_id"],),
+        ).fetchall()]
+
+    def esc(s: str) -> str:
+        return (str(s or "")
+                .replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+                .replace('"', "&quot;"))
+
+    lead_rows = "".join(
+        f"<tr><td class='mono'>{esc(l['ts'])}</td><td>{esc(l['form_type'])}</td>"
+        f"<td><pre>{esc(l['payload_json'])}</pre></td><td>{esc(l['status'])}</td></tr>"
+        for l in leads
+    ) or "<tr><td colspan='4' class='empty'>No leads yet.</td></tr>"
+    ticket_rows = "".join(
+        f"<tr><td class='mono'>#{t['id']}</td><td class='mono'>{esc(t['ts'])}</td>"
+        f"<td>{esc(t['subject'])}</td><td>{esc(t['priority'])}</td>"
+        f"<td>{esc(t['status'])}</td><td class='mono'>{esc(t['sla_due'])}</td></tr>"
+        for t in tickets
+    ) or "<tr><td colspan='6' class='empty'>No care tickets yet.</td></tr>"
+
+    html = f"""<!doctype html><html><head><meta charset='utf-8'>
+<meta name='viewport' content='width=device-width,initial-scale=1'>
+<title>{esc(site['display_name'])} · Owl Studio admin</title>
+<link href='https://fonts.googleapis.com/css2?family=Archivo+Black&family=Fraunces:opsz,wght@9..144,400;9..144,600&family=JetBrains+Mono:wght@400;600&display=swap' rel='stylesheet'>
+<style>
+:root {{ --paper:#F5F1E8; --ink:#0b0a08; --burgundy:#5A1420; --grey:#545454; }}
+* {{ box-sizing: border-box; margin: 0; padding: 0; }}
+body {{ background: var(--paper); color: var(--ink); font-family: 'Fraunces', Georgia, serif; padding: 40px 24px; max-width: 1200px; margin: 0 auto; }}
+h1 {{ font-family: 'Archivo Black', sans-serif; font-size: clamp(28px, 4vw, 44px); letter-spacing: -0.02em; }}
+h2 {{ font-family: 'Archivo Black', sans-serif; font-size: 20px; margin: 48px 0 12px; padding-bottom: 10px; border-bottom: 3px solid var(--ink); }}
+.kicker {{ font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--burgundy); margin-bottom: 8px; }}
+.mono {{ font-family: 'JetBrains Mono', monospace; font-size: 12px; }}
+table {{ width: 100%; border-collapse: collapse; margin-top: 8px; }}
+th, td {{ padding: 10px 12px; text-align: left; border-bottom: 1px solid rgba(11,10,8,0.14); font-size: 14px; vertical-align: top; }}
+th {{ font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--grey); background: transparent; }}
+pre {{ font-family: 'JetBrains Mono', monospace; font-size: 12px; white-space: pre-wrap; word-break: break-word; max-width: 560px; margin: 0; }}
+.empty {{ color: var(--grey); font-style: italic; }}
+.meta {{ display: flex; gap: 24px; flex-wrap: wrap; margin-top: 18px; font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--grey); }}
+.meta b {{ color: var(--ink); font-weight: 600; }}
+@media (max-width: 640px) {{ body {{ padding: 24px 14px; }} }}
+</style></head><body>
+<div class='kicker'>OWL STUDIO · CLIENT ADMIN</div>
+<h1>{esc(site['display_name'])}</h1>
+<div class='meta'>
+  <div>tier · <b>{esc(site['tier'])}</b></div>
+  <div>care · <b>{esc(site.get('care_tier') or 'none')}</b></div>
+  <div>live · <b><a href='{esc(site['live_url'])}'>{esc(site['live_url'])}</a></b></div>
+  <div>site_id · <b>{esc(site['site_id'])}</b></div>
+</div>
+<h2>Leads <span class='mono' style='color: var(--grey); font-weight: 400;'>· {len(leads)} latest</span></h2>
+<table><thead><tr><th>When</th><th>Form</th><th>Payload</th><th>Status</th></tr></thead><tbody>{lead_rows}</tbody></table>
+<h2>Care tickets <span class='mono' style='color: var(--grey); font-weight: 400;'>· {len(tickets)} latest</span></h2>
+<table><thead><tr><th>ID</th><th>When</th><th>Subject</th><th>Priority</th><th>Status</th><th>SLA due</th></tr></thead><tbody>{ticket_rows}</tbody></table>
+</body></html>"""
+    return HTMLResponse(html)
+
+
+@app.post("/owl/sites")
+async def owl_register_site(request: Request, token: str = Query("")) -> JSONResponse:
+    """Owner-only: register a new client site. Returns the generated admin_token."""
+    if not _owl_check_owner(token):
+        raise HTTPException(status_code=401, detail="owner token required")
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="invalid JSON")
+
+    site_id = str(body.get("site_id", "")).strip().lower()
+    display_name = str(body.get("display_name", "")).strip()
+    tier = str(body.get("tier", "starter")).strip().lower()
+    care_tier = str(body.get("care_tier", "")).strip().lower() or None
+    lead_email = str(body.get("lead_email", "")).strip().lower()
+    lead_sms = str(body.get("lead_sms", "")).strip() or None
+    edit_emails = body.get("edit_emails", [])
+    live_url = str(body.get("live_url", "")).strip()
+
+    if not all([site_id, display_name, tier, lead_email, live_url]):
+        raise HTTPException(status_code=400, detail="site_id, display_name, tier, lead_email, live_url required")
+    if tier not in ("starter", "pro", "custom"):
+        raise HTTPException(status_code=400, detail="tier must be starter|pro|custom")
+    if care_tier and care_tier not in ("essential", "growth", "concierge"):
+        raise HTTPException(status_code=400, detail="care_tier must be essential|growth|concierge")
+
+    admin_token = _secrets.token_urlsafe(32)
+
+    try:
+        with get_db() as conn:
+            conn.execute(
+                """INSERT INTO owl_sites (site_id, display_name, tier, care_tier, lead_email,
+                        lead_sms, edit_emails, admin_token, live_url)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (site_id, display_name, tier, care_tier, lead_email,
+                 lead_sms, json.dumps(edit_emails), admin_token, live_url),
+            )
+    except sqlite3.IntegrityError:
+        raise HTTPException(status_code=409, detail="site_id already exists")
+
+    return JSONResponse({
+        "ok": True,
+        "site_id": site_id,
+        "admin_url": f"/owl/admin?token={admin_token}",
+        "admin_token": admin_token,
+        "embed_snippet": _owl_embed_snippet(site_id),
+    })
+
+
+@app.get("/owl/sites")
+def owl_list_sites(token: str = Query("")) -> JSONResponse:
+    if not _owl_check_owner(token):
+        raise HTTPException(status_code=401, detail="owner token required")
+    with get_db() as conn:
+        rows = [dict(r) for r in conn.execute(
+            "SELECT site_id, display_name, tier, care_tier, live_url, status, created_at FROM owl_sites ORDER BY created_at DESC"
+        ).fetchall()]
+    return JSONResponse({"sites": rows})
+
+
+def _owl_embed_snippet(site_id: str) -> str:
+    """JS snippet to paste on a client site's contact form."""
+    return (
+        f"<script>document.querySelectorAll('form[data-owl]').forEach(f => "
+        f"f.addEventListener('submit', async e => {{ e.preventDefault(); "
+        f"const fd = Object.fromEntries(new FormData(f)); "
+        f"const r = await fetch('https://callmeie.onrender.com/owl/submit', {{"
+        f"method:'POST', headers:{{'Content-Type':'application/json'}}, "
+        f"body: JSON.stringify({{site_id:'{site_id}', form_data: fd, "
+        f"submitted_from: location.href}}) }}); "
+        f"const j = await r.json(); "
+        f"f.dispatchEvent(new CustomEvent('owl-result', {{detail: j}})); "
+        f"if (j.ok) f.reset(); "
+        f"}}));</script>"
+    )
+
+
+@app.get("/owl/health/{site_id}")
+def owl_health(site_id: str) -> JSONResponse:
+    """Simple health check UptimeRobot can poll."""
+    site = _owl_site_by_id(site_id)
+    if not site:
+        raise HTTPException(status_code=404, detail="unknown site")
+    return JSONResponse({"ok": True, "site_id": site_id, "live_url": site["live_url"]})
+
+
 if __name__ == "__main__":
     import uvicorn
     port = int(os.environ.get("PORT", 8080))
