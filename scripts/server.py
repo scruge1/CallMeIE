@@ -551,9 +551,17 @@ def init_db():
                 submission_id INTEGER
             )
         """))
-        existing_columns = {
-            row["name"] for row in conn.execute("PRAGMA table_info(leads)").fetchall()
-        }
+        # Dialect-specific column introspection for ALTER TABLE idempotency
+        if _USE_PG:
+            existing_columns = {
+                row["column_name"] for row in conn.execute(
+                    "SELECT column_name FROM information_schema.columns WHERE table_name = 'leads'"
+                ).fetchall()
+            }
+        else:
+            existing_columns = {
+                row["name"] for row in conn.execute("PRAGMA table_info(leads)").fetchall()
+            }
         lead_column_migrations = {
             "pain_point": "ALTER TABLE leads ADD COLUMN pain_point TEXT",
             "estimated_missed_calls_per_week": "ALTER TABLE leads ADD COLUMN estimated_missed_calls_per_week TEXT",
@@ -562,7 +570,11 @@ def init_db():
         }
         for column, sql in lead_column_migrations.items():
             if column not in existing_columns:
-                conn.execute(sql)
+                try:
+                    conn.execute(sql)
+                except Exception as e:
+                    # Postgres rejects duplicate ALTER - fine, column already exists
+                    print(f"[init_db] skipped migration '{column}': {e}", file=sys.stderr)
         conn.commit()
 
 
