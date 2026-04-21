@@ -79,7 +79,22 @@ curl -X PATCH -H "Authorization: Bearer $TOK" -H "Content-Type: application/json
 | owl-uptime-kuma | service (uptime-kuma) | `t10jb009nm5e36oy1n8bki97` | running:healthy | `http://uptimekuma-t10jb009nm5e36oy1n8bki97.178.104.205.255.sslip.io` | `https://uptime.owlzone.trade` (same) |
 | owl-umami | service (umami) | `txd1tt0zup0yckhlfojdf301` | running:healthy | `http://umami-txd1tt0zup0yckhlfojdf301.178.104.205.255.sslip.io` | `https://analytics.owlzone.trade` (same) |
 
-**Known issue (2026-04-21):** SERVICE_FQDN_VAULTWARDEN / UPTIMEKUMA / UMAMI env vars were updated to the custom domains, but Coolify's app sub-resource `fqdn` field did not cascade. Traefik still routes only the sslip.io hostnames. **Fix:** open Coolify dashboard → each service → "Domains" → paste the target URL → Save → Redeploy. Or apply via direct Coolify-DB update to `services_applications.fqdn`.
+**Solved workaround (2026-04-21) — documented Coolify v4 bug [coollabsio/coolify#6281](https://github.com/coollabsio/coolify/issues/6281):** the API's env-var endpoint updates `SERVICE_FQDN_*` but does NOT cascade to `service_applications.fqdn` in the DB, so Traefik keeps routing only the original sslip.io hostname. Running this recipe gets all custom domains live with Let's Encrypt SSL:
+
+```bash
+# 1. SSH to the box, update fqdn column directly in Coolify Postgres
+ssh root@178.104.205.255  # password from ~/.claude/routes/.env
+docker exec coolify-db psql -U coolify -d coolify -c   "UPDATE service_applications SET fqdn = 'https://vault.owlzone.trade' WHERE id = 1;"
+# (repeat per app_id / target domain; use id from `SELECT id, name, fqdn FROM service_applications`)
+
+# 2. Force redeploy — regenerates docker_compose + Traefik labels from new fqdn
+TOK="$COOLIFY_API_ROOT_TOKEN"; API="http://178.104.205.255:8000/api/v1"
+curl -H "Authorization: Bearer $TOK" "$API/deploy?uuid=<service_uuid>&force=true"
+
+# 3. Wait ~90s for Let's Encrypt. Verify: curl -I https://<custom> → 200 / 302
+```
+
+The table is `service_applications` (NOT `services_applications`). `custom_labels` column does not exist on this table — Traefik labels live inside `services.docker_compose` and regenerate on force-deploy. See `scripts/fix-coolify-fqdn.py` for the automated version of this flow.
 
 ---
 
