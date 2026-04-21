@@ -364,6 +364,23 @@ python C:/Users/a33_s/Desktop/callmeie-fix/scripts/provision-owl-backend.py
 
 ---
 
+## 9.6 Client-site generation from Business Profile JSON
+
+Schema + renderer live.
+
+```bash
+python scripts/render-site.py --profile rathborne-dental
+# profiles/rathborne-dental.json + templates/01-dental-swiss.template.html
+# -> client-builds/rathborne-dental/index.html
+```
+
+Supports: `{{key}}`, `{{nested.path}}`, `{{{html-safe}}}`, `{{#loop list}}...{{/loop}}`.
+Stage-1 (6 fields, signup) vs Stage-2 (remaining, post-commit discovery).
+`completeness{}` per section so partial profiles still render.
+Full spec: `BUSINESS-PROFILE-SCHEMA.md`.
+
+---
+
 ## 10 · Backend backlog (what's built vs what's left)
 
 ### Shipped
