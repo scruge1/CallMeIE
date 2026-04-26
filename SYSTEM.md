@@ -184,17 +184,19 @@ _(Example shape only. Keep live assistant ids and routing in sync with the curre
 
 ## 7. PRICING TIERS
 
-| Plan | Monthly | Setup Fee | Includes |
-|------|---------|-----------|----------|
-| **Starter** | €149/mo | €297 | AI receptionist, calendar booking, business hours only |
-| **Professional** | €249/mo | €297 | + After-hours, missed call text-back, SMS confirmations, weekly report |
-| **Growth** | €347/mo | €497 | + Knowledge base (products/FAQs), live inventory sync, monthly optimisation call |
-| **Enterprise** | Custom | Custom | Custom integrations, multi-location, white-glove setup |
+| Plan | Monthly | Setup Fee | Minutes included | Overage | Margin at cap |
+|------|---------|-----------|-----------------|---------|---------------|
+| **Starter** | €149/mo | €297 | 300 min/mo | €0.22/min | ~€102 (68%) |
+| **Professional** | €249/mo | €297 | 600 min/mo | €0.20/min | ~€157 (63%) |
+| **Growth** | €347/mo | €497 | 1,200 min/mo | €0.18/min | ~€165 (47%) |
+| **Enterprise** | Custom | Custom | Custom | Custom | — |
 
 **Our cost per client (Vapi PAYG):**
-- ~€0.12-0.18/min all-in (Vapi + LLM + TTS + Twilio)
-- Average 500 min/mo = €60-90/mo cost → €59-287/mo margin per client
-- Breakeven: 1 client at Starter covers Render + Twilio base costs
+- ~€0.12-0.17/min all-in (Vapi platform $0.05 + STT ~$0.004 + TTS ~$0.05 + LLM ~$0.03 + Twilio ~$0.01)
+- Twilio Irish number: €2/mo fixed
+- Margin at included-minute cap: €102–€165/mo (47–68%)
+- Overage: €0.18–0.22/min charged vs ~€0.15/min cost = €0.03–0.07/min profit on every extra minute
+- Breakeven: 1 Starter client covers Render + Twilio base costs
 
 ---
 
