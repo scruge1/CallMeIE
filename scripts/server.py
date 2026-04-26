@@ -1365,12 +1365,17 @@ async def capture_lead(request: Request):
     elif any(w in biz for w in ["solicitor", "lawyer", "legal", "law"]):
         next_tool = "transfer_solicitor_demo"
     else:
-        next_tool = None
+        next_tool = "transfer_general_business_demo"
 
-    if next_tool:
-        instruction = f"Lead saved. Call {next_tool} now. Do not speak."
+    if next_tool == "transfer_general_business_demo":
+        biz_display = business if business else "your business"
+        instruction = (
+            f"Lead saved. Confirm with caller: 'Just to make sure I route you to the right demo — "
+            f"you're looking for a receptionist for {biz_display}, is that right?' "
+            f"Once confirmed, call transfer_general_business_demo. Do not speak otherwise."
+        )
     else:
-        instruction = "Lead saved. This is a catch-all lead â end the call politely."
+        instruction = f"Lead saved. Call {next_tool} now. Do not speak."
 
     return _vapi_result(tool_call_id, instruction)
 
