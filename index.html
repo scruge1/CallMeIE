@@ -5,11 +5,96 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>CallMeIE — AI Phone Receptionist for Irish SMEs · Limerick</title>
 <meta name="description" content="CallMeIE gives your Irish business its own AI phone receptionist — configured for your calendar, your prices, your questions. Handles bookings, missed-call text-back, after-hours cover. From €149/mo. Built in Limerick." />
+<link rel="canonical" href="https://callmeie.ie/" />
+<link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+
+<!-- Open Graph / Social -->
+<meta property="og:type" content="website" />
+<meta property="og:url" content="https://callmeie.ie/" />
+<meta property="og:title" content="CallMeIE — AI Phone Receptionist for Irish SMEs" />
+<meta property="og:description" content="Your Irish business gets its own AI phone receptionist — answers calls, books appointments, texts back missed callers. 24/7. From €149/mo. Built in Limerick." />
+<meta property="og:locale" content="en_IE" />
+<meta property="og:site_name" content="CallMeIE" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="CallMeIE — AI Phone Receptionist for Irish SMEs" />
+<meta name="twitter:description" content="Your Irish business gets its own AI phone receptionist. Answers calls, books appointments, texts back missed callers. From €149/mo." />
+
+<!-- Structured Data -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "LocalBusiness",
+      "@id": "https://callmeie.ie/#business",
+      "name": "CallMeIE",
+      "description": "AI phone receptionist for Irish SMEs. Answers calls, books appointments, texts back missed callers, escalates to a human when needed.",
+      "url": "https://callmeie.ie/",
+      "telephone": "+16617643212",
+      "email": "callmeie@proton.me",
+      "address": {
+        "@type": "PostalAddress",
+        "addressLocality": "Limerick",
+        "addressCountry": "IE"
+      },
+      "areaServed": { "@type": "Country", "name": "Ireland" },
+      "priceRange": "€149–€347/month",
+      "openingHours": "Mo-Su 00:00-24:00"
+    },
+    {
+      "@type": "Service",
+      "@id": "https://callmeie.ie/#service",
+      "name": "AI Phone Receptionist for Irish Businesses",
+      "provider": { "@id": "https://callmeie.ie/#business" },
+      "description": "Dedicated AI phone receptionist for Irish SMEs. Configured for your calendar, prices, and most common questions. Handles bookings, missed-call text-back, after-hours cover.",
+      "areaServed": { "@type": "Country", "name": "Ireland" },
+      "hasOfferCatalog": {
+        "@type": "OfferCatalog",
+        "name": "CallMeIE Plans",
+        "itemListElement": [
+          { "@type": "Offer", "name": "Starter", "price": "149", "priceCurrency": "EUR" },
+          { "@type": "Offer", "name": "Professional", "price": "249", "priceCurrency": "EUR" },
+          { "@type": "Offer", "name": "Growth", "price": "347", "priceCurrency": "EUR" }
+        ]
+      }
+    },
+    {
+      "@type": "FAQPage",
+      "mainEntity": [
+        {
+          "@type": "Question",
+          "name": "What happens if the AI can't handle a call?",
+          "acceptedAnswer": { "@type": "Answer", "text": "It escalates immediately. The owner's mobile rings directly with the caller still on the line, plus an SMS summary. If the owner doesn't pick up, the AI takes a callback number." }
+        },
+        {
+          "@type": "Question",
+          "name": "Do you handle Irish accents?",
+          "acceptedAnswer": { "@type": "Answer", "text": "Yes. The AI is tested against real caller recordings from Munster, Ulster, Leinster, and Connacht. Callers with strong regional accents are not misrouted." }
+        },
+        {
+          "@type": "Question",
+          "name": "Can I keep my existing phone number?",
+          "acceptedAnswer": { "@type": "Answer", "text": "Yes. Set call forwarding on busy or no-answer from your existing line to CallMeIE. Your customers still ring the number on the van or shopfront." }
+        },
+        {
+          "@type": "Question",
+          "name": "How much does CallMeIE cost?",
+          "acceptedAnswer": { "@type": "Answer", "text": "Starter is €149/month plus €297 one-time setup. Professional is €249/month plus €297 setup. Growth is €347/month plus €497 setup. All month-to-month." }
+        },
+        {
+          "@type": "Question",
+          "name": "Is CallMeIE GDPR compliant?",
+          "acceptedAnswer": { "@type": "Answer", "text": "Yes. Call audio retained 30 days then deleted. Transcripts retained 90 days. Callers can request erasure by email within 72 hours. Data Processing Agreement available on request." }
+        }
+      ]
+    }
+  ]
+}
+</script>
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
-
 <link rel="stylesheet" href="/styles.css">
 </head>
 
