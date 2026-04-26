@@ -3,21 +3,29 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>CallMeIE — AI Phone Receptionist for Irish SMEs · Limerick</title>
-<meta name="description" content="CallMeIE gives your Irish business its own AI phone receptionist — configured for your calendar, your prices, your questions. Handles bookings, missed-call text-back, after-hours cover. From €149/mo. Built in Limerick." />
+<title>AI Phone Receptionist Ireland | CallMeIE — From €149/mo</title>
+<meta name="description" content="Irish AI phone receptionist — answers calls, books appointments, texts back missed callers 24/7. GDPR-compliant. Irish accents handled. From €149/mo." />
 <link rel="canonical" href="https://callmeie.ie/" />
-<link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+<link rel="icon" type="image/png" sizes="512x512" href="/favicon.png" />
+<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+<link rel="apple-touch-icon" href="/favicon.png" />
+
+<!-- Geo / Local SEO -->
+<meta name="geo.region" content="IE-LK" />
+<meta name="geo.placename" content="Limerick, Ireland" />
+<meta name="geo.position" content="52.6638;-8.6267" />
+<meta name="ICBM" content="52.6638, -8.6267" />
 
 <!-- Open Graph / Social -->
 <meta property="og:type" content="website" />
 <meta property="og:url" content="https://callmeie.ie/" />
-<meta property="og:title" content="CallMeIE — AI Phone Receptionist for Irish SMEs" />
-<meta property="og:description" content="Your Irish business gets its own AI phone receptionist — answers calls, books appointments, texts back missed callers. 24/7. From €149/mo. Built in Limerick." />
+<meta property="og:title" content="AI Phone Receptionist for Irish Business | CallMeIE" />
+<meta property="og:description" content="Irish AI phone receptionist — answers calls 24/7, books appointments, texts back missed callers. GDPR-compliant. Irish accents handled. From €149/mo." />
 <meta property="og:locale" content="en_IE" />
 <meta property="og:site_name" content="CallMeIE" />
 <meta name="twitter:card" content="summary_large_image" />
-<meta name="twitter:title" content="CallMeIE — AI Phone Receptionist for Irish SMEs" />
-<meta name="twitter:description" content="Your Irish business gets its own AI phone receptionist. Answers calls, books appointments, texts back missed callers. From €149/mo." />
+<meta name="twitter:title" content="AI Phone Receptionist for Irish Business | CallMeIE" />
+<meta name="twitter:description" content="Irish AI phone receptionist — answers calls 24/7, books appointments, texts back missed callers. GDPR-compliant. From €149/mo." />
 
 <!-- Structured Data -->
 <script type="application/ld+json">
@@ -35,8 +43,15 @@
       "address": {
         "@type": "PostalAddress",
         "addressLocality": "Limerick",
+        "addressRegion": "Limerick",
         "addressCountry": "IE"
       },
+      "geo": {
+        "@type": "GeoCoordinates",
+        "latitude": 52.6638,
+        "longitude": -8.6267
+      },
+      "hasMap": "https://maps.google.com/?q=Limerick,Ireland",
       "areaServed": { "@type": "Country", "name": "Ireland" },
       "priceRange": "€149–€347/month",
       "openingHours": "Mo-Su 00:00-24:00"
@@ -96,6 +111,26 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/styles.css">
+<style>
+  /* Hero icon ring-pulse — transform only (compositor thread), prefers-reduced-motion guarded */
+  @keyframes ring-pulse {
+    0%   { transform: rotate(0deg) scale(1); }
+    8%   { transform: rotate(-12deg) scale(1.06); }
+    16%  { transform: rotate(12deg) scale(1.06); }
+    24%  { transform: rotate(-8deg) scale(1.03); }
+    32%  { transform: rotate(6deg) scale(1.03); }
+    40%  { transform: rotate(0deg) scale(1); }
+    100% { transform: rotate(0deg) scale(1); }
+  }
+  .hero-icon {
+    will-change: transform;
+    animation: ring-pulse 3.5s ease-in-out infinite;
+    animation-delay: 1.2s;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .hero-icon { animation: none; }
+  }
+</style>
 </head>
 
 <body>
@@ -133,6 +168,10 @@
 
   <!-- HERO -->
   <section class="hero" id="top" aria-labelledby="hero-title">
+    <!-- Brand icon with ring-pulse animation -->
+    <div aria-hidden="true" style="margin-bottom: 24px;">
+      <img class="hero-icon" src="/assets/callmeie-icon.png" alt="" width="56" height="56" style="display:block;" />
+    </div>
     <div class="hero__kicker">Ring the demo. Hear it work.</div>
     <h1 id="hero-title" class="hero__headline">Your business gets its own receptionist.</h1>
     <p class="hero__sub">
@@ -897,6 +936,8 @@
         <ul>
           <li><a href="/privacy.html">Privacy notice</a></li>
           <li><a href="/terms.html">Terms of service</a></li>
+          <li><a href="/about.html">About CallMeIE</a></li>
+          <li><a href="/blog/">Blog</a></li>
           <li><a href="mailto:callmeie@proton.me?subject=GDPR%20data%20request">GDPR request</a></li>
           <li><a href="mailto:callmeie@proton.me?subject=DPA%20request">DPA on request</a></li>
         </ul>
