@@ -2296,6 +2296,30 @@ async def owl_register_site(request: Request, token: str = Query("")) -> JSONRes
     })
 
 
+@app.post("/owl/sites/{site_id}/rotate-admin-token")
+def owl_rotate_admin_token(site_id: str, token: str = Query("")) -> JSONResponse:
+    """Owner-only: regenerate admin_token for an existing site (AUD-001). Old token immediately invalid."""
+    if not _owl_check_owner(token):
+        raise HTTPException(status_code=401, detail="owner token required")
+    site_id_clean = site_id.strip().lower()
+    if not site_id_clean:
+        raise HTTPException(status_code=400, detail="site_id required")
+    new_token = _secrets.token_urlsafe(32)
+    with get_db() as conn:
+        cur = conn.execute(
+            "UPDATE owl_sites SET admin_token = ? WHERE site_id = ? AND status = 'active'",
+            (new_token, site_id_clean),
+        )
+        if cur.rowcount == 0:
+            raise HTTPException(status_code=404, detail=f"no active site with site_id={site_id_clean}")
+    return JSONResponse({
+        "ok": True,
+        "site_id": site_id_clean,
+        "admin_token": new_token,
+        "admin_url": f"/owl/admin?token={new_token}",
+    })
+
+
 @app.get("/owl/sites")
 def owl_list_sites(token: str = Query("")) -> JSONResponse:
     if not _owl_check_owner(token):
