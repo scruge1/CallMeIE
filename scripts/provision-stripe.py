@@ -189,7 +189,13 @@ def ensure_payment_link(client: httpx.Client, price: dict[str, Any], key: str, i
         "metadata[owl_tag]": TAG,
         "metadata[owl_key]": key,
         "allow_promotion_codes": "true",
-        "billing_address_collection": "auto",
+        # AUD-004 — IE-billed entity, EU VAT mandatory ≥€10k/yr B2C.
+        # Stripe Tax registered for IE jurisdiction; flip automatic_tax on
+        # every new payment link. Address collection becomes "required" (was
+        # "auto") because tax calc needs a customer address.
+        "billing_address_collection": "required",
+        "automatic_tax[enabled]": "true",
+        "tax_id_collection[enabled]": "true",
     }
     if not is_subscription:
         # one-off payment — customer can optionally save card
