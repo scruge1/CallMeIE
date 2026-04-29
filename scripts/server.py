@@ -2175,11 +2175,39 @@ async def owl_care_ticket(request: Request, background_tasks: BackgroundTasks) -
 
 
 @app.get("/owl/admin", response_class=HTMLResponse)
-def owl_admin(token: str = Query("")) -> HTMLResponse:
-    """Per-client dashboard — shows leads + tickets for the site matched by token."""
+def owl_admin(
+    request: Request,
+    token: str = Query(""),
+) -> HTMLResponse:
+    """Per-client dashboard — shows leads + tickets for the site matched by token.
+
+    AUD-024 — accept token from Authorization: Bearer header OR cookie OR
+    legacy Query param. When a token arrives via Query, redirect to the
+    cookie-only URL so the literal token stops appearing in browser history,
+    Referer headers, and Render access logs. Existing emails with ?token=
+    URLs continue to work (one redirect hop per first hit).
+    """
+    # Resolution order: header > cookie > query (the loud path)
+    if not token:
+        auth = request.headers.get("authorization", "")
+        if auth.lower().startswith("bearer "):
+            token = auth.split(None, 1)[1].strip()
+    if not token:
+        token = request.cookies.get("owl_admin_token", "")
+
     site = _owl_site_by_token(token)
     if not site:
         return HTMLResponse("<h1>401 · invalid or missing token</h1>", status_code=401)
+
+    # If the token came via Query, set a cookie + redirect to the clean URL.
+    if request.query_params.get("token"):
+        from starlette.responses import RedirectResponse
+        resp = RedirectResponse(url="/owl/admin", status_code=303)
+        resp.set_cookie(
+            "owl_admin_token", token,
+            httponly=True, secure=True, samesite="lax", max_age=60 * 60 * 24 * 30,
+        )
+        return resp
 
     with get_db() as conn:
         leads = [dict(r) for r in conn.execute(
