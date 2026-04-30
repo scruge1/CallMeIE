@@ -47,11 +47,13 @@ app = FastAPI(title="CallMeIE — AI Receptionist Server")
 try:
     from billing.webhook import router as _vapi_billing_router
     from billing.portal import router as _portal_router
+    from billing.admin import router as _meter_admin_router
     from billing.db import init_db as _init_billing_db
 
     _init_billing_db()
     app.include_router(_vapi_billing_router)
     app.include_router(_portal_router)
+    app.include_router(_meter_admin_router)
 except Exception as _e:
     # Log but keep the rest of the server alive — billing is additive.
     print(f"[billing] router init failed: {_e}", flush=True)

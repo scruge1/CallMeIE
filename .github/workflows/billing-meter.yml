@@ -1,0 +1,46 @@
+name: Billing Meter Sync
+
+# AUD-038 — nightly Stripe Billing Meter sync.
+#
+# Triggers /billing/meter/sync on the live Render deploy. The endpoint
+# token-gates and runs push_pending_usage() — same call as
+# `python -m billing.meter` locally.
+#
+# Schedule: 01:15 UTC daily = 02:15 IST during BST (April–October),
+# 01:15 GMT during winter. The exact minute does not matter — Stripe
+# de-dupes by `identifier=vapi-{call_id}` so re-runs are safe.
+#
+# Manual run: `gh workflow run billing-meter.yml --repo scruge1/CallMeIE`
+
+on:
+  schedule:
+    - cron: '15 1 * * *'
+  workflow_dispatch:
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: POST /billing/meter/sync
+        env:
+          METER_SYNC_TOKEN: ${{ secrets.METER_SYNC_TOKEN }}
+          BILLING_ENDPOINT: https://callmeie.onrender.com/billing/meter/sync
+        run: |
+          set -euo pipefail
+          if [ -z "$METER_SYNC_TOKEN" ]; then
+            echo "::error::METER_SYNC_TOKEN repo secret not set"
+            exit 2
+          fi
+          response=$(curl -sS -w "\n__HTTP_CODE__%{http_code}" -X POST \
+            "$BILLING_ENDPOINT" \
+            -H "X-Meter-Sync-Token: $METER_SYNC_TOKEN" \
+            -H "Content-Type: application/json")
+          body=$(printf '%s' "$response" | sed -n '1,/__HTTP_CODE__/p' | sed '$d')
+          code=$(printf '%s' "$response" | awk -F'__HTTP_CODE__' '{print $2}')
+          echo "HTTP $code"
+          echo "$body"
+          if [ "$code" != "200" ]; then
+            echo "::error::meter sync failed with HTTP $code"
+            exit 1
+          fi
