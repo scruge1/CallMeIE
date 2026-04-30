@@ -2747,6 +2747,81 @@ async def owl_stripe_webhook(request: Request, background_tasks: BackgroundTasks
     return JSONResponse({"ok": True, "event_type": event_type, "product_key": product_key})
 
 
+# ─── Stripe Customer Portal (AUD-015) ─────────────────────────────────
+# Adam's clients on care plans manage their card / invoices / cancel via
+# Stripe's hosted portal. We don't reinvent any of that UI — just mint a
+# session URL keyed off the same admin_token that auths /owl/admin.
+
+OWL_STRIPE_API_KEY = (
+    os.environ.get("STRIPE_API_KEY")
+    or os.environ.get("STRIPE_SECRET_KEY")
+    or os.environ.get("STRIPE_API")  # legacy name in ~/.claude/routes/.env
+    or ""
+).strip()
+
+
+@app.post("/owl/stripe/portal")
+def owl_stripe_portal(request: Request, token: str = Query("")) -> JSONResponse:
+    """Mint a Stripe Customer Portal session for the site that owns this token.
+
+    AUD-015 — owners on care plans can update card / view invoices / cancel
+    without a support touch. Auth resolution mirrors AUD-024: Authorization
+    Bearer header > owl_admin_token cookie > legacy ?token= query.
+    """
+    if not OWL_STRIPE_API_KEY:
+        raise HTTPException(status_code=500, detail="STRIPE_API_KEY not configured")
+
+    if not token:
+        auth = request.headers.get("authorization", "")
+        if auth.lower().startswith("bearer "):
+            token = auth.split(None, 1)[1].strip()
+    if not token:
+        token = request.cookies.get("owl_admin_token", "")
+
+    site = _owl_site_by_token(token)
+    if not site:
+        raise HTTPException(status_code=401, detail="invalid or missing token")
+
+    # Find the most-recent Stripe customer_id we've seen for this site.
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT customer_id FROM owl_payments "
+            "WHERE site_id = ? AND customer_id IS NOT NULL "
+            "ORDER BY ts DESC LIMIT 1",
+            (site["site_id"],),
+        ).fetchone()
+    if not row or not row["customer_id"]:
+        raise HTTPException(
+            status_code=404,
+            detail="no Stripe customer on file for this site (no successful payment yet)",
+        )
+    customer_id = row["customer_id"]
+
+    # Create the portal session. Hand-rolled HTTP via httpx — the project
+    # doesn't depend on stripe-python and the webhook already proves we
+    # can talk to the Stripe REST API directly.
+    return_url = "https://callmeie.onrender.com/owl/admin"
+    try:
+        with httpx.Client(timeout=15.0) as client:
+            r = client.post(
+                "https://api.stripe.com/v1/billing_portal/sessions",
+                data={"customer": customer_id, "return_url": return_url},
+                headers={"Authorization": f"Bearer {OWL_STRIPE_API_KEY}"},
+            )
+        if r.status_code >= 400:
+            raise HTTPException(
+                status_code=502,
+                detail=f"Stripe portal-session create failed: HTTP {r.status_code} {r.text[:200]}",
+            )
+        session = r.json()
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Stripe API unreachable: {e}")
+
+    return JSONResponse({"ok": True, "url": session["url"]})
+
+
 if __name__ == "__main__":
     import uvicorn
     port = int(os.environ.get("PORT", 8080))
