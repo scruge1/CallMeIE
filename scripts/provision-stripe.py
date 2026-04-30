@@ -75,6 +75,29 @@ CATALOGUE = [
             {"key": "care-concierge-yearly",  "amount": 195000, "interval": "year"},
         ],
     },
+    # AUD-019 — Site build deposits (50% upfront via Stripe; balance on
+    # handover). Tier names + amounts match the live pricing block in
+    # `interactive-gallery.html` (Starter €695 / Pro €1,595 / Custom from €2,950).
+    # Custom tier: deposit pays for the €99 audit which is credited against
+    # the final invoice. The Payment Link for Custom intentionally points
+    # at the €99 audit Price — `audit-once` — so the prospect commits to
+    # the scoping work before a full quote is issued.
+    {
+        "key": "site-starter-deposit",
+        "name": "Owl Studio · Starter site deposit (€348)",
+        "description": "50% deposit on the €695 Starter site. Balance €347 invoiced on handover, typically 7 days. Includes single landing page, mobile/tablet/desktop builds, 1 round revisions, 1 year hosting + SSL + GDPR banner.",
+        "prices": [
+            {"key": "site-starter-deposit", "amount": 34800, "interval": None},
+        ],
+    },
+    {
+        "key": "site-pro-deposit",
+        "name": "Owl Studio · Pro site deposit (€798)",
+        "description": "50% deposit on the €1,595 Pro site. Balance €797 invoiced on handover, typically 14 days. Includes 5-page site, custom adaptation, lightweight CMS, copy + GBP setup, basic SEO, 2 years hosting, 2 rounds revisions.",
+        "prices": [
+            {"key": "site-pro-deposit", "amount": 79800, "interval": None},
+        ],
+    },
 ]
 
 WEBHOOK_EVENTS = [
