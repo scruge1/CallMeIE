@@ -37,10 +37,11 @@ jobs:
             -H "X-Meter-Sync-Token: $METER_SYNC_TOKEN" \
             -H "Content-Type: application/json")
           body=$(printf '%s' "$response" | sed -n '1,/__HTTP_CODE__/p' | sed '$d')
-          code=$(printf '%s' "$response" | awk -F'__HTTP_CODE__' '{print $2}')
+          # strip whitespace (newline) from awk output to make comparison work
+          code=$(printf '%s' "$response" | awk -F'__HTTP_CODE__' '{printf "%s", $2}' | tr -d '[:space:]')
           echo "HTTP $code"
           echo "$body"
           if [ "$code" != "200" ]; then
-            echo "::error::meter sync failed with HTTP $code"
+            echo "::error::meter sync failed with HTTP '$code'"
             exit 1
           fi
