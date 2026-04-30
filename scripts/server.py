@@ -39,6 +39,23 @@ from googleapiclient.discovery import build
 sys.path.insert(0, os.path.dirname(__file__))
 
 app = FastAPI(title="CallMeIE — AI Receptionist Server")
+
+# AUD-038 — Vapi metered billing + Stripe Customer Portal routes.
+# Routers stay inert (401/503) until VAPI_WEBHOOK_SECRET / STRIPE_SECRET_KEY
+# env vars are present on Render. Importable on cold boot — any import error
+# means a real packaging problem we want to see immediately.
+try:
+    from billing.webhook import router as _vapi_billing_router
+    from billing.portal import router as _portal_router
+    from billing.db import init_db as _init_billing_db
+
+    _init_billing_db()
+    app.include_router(_vapi_billing_router)
+    app.include_router(_portal_router)
+except Exception as _e:
+    # Log but keep the rest of the server alive — billing is additive.
+    print(f"[billing] router init failed: {_e}", flush=True)
+
 _SCRIPTS_DIR = os.path.dirname(os.path.abspath(__file__))
 _REPO_ROOT = os.path.dirname(_SCRIPTS_DIR)
 ADMIN_HTML_PATH = os.path.join(_SCRIPTS_DIR, "admin.html")
