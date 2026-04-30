@@ -112,6 +112,54 @@ class TestSignatureVerification:
         )
         assert r.status_code == 401
 
+    def test_static_secret_xvapi_header_accepted(self, client):
+        """Vapi org-level webhook sends X-Vapi-Secret static header (no HMAC)."""
+        body = _payload(call_id="static_xv_001")
+        r = client.post(
+            "/billing/webhook/vapi",
+            content=body,
+            headers={
+                "x-vapi-secret": SECRET,
+                "content-type": "application/json",
+            },
+        )
+        assert r.status_code == 200
+        assert r.json()["ok"] is True
+
+    def test_static_secret_bearer_accepted(self, client):
+        body = _payload(call_id="static_bearer_001")
+        r = client.post(
+            "/billing/webhook/vapi",
+            content=body,
+            headers={
+                "authorization": f"Bearer {SECRET}",
+                "content-type": "application/json",
+            },
+        )
+        assert r.status_code == 200
+
+    def test_static_secret_raw_authorization_accepted(self, client):
+        """Some Vapi configs send raw token in Authorization without Bearer prefix."""
+        body = _payload(call_id="static_raw_001")
+        r = client.post(
+            "/billing/webhook/vapi",
+            content=body,
+            headers={
+                "authorization": SECRET,
+                "content-type": "application/json",
+            },
+        )
+        assert r.status_code == 200
+
+    def test_static_secret_wrong_value_rejected(self, client):
+        body = _payload(call_id="bad_static")
+        r = client.post(
+            "/billing/webhook/vapi",
+            content=body,
+            headers={"x-vapi-secret": "WRONG_VALUE"},
+        )
+        assert r.status_code == 401
+
     def test_unknown_event_type_ignored(self, client):
         body = json.dumps({"message": {"type": "transcript-update"}}).encode()
         sig = _sign(body)

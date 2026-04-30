@@ -18,6 +18,7 @@ import hmac
 import json
 import logging
 import os
+import secrets
 import time
 from typing import Any
 
@@ -86,6 +87,38 @@ async def _backfill_call(call_id: str) -> dict[str, Any]:
     return {}
 
 
+def _verify_static_secret(headers, secret: str) -> bool:
+    """Vapi org-level Server URL uses static custom HTTP headers, not HMAC.
+
+    Three header conventions accepted (per Vapi server-authentication docs):
+      1. ``X-Vapi-Secret: <token>`` (legacy, simplest org-level config)
+      2. ``Authorization: Bearer <token>`` (standard bearer)
+      3. ``Authorization: <token>`` (some Vapi setups don't prepend Bearer)
+
+    Returns True only on exact match via ``secrets.compare_digest``.
+    """
+    if not secret:
+        return False
+    # Header lookups are case-insensitive in Starlette/FastAPI.
+    candidates: list[str] = []
+    x_vapi = headers.get("x-vapi-secret", "")
+    if x_vapi:
+        candidates.append(x_vapi)
+    auth = headers.get("authorization", "")
+    if auth:
+        if auth.lower().startswith("bearer "):
+            candidates.append(auth[7:].strip())
+        else:
+            candidates.append(auth.strip())
+    for c in candidates:
+        try:
+            if secrets.compare_digest(c, secret):
+                return True
+        except Exception:
+            continue
+    return False
+
+
 def _extract_fields(msg: dict, call: dict) -> dict[str, Any]:
     """Best-effort extract of (call_id, assistant_id, duration, ended_reason, cost)."""
     return {
@@ -101,8 +134,12 @@ def _extract_fields(msg: dict, call: dict) -> dict[str, Any]:
 async def vapi_webhook(request: Request) -> JSONResponse:
     payload = await request.body()
     sig = request.headers.get("x-vapi-signature", "")
+    # Try HMAC sig first (preferred — replay-safe). Fall back to static
+    # bearer-style header which is what Vapi's org-level Server URL config
+    # actually sends (per Vapi server-authentication docs).
     if not _verify_vapi_sig(payload, sig, VAPI_WEBHOOK_SECRET):
-        raise HTTPException(status_code=401, detail="invalid signature")
+        if not _verify_static_secret(request.headers, VAPI_WEBHOOK_SECRET):
+            raise HTTPException(status_code=401, detail="invalid signature")
 
     try:
         event = json.loads(payload.decode("utf-8"))
@@ -162,4 +199,4 @@ async def vapi_webhook(request: Request) -> JSONResponse:
     })
 
 
-__all__ = ["router", "_verify_vapi_sig", "TOLERANCE_SECONDS"]
+__all__ = ["router", "_verify_vapi_sig", "_verify_static_secret", "TOLERANCE_SECONDS"]
