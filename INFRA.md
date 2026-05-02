@@ -471,3 +471,78 @@ Deferred backlog:
 All 14 provisioning/patching scripts idempotent, documented in .9 runbooks.
 
 Next session loads this file via CLAUDE.md chain routing -- no user instruction required.
+
+## 14 · Document Ops Portal (Coolify on Hetzner — LIVE)
+
+| Field | Value |
+|---|---|
+| Repo | https://github.com/scruge1/document-ops-portal (private) |
+| Local repo | C:\Users\a33_s\Desktop\claude MCPs\New repos\document-ops-portal |
+| Public URL (primary) | https://portal.callmeie.ie (active 2026-05-02 — M1 migration) |
+| Public URL (legacy) | https://portal.owlzone.trade (30-day overlap, retire ~2026-06-02) |
+| DNS — callmeie.ie | A record `portal` -> 178.104.205.255 TTL 600 (created 2026-05-02 via GoDaddy API) |
+| DNS — owlzone.trade | A record `portal` -> 178.104.205.255 TTL 600 (created 2026-05-01 Porkbun, id 543450612) |
+| Coolify app UUID | rs0jyp5cj24hutaxijacye6r |
+| Coolify fqdn (multi) | `https://portal.owlzone.trade,https://portal.callmeie.ie` |
+| Postgres DB | provisioned and live |
+| Magic-link sender | callmeie@proton.me (same SMTP as CallMeIE) |
+| LE certs | both domains, auto-renewed by Traefik |
+
+### 14.0 GoDaddy DNS for callmeie.ie
+
+callmeie.ie nameservers point at GoDaddy (`ns45.domaincontrol.com` / `ns46.domaincontrol.com`), NOT Porkbun. DNS edits for callmeie.ie subdomains use the GoDaddy API.
+
+| Field | Value |
+|---|---|
+| API key var | `GODADDY_KEY` in `~/.claude/routes/.env` |
+| API secret var | `GODADDY_SECRET` in `~/.claude/routes/.env` (also stored as legacy `GODADDY_APP`) |
+| Auth header | `Authorization: sso-key KEY:SECRET` |
+| Base URL | `https://api.godaddy.com/v1/domains/callmeie.ie` |
+
+```powershell
+# Add A record on callmeie.ie
+$h = @{ Authorization = "sso-key $env:GODADDY_KEY:$env:GODADDY_SECRET"; "Content-Type" = "application/json" }
+$body = ConvertTo-Json @(@{ data = "178.104.205.255"; ttl = 600 })
+Invoke-RestMethod -Uri "https://api.godaddy.com/v1/domains/callmeie.ie/records/A/<sub>" -Headers $h -Method PUT -Body $body
+```
+
+**Future plan:** consolidate callmeie.ie DNS to Porkbun for one-API control. Tracked in `BRAND-DOMAIN-CONSOLIDATION-PRD.md` §3.3.
+
+### 14.1 Coolify multi-FQDN gotcha (resolved 2026-05-02)
+
+Coolify v4 PATCH `/api/v1/applications/{uuid}` rejects field `fqdn` with 422 ("This field is not allowed.") but accepts field `domains` instead — internally maps to the same `applications.fqdn` column. Use comma-separated values to attach multiple domains to one app.
+
+```powershell
+$body = '{"domains":"https://portal.owlzone.trade,https://portal.callmeie.ie"}'
+Invoke-WebRequest -Uri "$api/applications/$uuid" -Headers $h -Method PATCH -Body $body
+# Then force-deploy to regenerate Traefik labels + LE certs
+Invoke-RestMethod -Uri "$api/deploy?uuid=$uuid&force=true" -Headers $h
+```
+
+LE certs issue automatically after force-deploy (~60s in M1 test).
+
+### 14.1 Stripe live (provisioned 2026-05-01)
+
+| SKU | Price | Stripe ID | Payment Link |
+|---|---:|---|---|
+| Pilot Entry | EUR 500 one-time | prod_URIOoFD2CKSupL / price_1TSPnpCEqG2AuI1zwjKLxK9A | https://buy.stripe.com/dRm00i0Y3gdgbbCgypaIM09 |
+| Pilot Standard | EUR 1500 one-time | prod_URIOiA6cPqsMLv / price_1TSPnqCEqG2AuI1zZAcghb91 | https://buy.stripe.com/14A3cueOTbX04NeeqhaIM0a |
+| Operations Monthly Starter | EUR 250/mo | prod_URIOilIdo12zXe / price_1TSPnsCEqG2AuI1zS5rFSMNJ | https://buy.stripe.com/14AfZg4afaSW5Rici9aIM0b |
+
+Webhook: we_1TSPoBCEqG2AuI1zWijrXFhI -> https://portal.owlzone.trade/webhooks/stripe
+Events: checkout.session.completed, customer.subscription.created, customer.subscription.deleted, invoice.payment_failed
+Secret stored in outes/.env as DOPS_STRIPE_WEBHOOK_SECRET. All Document Ops Stripe IDs saved under DOPS_STRIPE_* keys.
+
+### 14.2 Migration history
+
+- **2026-05-01:** Initial Coolify provisioning + LE issuance for `portal.owlzone.trade`. Token mint via SSH+tinker (Sanctum personal access). DB + app deployed. AUD-001 token rotation handled.
+- **2026-05-02 (M1):** Brand-domain consolidation — added `portal.callmeie.ie` as primary URL via GoDaddy DNS API + Coolify multi-FQDN PATCH. Both URLs live, Traefik routing both. 30-day overlap until ~2026-06-02 then strip `portal` from `owlzone.trade` Porkbun zone.
+
+### 14.3 Phase 2 backlog (Document Ops Portal)
+
+- Document upload UI (drag-drop multi-file)
+- OCR pipeline trigger (existing `document-ops/scripts/ocr_file_to_artifact.py`)
+- Review queue UI (row-by-row approve/correct/reject)
+- Clean export download (CSV per tenant)
+- Run-report download (Markdown)
+- Stripe Customer Portal embed
