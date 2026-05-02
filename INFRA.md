@@ -546,3 +546,43 @@ Secret stored in outes/.env as DOPS_STRIPE_WEBHOOK_SECRET. All Document Ops Str
 - Clean export download (CSV per tenant)
 - Run-report download (Markdown)
 - Stripe Customer Portal embed
+
+## 15 · docs.callmeie.ie (Document Ops sales site — GitHub Pages)
+
+| Field | Value |
+|---|---|
+| Repo | https://github.com/scruge1/docs-callmeie (public) |
+| Local repo | C:\Users\a33_s\Desktop\claude MCPs\New repos\docs-callmeie |
+| Public URL | https://docs.callmeie.ie (built 2026-05-02, cert auto-issuing) |
+| Hosting | GitHub Pages, `main` branch, `/` root, custom CNAME |
+| DNS | callmeie.ie GoDaddy zone — CNAME `docs` → `scruge1.github.io` TTL 600 (created 2026-05-02 via GoDaddy API) |
+| Cert | Let's Encrypt (auto-issued by GitHub Pages once DNS verified, ~15-60 min) |
+
+### 15.1 Build / deploy
+
+No build step. Push to `main`, GitHub Pages rebuilds in ~30s.
+
+```
+docs-callmeie/
+├── CNAME              docs.callmeie.ie
+├── index.html         single-page sales site (Klippa wedge)
+├── site.css           Owl Studio brand tokens (Fraunces + Inter + paper)
+├── README.md
+└── .gitignore
+```
+
+### 15.2 Source of truth for copy
+
+- Wedge: `New repos/Next Revenue Ideas/document-ops/POSITIONING.md` (canonical)
+- Pricing: `New repos/Next Revenue Ideas/document-ops/PRICING.md` (research-anchored)
+- If copy changes, update those FIRST, then mirror to `index.html`.
+
+### 15.3 Stripe Payment Links wired
+
+| CTA on page | Link |
+|---|---|
+| Buy Pilot · €500 (Entry) | `https://buy.stripe.com/dRm00i0Y3gdgbbCgypaIM09` |
+| Buy Standard Pilot · €1,500 | `https://buy.stripe.com/14A3cueOTbX04NeeqhaIM0a` |
+| Start at €250/mo (Operations Monthly) | `https://buy.stripe.com/14AfZg4afaSW5Rici9aIM0b` |
+
+Same Stripe webhook handler at `https://portal.callmeie.ie/webhooks/stripe` covers checkouts.
