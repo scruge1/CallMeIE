@@ -586,3 +586,69 @@ docs-callmeie/
 | Start at €250/mo (Operations Monthly) | `https://buy.stripe.com/14AfZg4afaSW5Rici9aIM0b` |
 
 Same Stripe webhook handler at `https://portal.callmeie.ie/webhooks/stripe` covers checkouts.
+
+## 16 · callmeie.ie parent-brand hub (GitHub Pages — LIVE)
+
+| Field | Value |
+|---|---|
+| Repo | https://github.com/scruge1/callmeie-hub (public) |
+| Local repo | C:\Users\a33_s\Desktop\claude MCPs\New repos\callmeie-hub |
+| Public URL | https://callmeie.ie (LIVE 2026-05-03 — M2 cutover) |
+| Hosting | GitHub Pages, `main` branch, `/` root, custom CNAME |
+| DNS provider | Cloudflare (NS swap from GoDaddy 2026-05-03) |
+| Cert | Let's Encrypt, expires 2026-07-02 (auto-renewed by GH Pages; reused from prior CallMeIE Pages owner — no re-issuance lag) |
+| Build | 22 files at v1 ship — see `CALLMEIE-PARENT-HUB-CODEBASE-PLAN.md` §1 |
+
+### 16.1 Companion product surfaces (4-product family)
+
+| Surface | Domain | Hosting | Repo |
+|---|---|---|---|
+| Parent hub | callmeie.ie | GH Pages | scruge1/callmeie-hub |
+| AI Receptionist | receptionist.callmeie.ie | GH Pages | scruge1/CallMeIE (post-2026-05-03 cutover) |
+| Document Ops sales | docs.callmeie.ie | GH Pages | scruge1/docs-callmeie |
+| Document Ops portal | portal.callmeie.ie | Coolify Hetzner | scruge1/document-ops-portal (private) |
+| AI-First Websites | websites.owlzone.trade (TBD migrate to websites.callmeie.ie at H4) | GH Pages | scruge1/owl-studio-website-directions |
+
+All five surfaces share the same brand contract — paper #f8f5f0 + ink #1c1f24 + indigo #1d3557 + amber #c08a3f + Fraunces + Inter + JetBrains Mono. Tokens lifted verbatim from `document-ops-portal/app/static/portal.css` lines 1–58.
+
+### 16.2 Cloudflare configuration (callmeie.ie zone)
+
+| Field | Value |
+|---|---|
+| Zone ID | `0ed441de9cda4746aa4bbc3c46532c81` |
+| Account | `Scruge@pm.me's Account` (account ID `7cc2ab3455c4547401123e9c97baf077`) |
+| Plan | Free |
+| API token (zone-scoped) | `CLOUDFLARE_ZONE_CALLMEIE_TOKEN` in `~/.claude/routes/.env` (DNS:Edit + Zone Settings:Edit + Bulk URL Redirects:Edit). Distinct from `CloudFlare_API` which is the AI Gateway token. |
+| Nameservers | `arely.ns.cloudflare.com`, `bjorn.ns.cloudflare.com` (NS swap at GoDaddy registrar) |
+| SSL mode | Full (strict) |
+| Always Use HTTPS | on |
+| Proxy state | DNS-only on all GH Pages + Coolify origin records (proxying breaks origin SSL); proxy-on for any future records that don't host their own cert |
+
+### 16.3 DNS records on Cloudflare
+
+```
+A     callmeie.ie  185.199.108-111.153   (GH Pages anycast — DNS-only)
+A     portal       178.104.205.255         (Coolify Hetzner — DNS-only)
+CAA   callmeie.ie  letsencrypt.org         (cert issuance restriction)
+CNAME docs         scruge1.github.io       (GH Pages — DNS-only)
+CNAME www          scruge1.github.io       (GH Pages www variant — DNS-only)
+CNAME receptionist scruge1.github.io       (GH Pages — DNS-only) [added 2026-05-03]
+CNAME _domainconnect _domainconnect.gd.domaincontrol.com  (orphan from GoDaddy era; safe to delete)
+TXT   _dmarc       v=DMARC1; p=quarantine; ...
+TXT   callmeie.ie  google-site-verification=YdiX8OOpq1...
+```
+
+### 16.4 Cutover history
+
+- **2026-05-02:** PRDs drafted, design recipe + research-deep + codebase plan + BUILD-SPEC produced via 5 parallel Opus agents.
+- **2026-05-03 morning:** Adam confirmed §5 decisions (8 questions, mostly defaults). Cloudflare zone added by Adam via dashboard (Claude in Chrome drove). Token minted, NS swapped, ~30min .ie TLD propagation. Phase 1 build (22 files) shipped to scruge1/callmeie-hub. Phase 2 impeccable audit applied (Pass 1 CRITICAL + 2 HIGH + Pass 3 selected MEDIUM).
+- **2026-05-03 cutover window:** scruge1/CallMeIE pushed direct to main with CNAME swap (callmeie.ie → receptionist.callmeie.ie) + 50+ URL rewrites. Cloudflare CNAME `receptionist` added. Pages enabled on scruge1/callmeie-hub. callmeie.ie cert REUSED from previous Pages owner (zero re-issuance time). Both surfaces LIVE within ~5 minutes of cutover trigger.
+
+### 16.5 Outstanding follow-ups
+
+- **Cloudflare Bulk Redirects** — 9 legacy URLs redirect via meta-refresh stubs in callmeie-hub for now (Google honors as redirect, treats as 302). For 301 SEO transfer, configure Bulk Redirects via dashboard (token scope needs Account Rules Lists:Edit which current `CLOUDFLARE_ZONE_CALLMEIE_TOKEN` lacks). After Bulk Redirects active, delete the 9 meta-refresh stubs from callmeie-hub.
+- **GSC Change-of-Address** — Adam's hands required at Search Console. Add `receptionist.callmeie.ie` as new property + verify + run Change-of-Address tool from old → new. Resubmit sitemap from new property.
+- **receptionist.callmeie.ie HTTPS** — LE cert auto-issuing post-DNS resolve. Typically <60min from CNAME add. If stalls >24h, drop+re-add CNAME via gh API per §15.4 recovery recipe.
+- **Lighthouse + Core Web Vitals scan** at 375 / 768 / 1180 / 1440 — run via gstack browse Playwright. Targets per BUILD-SPEC: LCP ≤1.2s, CLS <0.05, TBT <50ms.
+- **Adam visual review on real device** — touch gate.
+- **websites.callmeie.ie migration (H4)** — defer until web-design product is ready for Callmeie-branded shipping.
