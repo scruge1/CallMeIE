@@ -600,15 +600,73 @@ Update each slot when an engagement signs.
 - **2026-05-01:** Initial Coolify provisioning + LE issuance for `portal.owlzone.trade`. Token mint via SSH+tinker (Sanctum personal access). DB + app deployed. AUD-001 token rotation handled.
 - **2026-05-04 (D22):** Document Ops re-spec — 4 new products + 5 prices + 3 Payment Links via Stripe API (idempotent script). Operations Monthly Starter retired (grandfather only). New tier ladder: Auto €99/mo, Auto Plus €249/mo, Rescue+Export €499/mo, Bespoke €1500/€2500/mo. /docs/ wiring + `after_completion` copy still pending.
 - **2026-05-02 (M1):** Brand-domain consolidation — added `portal.callmeie.ie` as primary URL via GoDaddy DNS API + Coolify multi-FQDN PATCH. Both URLs live, Traefik routing both. 30-day overlap until ~2026-06-02 then strip `portal` from `owlzone.trade` Porkbun zone.
+- **2026-05-04 (v0.4.1 ship):** Document AI extraction pipeline — Stages 1+5+7 shipped (pypdfium2/pdfplumber ingest + provenance, instructor+Pydantic+Ollama JSON-mode, HaluGate cross-field hard-bounce). Stage 4b line-item tables via rapid-table (Windows-friendly PaddleOCR-PP-Structure ONNX bridge — paddlepaddle 3.3 PIR onednn bug confirmed real on Windows). Stage 5a skip-LLM-on-native (saves ~78s on Vega 8 native PDFs). Stage 8 Label Studio CE infra scaffolded (alembic 0002_corrections, infra/label-studio/, /api/corrections webhook route, corrections_consumer.py). Stage 9 DVC + Hetzner Object Storage scaffolded (.dvc/config, dvc.yaml, build_train_shard.py, dvc_push.sh). All Adam-keyboard remaining: see §14.4 + §14.5.
 
 ### 14.3 Phase 2 backlog (Document Ops Portal)
 
 - Document upload UI (drag-drop multi-file)
-- OCR pipeline trigger (existing `document-ops/scripts/ocr_file_to_artifact.py`)
-- Review queue UI (row-by-row approve/correct/reject)
+- OCR pipeline trigger (existing `proof-fixtures/scripts/extract.py` v0.4.1 — drop-in replacement for `document-ops/scripts/ocr_file_to_artifact.py`)
+- Review queue UI (row-by-row approve/correct/reject) — superseded by Label Studio CE per §14.4
 - Clean export download (CSV per tenant)
 - Run-report download (Markdown)
 - Stripe Customer Portal embed
+
+### 14.4 Label Studio CE (review interface — pending Coolify deploy)
+
+Per `document-ops-portal/CALLMEIE-DOCAI-V0.4-PRD.md` D-V0.4-06. Apache-2.0 review surface for the corrections flywheel. NOT a sub-processor under DPA v0.4 §7 — Customer-side review interface running on Processor infrastructure (Hetzner DE).
+
+| Field | Value |
+|---|---|
+| Image | `heartexlabs/label-studio:1.13.1` (Apache-2.0) |
+| Public URL (planned) | `https://review.callmeie.ie` |
+| DNS (pending) | A record `review` → 178.104.205.255 (Cloudflare zone callmeie.ie, DNS-only) |
+| Internal Postgres | own volume — distinct from portal Postgres |
+| Webhook target | `https://portal.callmeie.ie/api/corrections` |
+| Webhook secret | `LS_WEBHOOK_SECRET` in `~/.claude/routes/.env` (generate via `openssl rand -base64 32` on first deploy) |
+| Admin auth | invite-only signup; `LS_ADMIN_EMAIL` + `LS_ADMIN_PASSWORD` |
+| Compose source | `document-ops-portal/infra/label-studio/docker-compose.yml` |
+| Task config | `document-ops-portal/infra/label-studio/label-config.xml` (vendor / total / vat / date / line_items / reason) |
+| Deploy runbook | `document-ops-portal/infra/label-studio/README-DEPLOY.md` |
+
+**Adam-keyboard checklist:**
+1. `alembic upgrade head` from `document-ops-portal/` (applies migration 0002_corrections — adds `extractions` + `corrections` tables + `notify_correction()` Postgres trigger)
+2. Coolify → New Resource → Docker Compose → `infra/label-studio/docker-compose.yml`
+3. Generate secrets (`openssl rand -base64 24` for passwords, `... -base64 32` for webhook secret); paste into Coolify Environment tab
+4. FQDN `review.callmeie.ie` → Coolify proxy + LE cert (watch for #6281 cascade bug — see §13)
+5. In Label Studio UI: paste `label-config.xml`; configure webhook → `portal.callmeie.ie/api/corrections` with `X-LS-Webhook-Secret` header
+6. Install systemd unit for `proof-fixtures/scripts/corrections_consumer.py` on AX52 (LISTENs for `corrections_channel` NOTIFY → appends to `corpus/corrections.jsonl`)
+
+### 14.5 DVC + Hetzner Object Storage corpus (training-data store)
+
+Per `document-ops-portal/CALLMEIE-DOCAI-V0.4-PRD.md` D-V0.4-07. Replaces HuggingFace private datasets (HF stores AWS US — Schrems II / SCCs Module 3 blocker that D26-PIVOT explicitly removed).
+
+| Field | Value |
+|---|---|
+| DVC version | 3.67.1 (Apache-2.0) |
+| Remote name | `hetzner` |
+| Bucket | `s3://callmeie-corpus` (pending Hetzner Cloud Console creation) |
+| Endpoint | `https://fsn1.your-objectstorage.com` (Nuremberg — must match DPA v0.4 §8.1 residency) |
+| Access keys | `AWS_ACCESS_KEY_ID` + `AWS_SECRET_ACCESS_KEY` env vars (or `.dvc/config.local` — gitignored) |
+| Sub-processor status | Hetzner already DPA v0.4 §7.1 sub-processor for compute; Object Storage same vendor — no new entry needed |
+| Pipeline | `proof-fixtures/dvc.yaml` (stages: `shard_train` + `bench_holdout`) |
+| Push helper | `proof-fixtures/scripts/dvc_push.sh` (cron-friendly idempotent) |
+
+**Tracked artifacts** (NOT in git — DVC pointer only):
+- `corpus/corrections.jsonl` — append-only correction stream from Label Studio (consumer drains)
+- `corpus/extractions.jsonl` — gate-pass extraction record (v0.4.2: `extract.py --emit-corpus`)
+- `corpus/train_shard.jsonl` — `shard_train` stage output (deduped, latest-correction-wins, joined with extraction context)
+- `corpus/holdout/` — D-V0.4-10 frozen v0 100-doc holdout (Adam-curated, pending)
+- `corpus/metrics.json` — per-field + per-tenant correction counts feeding PRD §8 Open Question 2 (~100 corrections/customer/month thesis verification)
+
+**Adam-keyboard checklist:**
+1. Hetzner Cloud Console → Object Storage → Create Bucket
+   - Name: `callmeie-corpus`
+   - Region: `fsn1` (Nuremberg)
+   - Access: Private
+2. Generate credentials → save to vault → paste into `proof-fixtures/.dvc/config.local` (or AX52 env vars)
+3. `dvc remote test hetzner` (verifies bucket reachability + creds valid)
+4. After first correction lands via `corrections_consumer.py`: `dvc add corpus/corrections.jsonl && git add corpus/corrections.jsonl.dvc && git commit && dvc push`
+5. Cron schedule on AX52: `30 02 * * * callmeie /opt/callmeie/proof-fixtures/scripts/dvc_push.sh` (or Coolify Scheduled Task)
 
 ## 15 · docs.callmeie.ie (Document Ops sales site — GitHub Pages)
 
