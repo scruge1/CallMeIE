@@ -1,4 +1,4 @@
-# INFRA · Owl Studio + CallMeIE — canonical reference
+﻿# INFRA · Owl Studio + CallMeIE — canonical reference
 
 > Authoritative source of truth for every piece of Owl Studio + CallMeIE
 > infrastructure. If anything is NOT in this file, it doesn't exist yet.
@@ -34,9 +34,11 @@
 
 ## 2 · Coolify (self-hosted PaaS on the Hetzner box)
 
+> **AUD-022 (2026-04-30):** Dashboard now reachable at `https://coolify.owlzone.trade` with Let's Encrypt auto-renewal. Plain HTTP `:8000` retained as escape hatch for 7 days; firewall close decision documented in §13. API token transmitted only over HTTPS going forward.
+
 | Field | Value |
 |---|---|
-| URL | `http://178.104.205.255:8000` |
+| URL | `https://coolify.owlzone.trade` (primary, AUD-022) · `http://178.104.205.255:8000` (escape hatch, retained 7d) |
 | Version | `v4.0.0-beta.473` |
 | Deploy target | server uuid `mihuu5scwb1y3gja1lik7tp9` (localhost) |
 | Project | "My first project" uuid `m100nrzbdx92dn8kxzvrmhpy` |
@@ -162,6 +164,8 @@ Owl Studio: `owl_sites`, `owl_leads`, `owl_tickets`, `owl_payments`
 | `care-essential` | Owl Studio · Essential care plan | `care-essential-monthly`, `care-essential-yearly` | €45/mo · €450/yr |
 | `care-growth` | Owl Studio · Growth care plan | `care-growth-monthly`, `care-growth-yearly` | €95/mo · €950/yr |
 | `care-concierge` | Owl Studio · Concierge care plan | `care-concierge-monthly`, `care-concierge-yearly` | €195/mo · €1,950/yr |
+| `site-starter-deposit` | Owl Studio · Starter site deposit (€348) | `site-starter-deposit` | €348 one-off (AUD-019) |
+| `site-pro-deposit` | Owl Studio · Pro site deposit (€798) | `site-pro-deposit` | €798 one-off (AUD-019) |
 
 ### 4.2 Payment Links (saved in `~/.claude/routes/.env`)
 
@@ -174,6 +178,32 @@ Owl Studio: `owl_sites`, `owl_leads`, `owl_tickets`, `owl_payments`
 | `care-growth-yearly` | `OWL_STRIPE_LINK_CARE_GROWTH_YEARLY` |
 | `care-concierge-monthly` | `OWL_STRIPE_LINK_CARE_CONCIERGE_MONTHLY` |
 | `care-concierge-yearly` | `OWL_STRIPE_LINK_CARE_CONCIERGE_YEARLY` |
+| `site-starter-deposit` | `OWL_STRIPE_LINK_SITE_STARTER_DEPOSIT` (AUD-019 — pending provisioner run) |
+| `site-pro-deposit` | `OWL_STRIPE_LINK_SITE_PRO_DEPOSIT` (AUD-019 — pending provisioner run) |
+
+#### AUD-019 — site-build deposit Payment Links runbook
+
+After running `python scripts/provision-stripe.py` to mint the two new
+deposit Payment Links:
+
+1. Vault: paste output URLs into `~/.claude/routes/.env`:
+   ```
+   OWL_STRIPE_LINK_SITE_STARTER_DEPOSIT=https://buy.stripe.com/...
+   OWL_STRIPE_LINK_SITE_PRO_DEPOSIT=https://buy.stripe.com/...
+   ```
+2. Edit `interactive-gallery.html`:
+   - Line ~1636 (Starter CTA): replace
+     `href="mailto:callmeie@proton.me?subject=Starter%20website%20%E2%80%94%20%E2%82%AC695"`
+     with the Starter Payment Link URL.
+   - Line ~1655 (Pro CTA): replace
+     `href="mailto:callmeie@proton.me?subject=Pro%20website%20%E2%80%94%20%E2%82%AC1595"`
+     with the Pro Payment Link URL.
+   - Line ~1671 (Custom CTA): replace `mailto:` with the existing
+     `OWL_STRIPE_LINK_AUDIT` URL (€99 audit, credited against final Custom invoice).
+3. Commit + push to `main` (GitHub Pages auto-deploys in ~30s).
+4. Stripe webhook (`/owl/stripe/webhook`) already handles
+   `checkout.session.completed` for these new prices — payment lands in
+   `owl_payments` table with the deposit amount.
 
 **Provisioner:** `C:/Users/a33_s/Desktop/callmeie-fix/scripts/provision-stripe.py` — idempotent, re-run safe.
 
@@ -197,6 +227,7 @@ Owl Studio: `owl_sites`, `owl_leads`, `owl_tickets`, `owl_payments`
 | `vault` | A | 178.104.205.255 | Vaultwarden (added 2026-04-21) |
 | `uptime` | A | 178.104.205.255 | Uptime Kuma (added 2026-04-21) |
 | `analytics` | A | 178.104.205.255 | Umami (added 2026-04-21) |
+| `*.websites` | A | 178.104.205.255 | Lead sites wildcard — `{slug}.websites.owlzone.trade` → VPS nginx container (added 2026-04-25) |
 
 ### 5.2 Porkbun API reference
 
@@ -216,10 +247,13 @@ curl -X POST https://api.porkbun.com/api/json/v3/dns/retrieve/$DOMAIN \
 
 ## 6 · GitHub Pages (client + sales sites)
 
+> **SUPERSEDED 2026-05-03:** Owl Studio brand retired, web design merged into Callmeie Technologies as the AI-First Websites product (per BRAND-DOMAIN-CONSOLIDATION-PRD §0.3, executed 2026-05-03). New canonical sales surface: `https://callmeie.ie/websites/` (folded into scruge1/callmeie-hub). Old `https://websites.owlzone.trade` repo serves redirect stubs at `/` and `/interactive-gallery.html` to new URL. 7 demo dirs + 12 industry sample HTMLs copied into callmeie-hub on commit aa3d819 with brand sweep. Section kept for historical reference.
+
 | Site | Repo | URL | Notes |
 |---|---|---|---|
-| Owl Studio sales | `scruge1/owl-studio-website-directions` | `https://websites.owlzone.trade` | main → Pages, custom domain CNAME |
-| CallMeIE | `scruge1/CallMeIE` | `https://callmeie.ie` | HTTPS pending IEDR DNS control |
+| AI-First Websites (sales) | `scruge1/callmeie-hub` | `https://callmeie.ie/websites/` | path-based monorepo (active 2026-05-03) |
+| ~~Owl Studio sales~~ | `scruge1/owl-studio-website-directions` | ~~https://websites.owlzone.trade~~ → redirect to callmeie.ie/websites/ | RETIRED 2026-05-03; repo carries redirect stubs only |
+| CallMeIE | `scruge1/CallMeIE` | ~~https://callmeie.ie~~ → folded into `scruge1/callmeie-hub` at `/receptionist/` | RETIRED 2026-05-03 (path-based monorepo cutover) |
 
 **PAT:** `$GITHUB_TOKEN` in `~/.claude/routes/.env` (verify name — may be `GITHUB_PAT` or similar).
 
@@ -227,12 +261,15 @@ curl -X POST https://api.porkbun.com/api/json/v3/dns/retrieve/$DOMAIN \
 
 ## 7 · Owl Studio registered sites (client fleet)
 
+> **SUPERSEDED 2026-05-03:** site_id values KEPT for backend continuity per BRAND-DOMAIN-CONSOLIDATION-PRD §0.6 ("existing Owl Studio Stripe products keep their owl_tag: owl-studio metadata for billing continuity; future products tag callmeie. No retagging churn"). Display names + URLs updated to new path-based scheme. Admin tokens unchanged.
+
 Seed data — each has its own admin token + dashboard.
 
 | site_id | display_name | tier | care_tier | live_url | admin token env var |
 |---|---|---|---|---|---|
-| `owl-studio-sales` | Owl Studio · Sales | starter | — | https://websites.owlzone.trade | `OWL_ADMIN_TOKEN_OWL_STUDIO_SALES` |
-| `rathborne-dental-demo` | Rathborne Dental (demo) | pro | growth | https://websites.owlzone.trade/samples/industries/01-dental-swiss.html | `OWL_ADMIN_TOKEN_RATHBORNE_DENTAL_DEMO` |
+| `owl-studio-sales` | AI-First Websites · Sales (was Owl Studio · Sales) | starter | — | https://callmeie.ie/websites/ (was websites.owlzone.trade) | `OWL_ADMIN_TOKEN_OWL_STUDIO_SALES` |
+| `rathborne-dental-demo` | Rathborne Dental (demo) | pro | growth | https://callmeie.ie/websites/samples/industries/01-dental-swiss.html | `OWL_ADMIN_TOKEN_RATHBORNE_DENTAL_DEMO` |
+| `vetcare-limerick-preview` | Limerick Vet Clinic (preview) | — | — | https://callmeie.ie/websites/demos/vetcare-limerick/ | — (not yet registered as client) |
 
 **Owner fleet dashboard:** `https://callmeie.onrender.com/owl/sites?token=$OWL_OWNER_TOKEN`
 
@@ -459,7 +496,8 @@ New admin tokens in vault — values redacted, see `~/.claude/routes/.env`:
 > in plaintext here and exposed via the public GitHub mirror. Rotated via
 > `POST /owl/sites/{site_id}/rotate-admin-token` on 2026-04-29 21:55 UTC; old
 > values now return 401. Going forward, NEVER commit literal tokens — env-var
-> placeholder syntax only.
+> placeholder syntax only. See `AUDIT-2026-04-29.md` AUD-001 for the full
+> remediation runbook.
 
 Old tokens suffixed `_RETIRED` in vault; `hear-clear-demo` + `molyneux-aesthetics-demo` rows set `status='off'` in Postgres (paper trail kept, admin URLs 401 cleanly). PNGs re-rendered at 2x retina (2880×1800) via Playwright.
 
@@ -527,15 +565,40 @@ LE certs issue automatically after force-deploy (~60s in M1 test).
 |---|---:|---|---|
 | Pilot Entry | EUR 500 one-time | prod_URIOoFD2CKSupL / price_1TSPnpCEqG2AuI1zwjKLxK9A | https://buy.stripe.com/dRm00i0Y3gdgbbCgypaIM09 |
 | Pilot Standard | EUR 1500 one-time | prod_URIOiA6cPqsMLv / price_1TSPnqCEqG2AuI1zZAcghb91 | https://buy.stripe.com/14A3cueOTbX04NeeqhaIM0a |
-| Operations Monthly Starter | EUR 250/mo | prod_URIOilIdo12zXe / price_1TSPnsCEqG2AuI1zS5rFSMNJ | https://buy.stripe.com/14AfZg4afaSW5Rici9aIM0b |
+| ~~Operations Monthly Starter~~ | ~~EUR 250/mo~~ | ~~prod_URIOilIdo12zXe / price_1TSPnsCEqG2AuI1zS5rFSMNJ~~ | ~~https://buy.stripe.com/14AfZg4afaSW5Rici9aIM0b~~ |
+
+> **RETIRED 2026-05-04** — Operations Monthly Starter superseded by Self-serve Auto / Auto Plus / Rescue+Export ladder (§14.1b below). Product KEPT active in Stripe; existing subscribers grandfathered indefinitely. Removed from /docs/ public pricing block. Audit trail only.
 
 Webhook: we_1TSPoBCEqG2AuI1zWijrXFhI -> https://portal.owlzone.trade/webhooks/stripe
 Events: checkout.session.completed, customer.subscription.created, customer.subscription.deleted, invoice.payment_failed
 Secret stored in outes/.env as DOPS_STRIPE_WEBHOOK_SECRET. All Document Ops Stripe IDs saved under DOPS_STRIPE_* keys.
 
+### 14.1b Document Ops Re-spec — D22 LOCKED (provisioned 2026-05-04 via Stripe API)
+
+Per `document-ops-portal/STRIPE-MIGRATION-SPEC.md` §2 + locked D11-D14. Created via `document-ops-portal/scripts/stripe-d22-execute.ps1` (idempotent, re-runnable). Source-of-truth result file: `document-ops-portal/scripts/stripe-d22-results.json`.
+
+| Tier | Price | Product ID | Price ID | Payment Link |
+|---|---:|---|---|---|
+| Self-serve Auto | EUR 99/mo | prod_US352mGEO8iaHW | price_1TT8zmCEqG2AuI1zfNupnSjP | https://buy.stripe.com/28EfZggX16CG5Ri3LDaIM0c |
+| Self-serve Auto Plus | EUR 249/mo | prod_US36KZjPHRR1Mw | price_1TT8zoCEqG2AuI1zqpYEvsR9 | https://buy.stripe.com/4gMeVccGL7GKdjK95XaIM0d |
+| Rescue + Export | EUR 499/mo | prod_US36vqRR6YUvbg | price_1TT8zqCEqG2AuI1zTNhJTbGh | https://buy.stripe.com/28EcN4ayD5yC0wY2HzaIM0e |
+| Managed Bespoke (low) | EUR 1500/mo | prod_US36MsoGM8YTwn | price_1TT8zsCEqG2AuI1zFuDj6Bks | (no public link — per-customer Checkout) |
+| Managed Bespoke (high) | EUR 2500/mo | prod_US36MsoGM8YTwn | price_1TT8zsCEqG2AuI1z84nYWT8W | (no public link — per-customer Checkout) |
+
+All subscription Payment Links: `tax_behavior=exclusive` (IE VAT applied at checkout), `billing_address_collection=required`, `tax_id_collection.enabled=true`. **`after_completion.hosted_confirmation.custom_message` NOT yet populated via API in 2026-05-04 run** — Adam can edit each Payment Link in Dashboard to paste D14-locked copy (see STRIPE-MIGRATION-SPEC.md §8 D14).
+
+Webhook handler additions for new `tier_slug` metadata routing — see `document-ops-portal/STRIPE-MIGRATION-SPEC.md` §4. Bespoke flow: Adam scopes via email → per-customer Stripe Checkout session against the appropriate Price ID. Slot allocation tracked in this INFRA.md.
+
+**Bespoke slot allocation** (cap=2 active engagements, waitlist when full):
+- Slot 1-of-2: OPEN
+- Slot 2-of-2: OPEN
+
+Update each slot when an engagement signs.
+
 ### 14.2 Migration history
 
 - **2026-05-01:** Initial Coolify provisioning + LE issuance for `portal.owlzone.trade`. Token mint via SSH+tinker (Sanctum personal access). DB + app deployed. AUD-001 token rotation handled.
+- **2026-05-04 (D22):** Document Ops re-spec — 4 new products + 5 prices + 3 Payment Links via Stripe API (idempotent script). Operations Monthly Starter retired (grandfather only). New tier ladder: Auto €99/mo, Auto Plus €249/mo, Rescue+Export €499/mo, Bespoke €1500/€2500/mo. /docs/ wiring + `after_completion` copy still pending.
 - **2026-05-02 (M1):** Brand-domain consolidation — added `portal.callmeie.ie` as primary URL via GoDaddy DNS API + Coolify multi-FQDN PATCH. Both URLs live, Traefik routing both. 30-day overlap until ~2026-06-02 then strip `portal` from `owlzone.trade` Porkbun zone.
 
 ### 14.3 Phase 2 backlog (Document Ops Portal)
@@ -549,11 +612,13 @@ Secret stored in outes/.env as DOPS_STRIPE_WEBHOOK_SECRET. All Document Ops Str
 
 ## 15 · docs.callmeie.ie (Document Ops sales site — GitHub Pages)
 
+> **SUPERSEDED 2026-05-03:** subdomain `docs.callmeie.ie` retired. Sales surface folded into the path-based monorepo at `https://callmeie.ie/docs/` (scruge1/callmeie-hub). Cloudflare CNAME deleted, GH Pages custom-domain config cleared on `scruge1/docs-callmeie` (now serves only at `https://scruge1.github.io/docs-callmeie/`). Reason: LE cert never provisioned (`https_enforced: false`) — broken HTTPS state during transition window flagged by Codex peer review as P0 blocker. Faster to drop than fix-then-drop. Old GSC URL-prefix property submission should be removed by Adam at Search Console. Section kept for historical reference only.
+
 | Field | Value |
 |---|---|
 | Repo | https://github.com/scruge1/docs-callmeie (public) |
 | Local repo | C:\Users\a33_s\Desktop\claude MCPs\New repos\docs-callmeie |
-| Public URL | https://docs.callmeie.ie (built 2026-05-02, cert auto-issuing) |
+| Public URL | ~~https://docs.callmeie.ie~~ → DROPPED 2026-05-03 (was: built 2026-05-02, cert never provisioned) |
 | Hosting | GitHub Pages, `main` branch, `/` root, custom CNAME |
 | DNS | callmeie.ie GoDaddy zone — CNAME `docs` → `scruge1.github.io` TTL 600 (created 2026-05-02 via GoDaddy API) |
 | Cert | Let's Encrypt (auto-issued by GitHub Pages once DNS verified, ~15-60 min) |
@@ -587,6 +652,17 @@ docs-callmeie/
 
 Same Stripe webhook handler at `https://portal.callmeie.ie/webhooks/stripe` covers checkouts.
 
+### 15.4 Cert recovery (if stalls > 24h)
+
+```bash
+# Drop CNAME via gh API to re-kick LE
+gh api /repos/scruge1/docs-callmeie/pages -X PUT --input - <<<'{"cname": null}'
+sleep 30
+gh api /repos/scruge1/docs-callmeie/pages -X PUT --input - <<<'{"cname": "docs.callmeie.ie"}'
+# Once approved, enforce
+gh api /repos/scruge1/docs-callmeie/pages -X PUT --input - <<<'{"https_enforced": true}'
+```
+
 ## 16 · callmeie.ie parent-brand hub (GitHub Pages — LIVE)
 
 | Field | Value |
@@ -601,13 +677,13 @@ Same Stripe webhook handler at `https://portal.callmeie.ie/webhooks/stripe` cove
 
 ### 16.1 Companion product surfaces (4-product family)
 
-| Surface | Domain | Hosting | Repo |
+| Surface | Domain / path | Hosting | Repo |
 |---|---|---|---|
-| Parent hub | callmeie.ie | GH Pages | scruge1/callmeie-hub |
-| AI Receptionist | receptionist.callmeie.ie | GH Pages | scruge1/CallMeIE (post-2026-05-03 cutover) |
-| Document Ops sales | docs.callmeie.ie | GH Pages | scruge1/docs-callmeie |
+| Parent hub | callmeie.ie/ | GH Pages | scruge1/callmeie-hub |
+| AI Receptionist | callmeie.ie/receptionist/ (was receptionist.callmeie.ie, retired 2026-05-03) | GH Pages | scruge1/callmeie-hub (folded from scruge1/CallMeIE) |
+| Document Ops sales | callmeie.ie/docs/ (was docs.callmeie.ie, retired 2026-05-03) | GH Pages | scruge1/callmeie-hub (folded from scruge1/docs-callmeie) |
 | Document Ops portal | portal.callmeie.ie | Coolify Hetzner | scruge1/document-ops-portal (private) |
-| AI-First Websites | websites.owlzone.trade (TBD migrate to websites.callmeie.ie at H4) | GH Pages | scruge1/owl-studio-website-directions |
+| AI-First Websites | callmeie.ie/websites/ (full gallery + 7 demos + 12 industry samples self-contained, post-2026-05-03 brand merge) | GH Pages | scruge1/callmeie-hub (folded from scruge1/owl-studio-website-directions) |
 
 All five surfaces share the same brand contract — paper #f8f5f0 + ink #1c1f24 + indigo #1d3557 + amber #c08a3f + Fraunces + Inter + JetBrains Mono. Tokens lifted verbatim from `document-ops-portal/app/static/portal.css` lines 1–58.
 
@@ -647,8 +723,35 @@ TXT   callmeie.ie  google-site-verification=YdiX8OOpq1...
 ### 16.5 Outstanding follow-ups
 
 - **Cloudflare Bulk Redirects** — 9 legacy URLs redirect via meta-refresh stubs in callmeie-hub for now (Google honors as redirect, treats as 302). For 301 SEO transfer, configure Bulk Redirects via dashboard (token scope needs Account Rules Lists:Edit which current `CLOUDFLARE_ZONE_CALLMEIE_TOKEN` lacks). After Bulk Redirects active, delete the 9 meta-refresh stubs from callmeie-hub.
-- **GSC Change-of-Address** — Adam's hands required at Search Console. Add `receptionist.callmeie.ie` as new property + verify + run Change-of-Address tool from old → new. Resubmit sitemap from new property.
-- **receptionist.callmeie.ie HTTPS** — LE cert auto-issuing post-DNS resolve. Typically <60min from CNAME add. If stalls >24h, drop+re-add CNAME via gh API per §15.4 recovery recipe.
+- ~~**GSC Change-of-Address**~~ — OBSOLETE. Subdomains retired 2026-05-03; path-based callmeie.ie/* handled by domain-property GSC entry. Old `receptionist.callmeie.ie` URL-prefix property should be DELETED by Adam at Search Console (data-only, no behavior change).
+- ~~**receptionist.callmeie.ie HTTPS**~~ — RESOLVED via subdomain drop 2026-05-03 (cert never provisioned; faster to drop than fix-then-drop).
 - **Lighthouse + Core Web Vitals scan** at 375 / 768 / 1180 / 1440 — run via gstack browse Playwright. Targets per BUILD-SPEC: LCP ≤1.2s, CLS <0.05, TBT <50ms.
 - **Adam visual review on real device** — touch gate.
 - **websites.callmeie.ie migration (H4)** — defer until web-design product is ready for Callmeie-branded shipping.
+
+### 16.6 Email Routing (Cloudflare → Proton, 2026-05-03)
+
+| Surface | Address shown | Routes to |
+|---|---|---|
+| Parent hub mailto CTAs (15 refs in `index.html` + `about.html`) | `hello@callmeie.ie` | Cloudflare Email Routing → `callmeie@proton.me` |
+| Document Ops portal templates (`base.html`, `login.html`, `magic_link_sent.html`) | `hello@callmeie.ie` | same routing |
+| Receptionist niche pages (35+ refs, GDPR/contact/footer) | `callmeie@proton.me` (direct, no CF hop) | Proton inbox |
+| Receptionist privacy/terms (4 refs) | `hello@callmeie.ie` | same routing |
+| Owl Studio sales (`/websites/index.html`, 14 mailto CTAs) | `callmeie@proton.me` (direct) | Proton inbox |
+
+**DNS records added at Cloudflare zone callmeie.ie (2026-05-03):**
+- `MX` route1.mx.cloudflare.net (priority 81)
+- `MX` route2.mx.cloudflare.net (priority 12)
+- `MX` route3.mx.cloudflare.net (priority 23)
+- `TXT` callmeie.ie — `v=spf1 include:_spf.mx.cloudflare.net ~all`
+- `TXT` cf2024-1._domainkey.callmeie.ie — DKIM RSA-SHA256 public key
+
+**Routing rule:** custom address `hello@callmeie.ie` → action `Send to email` → destination `callmeie@proton.me` (verified 2026-05-03). Status: Active.
+
+**Proton plan limitation:** Free plan — incoming forward only. Adam REPLIES from `callmeie@proton.me`, not `hello@callmeie.ie`. For reply-from-brand, upgrade to Proton Mail Plus + add callmeie.ie as Proton custom domain. Acceptable for current revenue stage.
+
+**Token scope used:** `CLOUDFLARE_ZONE_CALLMEIE_TOKEN` (Zone DNS:Edit + Zone Settings:Edit) handled DNS records + zone-level routing enable. Account-scope endpoints (Account:Email Routing Addresses + Zone:Email Routing Rules) needed dashboard-driven setup — Claude in Chrome automated.
+
+**Verification ritual:** Cloudflare sends one-click link to destination address; recipient must click within ~24h for routing rule save to succeed. Re-trying save before verify yields "Verification email has been sent too recently" banner.
+
+**Recovery recipe (if mail stops landing):** check zone status `GET /client/v4/zones/<zone>/email/routing` returns `enabled=true status=ready`; verify destination not deleted from `/accounts/<acct>/email/routing/addresses`; verify routing rule still active in `/zones/<zone>/email/routing/rules`. If MX records missing, re-create from §16.6 list.
