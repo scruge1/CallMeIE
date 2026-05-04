@@ -679,10 +679,18 @@ Per `document-ops-portal/CALLMEIE-DOCAI-V0.4-PRD.md` D-V0.4-07. Replaces Hugging
 - ✓ Live `dvc push` verified end-to-end (test file pushed + `dvc gc -c -w` cleanup confirmed bucket reachable + credentials valid)
 - ✓ AX52 server identity confirmed via Hetzner invoice: server-id `127171852`, primary-ip `126966475`, project `Default` 14229666 — same account as currently logged-in scruge@pm.me / K0405312326
 
-**Adam-keyboard remaining (small):**
-1. After first correction lands via `corrections_consumer.py`: `cd /opt/callmeie/proof-fixtures && dvc add corpus/corrections.jsonl && git add corpus/corrections.jsonl.dvc && git commit && dvc push`
-2. Cron schedule on AX52: `30 02 * * * callmeie /opt/callmeie/proof-fixtures/scripts/dvc_push.sh` (or Coolify Scheduled Task)
-3. (Optional) Generate `HCLOUD_TOKEN` via Hetzner Cloud Console → Security → API tokens → "Generate API token" (button hidden in empty state — first click in Console triggers visible flow). Save to vault for future Cloud-server automation. Not blocking v0.4.1.
+**Done by Claude 2026-05-04 (continuation):**
+- ✓ Label Studio API token (JWT refresh) generated + saved to vault as `LS_REFRESH_TOKEN` (user_id=1, exp +256y)
+- ✓ Label Studio project id=1 "Document Ops IE invoices" created via API with `infra/label-studio/label-config.xml` pasted (vendor / total / vat / date / line_items / reason)
+- ✓ Label Studio webhook id=1 created via API: target `https://portal.callmeie.ie/api/corrections`, header `X-LS-Webhook-Secret: <LS_WEBHOOK_SECRET>`, triggered on ANNOTATION_CREATED + ANNOTATION_UPDATED
+- ✓ `corrections-consumer` Docker container deployed on AX52 (coolify network, restart=unless-stopped, env DATABASE_URL = portal Postgres DSN, CORPUS_PATH = /app/corpus/corrections.jsonl). LISTEN/NOTIFY active.
+- ✓ DVC 3.67.1 installed in `/opt/callmeie/dvc-venv` on AX52 host (apt python3-venv installed alongside). Live `dvc push` from host: 1 file pushed + `dvc gc -c -w` cleanup confirmed remote reachable.
+- ✓ Crontab line installed on AX52 root: nightly 02:30 UTC `dvc_push.sh` execution. Logs to `/var/log/dvc-push.log`.
+- ✓ `HCLOUD_TOKEN` generated via Hetzner Cloud Console (Read & Write scope, name `claude-automation-2026-05-04`). Saved to vault. Live API verified — returns server 127171852 in nbg1.
+
+**Coolify scheduled-task deviation (documented):** User requested Coolify scheduled task for dvc_push (#3). Coolify scheduled tasks require a Coolify-managed Application/Service container with `docker exec` semantics. The corrections-consumer is a raw `docker run` (not Coolify-managed) and portal app's container has no dvc binary. Used host crontab on AX52 root instead — same lifecycle outcome (nightly 02:30 UTC), Coolify-native scheduled task deferred to v0.4.2 architectural cleanup (would require corrections-consumer + dvc-pusher rebuilt as Coolify Application via dockercompose build pack with custom Dockerfile baking dvc).
+
+**Adam-keyboard remaining: NONE for v0.4.1 corrections flywheel** — all four user-requested items (Label Studio config, consumer daemon, scheduled push, HCLOUD_TOKEN) shipped. First correction submitted via Label Studio UI will end-to-end verify webhook → INSERT → NOTIFY → consumer → JSONL → cron → bucket.
 
 ## 15 · docs.callmeie.ie (Document Ops sales site — GitHub Pages)
 
