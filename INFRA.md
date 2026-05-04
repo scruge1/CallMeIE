@@ -614,30 +614,39 @@ Update each slot when an engagement signs.
 - Run-report download (Markdown)
 - Stripe Customer Portal embed
 
-### 14.4 Label Studio CE (review interface — pending Coolify deploy)
+### 14.4 Label Studio CE (review interface — LIVE 2026-05-04)
 
 Per `document-ops-portal/CALLMEIE-DOCAI-V0.4-PRD.md` D-V0.4-06. Apache-2.0 review surface for the corrections flywheel. NOT a sub-processor under DPA v0.4 §7 — Customer-side review interface running on Processor infrastructure (Hetzner DE).
 
 | Field | Value |
 |---|---|
-| Image | `heartexlabs/label-studio:1.13.1` (Apache-2.0) |
-| Public URL (planned) | `https://review.callmeie.ie` |
-| DNS (pending) | A record `review` → 178.104.205.255 (Cloudflare zone callmeie.ie, DNS-only) |
-| Internal Postgres | own volume — distinct from portal Postgres |
+| Image | `heartexlabs/label-studio:latest` (Apache-2.0; pinned 1.23.0 at first deploy) |
+| Public URL | `https://review.callmeie.ie` (LIVE; HTTP 200; LE cert wired via Traefik) |
+| DNS | A record `review` → 178.104.205.255 (Cloudflare zone callmeie.ie, DNS-only, TTL 300) — added 2026-05-04 |
+| Coolify service uuid | `npfgaznhn2n79kow1r5euzdi` (project: my-first-project, server: localhost) |
+| Internal Postgres | container `labelstudio-pg-{uuid}`, volume `npfgaznhn2n79kow1r5euzdi_pg-data` (distinct from portal Postgres `m19o67kvb3d2ugvobm9zs9z4`) |
+| Network membership | `coolify` (Traefik reachability) + `npfgaznhn2n79kow1r5euzdi` (postgres reachability) |
 | Webhook target | `https://portal.callmeie.ie/api/corrections` |
-| Webhook secret | `LS_WEBHOOK_SECRET` in `~/.claude/routes/.env` (generate via `openssl rand -base64 32` on first deploy) |
-| Admin auth | invite-only signup; `LS_ADMIN_EMAIL` + `LS_ADMIN_PASSWORD` |
-| Compose source | `document-ops-portal/infra/label-studio/docker-compose.yml` |
-| Task config | `document-ops-portal/infra/label-studio/label-config.xml` (vendor / total / vat / date / line_items / reason) |
-| Deploy runbook | `document-ops-portal/infra/label-studio/README-DEPLOY.md` |
+| Webhook secret | `LS_WEBHOOK_SECRET` in `~/.claude/routes/.env` |
+| Admin auth | `LS_ADMIN_EMAIL` + `LS_ADMIN_PASSWORD` in vault. SMTP NOT configured so /forgot-password disabled — reset path: `docker exec coolify sh -c 'php artisan root:reset-password'` via SSH owl_deploy_ed25519. |
+| Compose source | `/data/coolify/services/npfgaznhn2n79kow1r5euzdi/docker-compose.yml` (rewritten 2026-05-04 to match portal Traefik HTTPS pattern; Coolify-template was incompatible with custom FQDN — manual edits only going forward) |
+| Task config | `document-ops-portal/infra/label-studio/label-config.xml` (vendor / total / vat / date / line_items / reason) — pending paste into Label Studio project UI |
 
-**Adam-keyboard checklist:**
-1. `alembic upgrade head` from `document-ops-portal/` (applies migration 0002_corrections — adds `extractions` + `corrections` tables + `notify_correction()` Postgres trigger)
-2. Coolify → New Resource → Docker Compose → `infra/label-studio/docker-compose.yml`
-3. Generate secrets (`openssl rand -base64 24` for passwords, `... -base64 32` for webhook secret); paste into Coolify Environment tab
-4. FQDN `review.callmeie.ie` → Coolify proxy + LE cert (watch for #6281 cascade bug — see §13)
-5. In Label Studio UI: paste `label-config.xml`; configure webhook → `portal.callmeie.ie/api/corrections` with `X-LS-Webhook-Secret` header
-6. Install systemd unit for `proof-fixtures/scripts/corrections_consumer.py` on AX52 (LISTENs for `corrections_channel` NOTIFY → appends to `corpus/corrections.jsonl`)
+**Adam-keyboard remaining:**
+1. Login `https://review.callmeie.ie` with `LS_ADMIN_EMAIL` + `LS_ADMIN_PASSWORD` from vault. Confirm Django admin loads.
+2. Create Label Studio project; paste `infra/label-studio/label-config.xml` into Labeling Setup; save.
+3. Settings → Webhooks → Add webhook target `https://portal.callmeie.ie/api/corrections` with header `X-LS-Webhook-Secret: <LS_WEBHOOK_SECRET>` triggered on Annotation Created/Updated.
+
+**SSH key for AX52** — `~/.ssh/owl_deploy_ed25519` (referenced in vault as `OWL_DEPLOY_KEY`). Password auth FAILS (root password rotated and/or fail2ban-banned). Always prefer key auth via paramiko `Ed25519Key.from_private_key_file()`.
+
+**Compose-rewrite root cause (Coolify v4 known workaround)** — Coolify generates Traefik labels at service-create time using `SERVICE_FQDN_*` envs. Setting them AFTER create does NOT regenerate compose. Coolify dashboard "Save" calls `regenerate_compose_file()` but that path has no public API. Workaround: manual compose edit + `docker compose down/up -d`. New entry alongside #6281 cascade bug.
+
+**Done by Claude 2026-05-04:**
+- ✓ Label Studio service created via Coolify API (type=labelstudio template, uuid `npfgaznhn2n79kow1r5euzdi`)
+- ✓ Env vars patched (LS_HOST, admin user/password, webhook secret)
+- ✓ Compose rewritten with portal-pattern Traefik HTTPS labels + LE cert + dual-network membership
+- ✓ Postgres rename `postgres` → `labelstudio-pg-{uuid}` (avoids DNS collision with portal Postgres alias on `coolify` network)
+- ✓ alembic 0002_corrections applied to portal Postgres (`extractions` + `corrections` tables + `corrections_notify_trigger` confirmed via `pg_trigger`)
 
 ### 14.5 DVC + Hetzner Object Storage corpus (training-data store)
 
