@@ -24,6 +24,9 @@
 | SSH user | `root` |
 | SSH password | `$HETZNER_ROOT_PASSWORD` in `~/.claude/routes/.env` |
 | Hetzner API key | **not yet saved** — user has it; paste into `HCLOUD_TOKEN` in routes/.env when available |
+| Hetzner Cloud Console login | **NOT IN VAULT** — `HETZNER_CLOUD_EMAIL` / `HETZNER_CLOUD_PASSWORD` placeholders added 2026-05-04. Currently logged-in Hetzner account at project 14229666 shows ZERO servers — AX52 (`ubuntu-4gb-nbg1-8`, 178.104.205.255 / `CLOUD-NBG1`) is owned by a DIFFERENT Hetzner account. Need correct account creds for Cloud Console + Object Storage bucket creation. |
+| Coolify dashboard login | **NOT IN VAULT** — `COOLIFY_DASHBOARD_EMAIL` / `COOLIFY_DASHBOARD_PASSWORD` placeholders added 2026-05-04. Set by Adam during Coolify install (pre-claude-mem ingest, no observation captured). Needed for proxy restart + Terminal tab. API tokens (`COOLIFY_API_ROOT_TOKEN`) work for most automation BUT cannot trigger Coolify proxy regen / FQDN cascade fix #6281. |
+| Claude Code SSH pubkey | `CLAUDE_CODE_PUBKEY` in routes/.env. Paste into AX52 `/root/.ssh/authorized_keys` via Hetzner Cloud Console "Server > Console" web tty to unlock paramiko key-auth from this machine. Avoids relying on root password (currently password auth fails — fail2ban or rotated). |
 
 **What lives here (see each section below):**
 - Coolify control plane (port 8000)
