@@ -656,9 +656,11 @@ Per `document-ops-portal/CALLMEIE-DOCAI-V0.4-PRD.md` D-V0.4-07. Replaces Hugging
 |---|---|
 | DVC version | 3.67.1 (Apache-2.0) |
 | Remote name | `hetzner` |
-| Bucket | `s3://callmeie-corpus` (pending Hetzner Cloud Console creation) |
-| Endpoint | `https://fsn1.your-objectstorage.com` (Nuremberg — must match DPA v0.4 §8.1 residency) |
-| Access keys | `AWS_ACCESS_KEY_ID` + `AWS_SECRET_ACCESS_KEY` env vars (or `.dvc/config.local` — gitignored) |
+| Bucket | `s3://callmeie-corpus` (CREATED 2026-05-04 in project 14229666; eu-central / Nuremberg) |
+| Endpoint | `https://nbg1.your-objectstorage.com` (Nuremberg — DPA v0.4 §8.1 residency. Earlier scaffold pointed at fsn1; corrected at bucket-create time) |
+| Access keys | `HETZNER_OBJECT_STORAGE_ACCESS_KEY_ID` + `HETZNER_OBJECT_STORAGE_SECRET_ACCESS_KEY` in vault (also written to `proof-fixtures/.dvc/config.local`, gitignored). Description tag: `callmeie-corpus-dvc-2026-05-04` |
+| Live test | `dvc push` 2 files OK (test artifact then `dvc gc -c -w` cleaned remote) |
+| Hetzner Cloud Console UI quirk | Servers/Buckets list filter shows 0 entries even when project has them — direct URL path works (`/servers/127171852` for AX52, `/buckets` for callmeie-corpus). Documented for future debug. |
 | Sub-processor status | Hetzner already DPA v0.4 §7.1 sub-processor for compute; Object Storage same vendor — no new entry needed |
 | Pipeline | `proof-fixtures/dvc.yaml` (stages: `shard_train` + `bench_holdout`) |
 | Push helper | `proof-fixtures/scripts/dvc_push.sh` (cron-friendly idempotent) |
@@ -670,15 +672,17 @@ Per `document-ops-portal/CALLMEIE-DOCAI-V0.4-PRD.md` D-V0.4-07. Replaces Hugging
 - `corpus/holdout/` — D-V0.4-10 frozen v0 100-doc holdout (Adam-curated, pending)
 - `corpus/metrics.json` — per-field + per-tenant correction counts feeding PRD §8 Open Question 2 (~100 corrections/customer/month thesis verification)
 
-**Adam-keyboard checklist:**
-1. Hetzner Cloud Console → Object Storage → Create Bucket
-   - Name: `callmeie-corpus`
-   - Region: `fsn1` (Nuremberg)
-   - Access: Private
-2. Generate credentials → save to vault → paste into `proof-fixtures/.dvc/config.local` (or AX52 env vars)
-3. `dvc remote test hetzner` (verifies bucket reachability + creds valid)
-4. After first correction lands via `corrections_consumer.py`: `dvc add corpus/corrections.jsonl && git add corpus/corrections.jsonl.dvc && git commit && dvc push`
-5. Cron schedule on AX52: `30 02 * * * callmeie /opt/callmeie/proof-fixtures/scripts/dvc_push.sh` (or Coolify Scheduled Task)
+**Done by Claude 2026-05-04:**
+- ✓ Bucket `callmeie-corpus` created via Hetzner Cloud Console (Claude in Chrome MCP), Nuremberg, project 14229666
+- ✓ S3 credentials generated + saved to vault + `proof-fixtures/.dvc/config.local`
+- ✓ DVC config endpoint corrected: fsn1 → nbg1
+- ✓ Live `dvc push` verified end-to-end (test file pushed + `dvc gc -c -w` cleanup confirmed bucket reachable + credentials valid)
+- ✓ AX52 server identity confirmed via Hetzner invoice: server-id `127171852`, primary-ip `126966475`, project `Default` 14229666 — same account as currently logged-in scruge@pm.me / K0405312326
+
+**Adam-keyboard remaining (small):**
+1. After first correction lands via `corrections_consumer.py`: `cd /opt/callmeie/proof-fixtures && dvc add corpus/corrections.jsonl && git add corpus/corrections.jsonl.dvc && git commit && dvc push`
+2. Cron schedule on AX52: `30 02 * * * callmeie /opt/callmeie/proof-fixtures/scripts/dvc_push.sh` (or Coolify Scheduled Task)
+3. (Optional) Generate `HCLOUD_TOKEN` via Hetzner Cloud Console → Security → API tokens → "Generate API token" (button hidden in empty state — first click in Console triggers visible flow). Save to vault for future Cloud-server automation. Not blocking v0.4.1.
 
 ## 15 · docs.callmeie.ie (Document Ops sales site — GitHub Pages)
 
