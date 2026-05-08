@@ -130,6 +130,7 @@ ADMIN_TOKEN = os.environ.get("ADMIN_TOKEN", "changeme")
 
 # --- Anomaly diagnostics (Claude API) ---
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
+XAI_API_KEY = os.environ.get("XAI_API_KEY", "")
 ANOMALY_THRESHOLD = 0.7   # min score to invoke Claude
 ANOMALY_BUDGET_PER_HOUR = 5   # circuit breaker — stops storm flooding (same root cause)
 ANOMALY_BUDGET_PER_DAY = 200  # daily ceiling for a busy high-volume client
@@ -1716,35 +1717,93 @@ OUTPUT RULES:
 """
 
 
-async def _classify_discovery(answers: dict) -> dict:
-    """Call Claude Haiku 4.5 to classify a discovery submission. Returns a
-    dict with recommended_product / tier_anchor / result_text. Falls back
-    to a deterministic founder-handoff if the API call fails."""
+_DISCOVERY_FALLBACK = {
+    "recommended_product": "founder-handoff",
+    "tier_anchor": "",
+    "result_text": (
+        "I couldn't quite pattern-match this one against our products on autopilot, "
+        "so I'm flagging it for Adam. He'll email you in the next day or two to chat "
+        "through what you're working on — sometimes the right answer is a referral, "
+        "sometimes a custom build."
+    ),
+}
 
-    user_prompt = (
-        f"Visitor answers (page context: {answers.get('page_context', 'unknown')}):\n"
-        f"- Business: {answers.get('business', '')}\n"
-        f"- Biggest unfinished labour: {answers.get('pain', '')}\n"
-        f"- Team size: {answers.get('team_size', '')}\n"
-        f"- Urgency: {answers.get('urgency', '')}\n\n"
-        f"Reply with the JSON only."
-    )
 
-    fallback = {
-        "recommended_product": "founder-handoff",
-        "tier_anchor": "",
-        "result_text": (
-            "I couldn't quite pattern-match this one against our products on autopilot, "
-            "so I'm flagging it for Adam. He'll email you in the next day or two to chat "
-            "through what you're working on — sometimes the right answer is a referral, "
-            "sometimes a custom build."
-        ),
+def _coerce_classification(parsed: dict) -> dict:
+    """Validate + normalise an LLM JSON response into the discovery schema."""
+    rec = parsed.get("recommended_product", "founder-handoff")
+    if rec not in {"receptionist", "docs", "websites", "founder-handoff"}:
+        rec = "founder-handoff"
+    return {
+        "recommended_product": rec,
+        "tier_anchor": parsed.get("tier_anchor", "") or "",
+        "result_text": parsed.get("result_text") or _DISCOVERY_FALLBACK["result_text"],
     }
 
-    if not ANTHROPIC_API_KEY:
-        print("[Discovery] No ANTHROPIC_API_KEY — returning founder-handoff fallback")
-        return fallback
 
+def _extract_json(raw: str) -> dict | None:
+    """Strip fences, then parse JSON. On failure, regex-extract the first
+    {...} block. Returns dict on success, None on hard failure."""
+    text = (raw or "").strip()
+    if text.startswith("```"):
+        text = text.strip("`")
+        if text.lower().startswith("json"):
+            text = text[4:].strip()
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        pass
+    import re as _re
+    m = _re.search(r"\{[\s\S]*\}", text)
+    if not m:
+        return None
+    try:
+        return json.loads(m.group(0))
+    except json.JSONDecodeError:
+        return None
+
+
+async def _try_grok(user_prompt: str) -> dict | None:
+    """xAI Grok primary path. Cheap (~$0.0001/call), fast (~1.2s), JSON mode native."""
+    if not XAI_API_KEY:
+        return None
+    try:
+        async with httpx.AsyncClient(timeout=20) as h:
+            r = await h.post(
+                "https://api.x.ai/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {XAI_API_KEY}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "model": "grok-4-fast-non-reasoning",
+                    "max_tokens": 400,
+                    "temperature": 0.3,
+                    "response_format": {"type": "json_object"},
+                    "messages": [
+                        {"role": "system", "content": DISCOVERY_SYSTEM_PROMPT},
+                        {"role": "user", "content": user_prompt},
+                    ],
+                },
+            )
+        if r.status_code != 200:
+            print(f"[Discovery] Grok error {r.status_code}: {r.text[:300]}")
+            return None
+        raw = r.json()["choices"][0]["message"]["content"]
+        parsed = _extract_json(raw)
+        if not parsed:
+            print(f"[Discovery] Grok returned non-JSON: {raw[:300]}")
+            return None
+        return parsed
+    except Exception as e:
+        print(f"[Discovery] Grok exception: {e}")
+        return None
+
+
+async def _try_haiku(user_prompt: str) -> dict | None:
+    """Anthropic Haiku 4.5 fallback. Used when xAI is unavailable AND Anthropic credits are present."""
+    if not ANTHROPIC_API_KEY:
+        return None
     try:
         async with httpx.AsyncClient(timeout=20) as h:
             r = await h.post(
@@ -1762,41 +1821,45 @@ async def _classify_discovery(answers: dict) -> dict:
                 },
             )
         if r.status_code != 200:
-            print(f"[Discovery] Haiku error {r.status_code}: {r.text[:300]}")
-            return fallback
+            body = r.text[:300]
+            if "credit balance" in body.lower():
+                print("[Discovery] Haiku skipped — Anthropic credit balance empty")
+            else:
+                print(f"[Discovery] Haiku error {r.status_code}: {body}")
+            return None
         raw = r.json()["content"][0]["text"].strip()
-        # Strip any stray code fence (Haiku sometimes wraps JSON despite asking it not to)
-        text = raw
-        if text.startswith("```"):
-            text = text.strip("`")
-            if text.lower().startswith("json"):
-                text = text[4:].strip()
-        try:
-            parsed = json.loads(text)
-        except json.JSONDecodeError:
-            # Last-ditch: regex-extract the first {...} object in the response
-            import re as _re
-            m = _re.search(r"\{[\s\S]*\}", text)
-            if not m:
-                print(f"[Discovery] Haiku returned non-JSON: {raw[:300]}")
-                return fallback
-            try:
-                parsed = json.loads(m.group(0))
-            except json.JSONDecodeError as je:
-                print(f"[Discovery] Haiku JSON-extract failed: {je} | raw: {raw[:300]}")
-                return fallback
-        # Defensive validation
-        rec = parsed.get("recommended_product", "founder-handoff")
-        if rec not in {"receptionist", "docs", "websites", "founder-handoff"}:
-            rec = "founder-handoff"
-        return {
-            "recommended_product": rec,
-            "tier_anchor": parsed.get("tier_anchor", "") or "",
-            "result_text": parsed.get("result_text", fallback["result_text"]),
-        }
+        parsed = _extract_json(raw)
+        if not parsed:
+            print(f"[Discovery] Haiku returned non-JSON: {raw[:300]}")
+            return None
+        return parsed
     except Exception as e:
-        print(f"[Discovery] Classification failed: {e}")
-        return fallback
+        print(f"[Discovery] Haiku exception: {e}")
+        return None
+
+
+async def _classify_discovery(answers: dict) -> dict:
+    """Provider-chain classifier: tries xAI Grok first (cheap + Adam has credit),
+    then Anthropic Haiku, then static founder-handoff. Returns the discovery
+    result dict in all cases — guaranteed schema."""
+
+    user_prompt = (
+        f"Visitor answers (page context: {answers.get('page_context', 'unknown')}):\n"
+        f"- Business: {answers.get('business', '')}\n"
+        f"- Biggest unfinished labour: {answers.get('pain', '')}\n"
+        f"- Team size: {answers.get('team_size', '')}\n"
+        f"- Urgency: {answers.get('urgency', '')}\n\n"
+        f"Reply with the JSON only."
+    )
+
+    for provider, fn in (("grok", _try_grok), ("haiku", _try_haiku)):
+        parsed = await fn(user_prompt)
+        if parsed:
+            print(f"[Discovery] classified via {provider}")
+            return _coerce_classification(parsed)
+
+    print("[Discovery] all providers failed — returning founder-handoff fallback")
+    return dict(_DISCOVERY_FALLBACK)
 
 
 @app.post("/api/discovery")
@@ -2328,6 +2391,7 @@ async def health():
         "global_owner_notifications": bool(OWNER_NUMBER),
         "google_backup": backup_sheet_status(),
         "anthropic_configured": bool(ANTHROPIC_API_KEY),
+        "xai_configured": bool(XAI_API_KEY),
         "discovery_daily_count": _discovery_daily_count.get("n", 0),
     }
 
