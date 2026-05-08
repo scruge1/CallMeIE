@@ -14,6 +14,7 @@ Endpoints:
   POST /demo-complete          — Demo assistant end-of-demo hook — enriched owner alert
   POST /submit-onboarding      — Client onboarding form submission
   POST /api/discovery          — Discovery chatbot quiz submit (P3 widget)
+  POST /api/docops/extract     — Ephemeral PDF → invoice JSON (P5b)
   GET  /admin                  — Admin portal (protected)
   GET  /admin/api/submissions  — List pending submissions
   GET  /admin/api/clients      — List provisioned clients
@@ -2000,6 +2001,291 @@ async def api_discovery(request: Request, background_tasks: BackgroundTasks):
         "result_text": classification["result_text"],
         "ctas": ctas,
         "submission_id": submission_id,
+    })
+
+
+# --- Doc Ops live extractor (P5b) ---
+#
+# Visitor uploads a PDF on /docs/ → server pulls the text layer via
+# pypdf (no OCR, no disk write — pypdf reads from a BytesIO buffer),
+# normalises invoice fields via xAI Grok in JSON mode, computes a
+# math-gate confidence overlay, and returns the structured result.
+#
+# Privacy contract: file bytes never touch disk, we keep a SHA-256
+# digest + page count + size for an admin audit row, then drop the
+# buffer. No row of the original document text is persisted.
+#
+# Hard caps: PDF only, ≤ 10 MB, ≤ 8 pages, 3 uploads/IP/hour, shared
+# 500/day ceiling with the discovery widget so cost can't run away.
+
+import io as _docops_io
+
+DOCOPS_MAX_BYTES = 10 * 1024 * 1024
+DOCOPS_MAX_PAGES = 8
+DOCOPS_RATE_LIMIT_PER_IP = 3
+DOCOPS_RATE_WINDOW_SEC = 3600
+
+_docops_ip_log: dict[str, deque] = defaultdict(deque)
+
+
+def _docops_rate_check(ip: str) -> tuple[bool, str]:
+    now = time.time()
+    today = datetime.now(ZoneInfo(CALLMEIE_TIMEZONE)).strftime("%Y-%m-%d")
+    if _discovery_daily_count["date"] != today:
+        _discovery_daily_count["date"] = today
+        _discovery_daily_count["n"] = 0
+    if _discovery_daily_count["n"] >= DISCOVERY_DAILY_CAP:
+        return False, "daily_cap_reached"
+    log = _docops_ip_log[ip]
+    while log and now - log[0] > DOCOPS_RATE_WINDOW_SEC:
+        log.popleft()
+    if len(log) >= DOCOPS_RATE_LIMIT_PER_IP:
+        return False, "rate_limit_per_ip"
+    log.append(now)
+    _discovery_daily_count["n"] += 1
+    return True, ""
+
+
+DOCOPS_SYSTEM_PROMPT = """You are CallMeIE Document Ops — a strict, Irish-VAT-aware invoice field extractor for SMBs.
+
+OUTPUT RULES:
+- Reply ONLY with valid JSON, no preamble, no code-fence.
+- Schema: {
+    "supplier_name": string|null,
+    "supplier_vat": string|null,
+    "invoice_number": string|null,
+    "issue_date": "YYYY-MM-DD"|null,
+    "due_date": "YYYY-MM-DD"|null,
+    "currency": "EUR"|"GBP"|"USD"|null,
+    "net_total": number|null,
+    "vat_amount": number|null,
+    "vat_rate": number|null,
+    "gross_total": number|null,
+    "document_type": "invoice"|"credit_note"|"quote"|"receipt"|"other",
+    "ie_vat_notes": string|null
+  }
+- supplier_vat: include the IE/UK prefix verbatim (e.g. "IE4823910K"). null if absent.
+- vat_rate: decimal not percent (0.23 not 23). Irish rates are 0.00 / 0.045 / 0.09 / 0.135 / 0.23.
+- All dates ISO format. If only DD/MM/YYYY present, normalise.
+- net_total / vat_amount / gross_total: numeric only, no currency symbol.
+- ie_vat_notes: 1 short sentence flagging anything Irish-specific worth noting (RCT reverse-charge, VATCA Sched 1 §2 exempt, supermarket per-letter VAT, intra-community 0%, etc). null if generic invoice.
+- If a field is genuinely absent or unreadable, use null. NEVER invent.
+- If document_type is not "invoice" (e.g. it's a quote or estimate), still extract everything but set document_type accordingly.
+
+EXTRACTION DISCIPLINE:
+- Do NOT guess at supplier_vat — only return it if a VAT number string is literally present.
+- Do NOT compute gross_total = net_total + vat_amount yourself. Only return values you actually see in the document.
+- Do NOT return prose or commentary outside the JSON.
+"""
+
+
+async def _docops_extract_with_grok(text: str) -> dict | None:
+    """Send extracted PDF text to Grok-4-fast-non-reasoning for invoice
+    field normalisation. Returns parsed dict or None on hard failure."""
+    if not XAI_API_KEY:
+        return None
+    snippet = (text or "")[:8000]  # cap input — invoices fit easily
+    if not snippet.strip():
+        return None
+    user_prompt = (
+        "Document text below. Extract invoice fields per the schema. "
+        "Reply with the JSON object only.\n\n"
+        f"<<<\n{snippet}\n>>>"
+    )
+    try:
+        async with httpx.AsyncClient(timeout=30) as h:
+            r = await h.post(
+                "https://api.x.ai/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {XAI_API_KEY}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "model": "grok-4-fast-non-reasoning",
+                    "max_tokens": 600,
+                    "temperature": 0.1,
+                    "response_format": {"type": "json_object"},
+                    "messages": [
+                        {"role": "system", "content": DOCOPS_SYSTEM_PROMPT},
+                        {"role": "user", "content": user_prompt},
+                    ],
+                },
+            )
+        if r.status_code != 200:
+            print(f"[DocOps] Grok error {r.status_code}: {r.text[:300]}")
+            return None
+        raw = r.json()["choices"][0]["message"]["content"]
+        return _extract_json(raw)
+    except Exception as e:
+        print(f"[DocOps] Grok exception: {e}")
+        return None
+
+
+def _docops_compute_confidence(fields: dict, raw_text_present: bool) -> dict:
+    """Heuristic confidence per field. Cheap, deterministic, transparent.
+    The LLM doesn't know if it's right — we use the source-text-present-as-proxy
+    + math-gate cross-check to assign confidence chips for the UI."""
+    conf: dict[str, float] = {}
+    # Field-presence pass: any non-null = 0.95 by default; null = 0.0.
+    for k, v in fields.items():
+        if v is None or v == "":
+            conf[k] = 0.0
+        else:
+            conf[k] = 0.95
+    # Math gate: if net + vat_amount agrees with gross within 1c, lift to 1.00
+    nt, va, gt = fields.get("net_total"), fields.get("vat_amount"), fields.get("gross_total")
+    if isinstance(nt, (int, float)) and isinstance(va, (int, float)) and isinstance(gt, (int, float)):
+        if abs((nt + va) - gt) < 0.02:
+            for k in ("net_total", "vat_amount", "gross_total"):
+                if conf[k] >= 0.9:
+                    conf[k] = 1.00
+        else:
+            for k in ("net_total", "vat_amount", "gross_total"):
+                if conf[k] >= 0.9:
+                    conf[k] = 0.85  # math disagreement = below gate
+    # VAT rate sanity: if vat_rate present and not in IE statutory set, demote
+    vr = fields.get("vat_rate")
+    if isinstance(vr, (int, float)):
+        ie_rates = {0.0, 0.045, 0.09, 0.135, 0.23}
+        if not any(abs(vr - r) < 0.005 for r in ie_rates):
+            conf["vat_rate"] = 0.80
+    # If we couldn't even read source text, every field is suspect
+    if not raw_text_present:
+        for k in conf:
+            conf[k] = min(conf[k], 0.30)
+    return conf
+
+
+@app.post("/api/docops/extract")
+async def api_docops_extract(request: Request):
+    """Ephemeral PDF → invoice JSON.
+    Body: multipart/form-data with 'file' field (PDF, ≤10MB, ≤8 pages).
+    No data persisted beyond an audit row (digest + size + page count)."""
+
+    # Rate limit by client IP
+    fwd = request.headers.get("x-forwarded-for", "")
+    client_ip = (fwd.split(",")[0].strip() if fwd else (request.client.host if request.client else "")) or "unknown"
+    allowed, reason = _docops_rate_check(client_ip)
+    if not allowed:
+        return JSONResponse({"error": reason}, status_code=429)
+
+    # Read body without writing to disk
+    form = await request.form()
+    upload = form.get("file")
+    if upload is None or not hasattr(upload, "read"):
+        return JSONResponse({"error": "no_file"}, status_code=400)
+    content_type = (getattr(upload, "content_type", "") or "").lower()
+    if content_type and "pdf" not in content_type:
+        return JSONResponse({"error": "pdf_only"}, status_code=415)
+
+    payload = await upload.read()
+    try:
+        size = len(payload)
+    finally:
+        # Drop reference asap if size check fails
+        if not payload:
+            return JSONResponse({"error": "empty"}, status_code=400)
+    if size > DOCOPS_MAX_BYTES:
+        return JSONResponse({"error": "file_too_large", "max_bytes": DOCOPS_MAX_BYTES}, status_code=413)
+
+    # Hash for audit only (one-way, no original recoverable from this)
+    digest = hashlib.sha256(payload).hexdigest()[:32]
+
+    # Pull text via pypdf — pure-Python, in-memory only
+    try:
+        import pypdf
+    except ImportError:
+        return JSONResponse({"error": "pdf_lib_missing"}, status_code=503)
+
+    try:
+        reader = pypdf.PdfReader(_docops_io.BytesIO(payload))
+        page_count = len(reader.pages)
+    except Exception as e:
+        print(f"[DocOps] PDF parse failed: {e}")
+        return JSONResponse({"error": "pdf_parse_failed"}, status_code=400)
+
+    if page_count > DOCOPS_MAX_PAGES:
+        return JSONResponse({"error": "too_many_pages", "max_pages": DOCOPS_MAX_PAGES}, status_code=413)
+
+    pieces: list[str] = []
+    for i in range(page_count):
+        try:
+            pieces.append(reader.pages[i].extract_text() or "")
+        except Exception:
+            pieces.append("")
+    full_text = "\n\n--- page break ---\n\n".join(pieces).strip()
+
+    # GDPR: drop the bytes the moment we have text
+    payload = b""
+
+    if not full_text:
+        return JSONResponse({
+            "error": "no_text_layer",
+            "message": "We could read the PDF structure but found no extractable text. Image-only / scanned PDFs need OCR — that ships in our v2. For now, please try a text-layer PDF (Sage / Xero / Stripe export, or any modern invoice).",
+            "page_count": page_count,
+            "digest": digest,
+        }, status_code=422)
+
+    fields = await _docops_extract_with_grok(full_text)
+    if not fields:
+        return JSONResponse({
+            "error": "extraction_failed",
+            "message": "The extractor couldn't pattern-match the document. The bytes have been dropped — nothing kept on our side. Email hello@callmeie.ie if you'd like a hand.",
+            "page_count": page_count,
+            "digest": digest,
+        }, status_code=502)
+
+    # Drop full text once classified — never persisted
+    full_text = ""
+
+    confidence = _docops_compute_confidence(fields, raw_text_present=True)
+    below_gate = [k for k, c in confidence.items() if 0 < c < 0.98]
+    missing = [k for k, c in confidence.items() if c == 0.0]
+
+    # Audit row only — no document content, no PII
+    try:
+        with get_db() as conn:
+            conn.execute("""
+                INSERT INTO call_events (call_id, event_type, assistant, summary, detail)
+                VALUES (?, 'docops-extract', 'docops', ?, ?)
+            """, (
+                digest,
+                f"size={size}b pages={page_count} below_gate={len(below_gate)} missing={len(missing)}",
+                json.dumps({
+                    "ip_hash": hashlib.sha256(client_ip.encode("utf-8")).hexdigest()[:24],
+                    "size": size,
+                    "page_count": page_count,
+                    "below_gate": below_gate,
+                    "missing": missing,
+                    "doc_type": fields.get("document_type"),
+                }),
+            ))
+            conn.commit()
+    except Exception as e:
+        print(f"[DocOps] Audit row failed: {e}")
+
+    print(f"[DocOps] {digest[:8]} pages={page_count} below_gate={below_gate} missing={missing}")
+
+    # Build a one-line reviewer prompt for any below-gate / missing fields
+    review_note = ""
+    if missing or below_gate:
+        bits = []
+        if missing:
+            bits.append(f"missing: {', '.join(missing)}")
+        if below_gate:
+            bits.append(f"below 0.98: {', '.join(below_gate)}")
+        review_note = " · ".join(bits)
+
+    return JSONResponse({
+        "fields": fields,
+        "confidence": confidence,
+        "page_count": page_count,
+        "size_bytes": size,
+        "digest": digest,
+        "below_gate": below_gate,
+        "missing": missing,
+        "review_note": review_note,
+        "math_gate_passed": all(confidence.get(k, 0) >= 0.98 for k in ("net_total", "vat_amount", "gross_total")),
     })
 
 
