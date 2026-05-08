@@ -1762,15 +1762,29 @@ async def _classify_discovery(answers: dict) -> dict:
                 },
             )
         if r.status_code != 200:
-            print(f"[Discovery] Haiku error {r.status_code}: {r.text[:200]}")
+            print(f"[Discovery] Haiku error {r.status_code}: {r.text[:300]}")
             return fallback
-        text = r.json()["content"][0]["text"].strip()
-        # Strip any stray code fence
+        raw = r.json()["content"][0]["text"].strip()
+        # Strip any stray code fence (Haiku sometimes wraps JSON despite asking it not to)
+        text = raw
         if text.startswith("```"):
             text = text.strip("`")
             if text.lower().startswith("json"):
                 text = text[4:].strip()
-        parsed = json.loads(text)
+        try:
+            parsed = json.loads(text)
+        except json.JSONDecodeError:
+            # Last-ditch: regex-extract the first {...} object in the response
+            import re as _re
+            m = _re.search(r"\{[\s\S]*\}", text)
+            if not m:
+                print(f"[Discovery] Haiku returned non-JSON: {raw[:300]}")
+                return fallback
+            try:
+                parsed = json.loads(m.group(0))
+            except json.JSONDecodeError as je:
+                print(f"[Discovery] Haiku JSON-extract failed: {je} | raw: {raw[:300]}")
+                return fallback
         # Defensive validation
         rec = parsed.get("recommended_product", "founder-handoff")
         if rec not in {"receptionist", "docs", "websites", "founder-handoff"}:
@@ -2313,6 +2327,8 @@ async def health():
         "twilio_configured": bool(TWILIO_SID),
         "global_owner_notifications": bool(OWNER_NUMBER),
         "google_backup": backup_sheet_status(),
+        "anthropic_configured": bool(ANTHROPIC_API_KEY),
+        "discovery_daily_count": _discovery_daily_count.get("n", 0),
     }
 
 
