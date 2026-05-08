@@ -13,9 +13,11 @@ Endpoints:
   POST /capture-lead           — Demo lead capture (Claire) — stores in DB + SMS owner
   POST /demo-complete          — Demo assistant end-of-demo hook — enriched owner alert
   POST /submit-onboarding      — Client onboarding form submission
+  POST /api/discovery          — Discovery chatbot quiz submit (P3 widget)
   GET  /admin                  — Admin portal (protected)
   GET  /admin/api/submissions  — List pending submissions
   GET  /admin/api/clients      — List provisioned clients
+  GET  /admin/api/discovery-submissions — List discovery quiz submissions
   POST /admin/api/provision/{id} — Provision a client from submission
   POST /admin/api/reject/{id}  — Reject a submission
   GET  /health                 — Health check
@@ -568,6 +570,24 @@ def init_db():
                 status        TEXT DEFAULT 'active',
                 created_at    TEXT DEFAULT (datetime('now')),
                 submission_id INTEGER
+            )
+        """))
+        conn.execute(_ddl_fix("""
+            CREATE TABLE IF NOT EXISTS discovery_submissions (
+                id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+                created_at          TEXT DEFAULT (datetime('now')),
+                page_context        TEXT,
+                business            TEXT,
+                pain                TEXT,
+                team_size           TEXT,
+                urgency             TEXT,
+                contact_email       TEXT,
+                contact_name        TEXT,
+                recommended_product TEXT,
+                tier_anchor         TEXT,
+                result_text         TEXT,
+                ip_hash             TEXT,
+                user_agent          TEXT
             )
         """))
         # Dialect-specific column introspection for ALTER TABLE idempotency
@@ -1626,6 +1646,286 @@ async def submit_onboarding(request: Request):
     })
 
 
+# --- Discovery chatbot (P3) ---
+#
+# Single endpoint: visitor answers 4 quiz questions client-side, server
+# (a) classifies fit via Claude Haiku 4.5, (b) persists to
+# discovery_submissions, (c) alerts owner via SMS + Telegram, (d) returns
+# a result blob the widget renders. No PII reaches the server until the
+# visitor hits submit. Rate-limited to 5 starts/IP/hour and a 500/day
+# global ceiling so cost can't run away.
+#
+# DSA-compliant: AI disclosure surfaced client-side first turn, honest
+# "founder-handoff" path when fit is weak (no sycophancy), always-visible
+# escape to email/WhatsApp.
+
+import hashlib
+import time
+from collections import defaultdict, deque
+
+DISCOVERY_RATE_WINDOW_SEC = 3600  # 1h sliding window
+DISCOVERY_RATE_LIMIT_PER_IP = 5   # max 5 sessions per IP per hour
+DISCOVERY_DAILY_CAP = 500         # global daily ceiling (cost shield)
+
+_discovery_ip_log: dict[str, deque] = defaultdict(deque)
+_discovery_daily_count = {"date": "", "n": 0}
+
+
+def _discovery_rate_check(ip: str) -> tuple[bool, str]:
+    """Return (allowed, reason). Cleans expired entries inline."""
+    now = time.time()
+    today = datetime.now(ZoneInfo(CALLMEIE_TIMEZONE)).strftime("%Y-%m-%d")
+    if _discovery_daily_count["date"] != today:
+        _discovery_daily_count["date"] = today
+        _discovery_daily_count["n"] = 0
+    if _discovery_daily_count["n"] >= DISCOVERY_DAILY_CAP:
+        return False, "daily_cap_reached"
+    log = _discovery_ip_log[ip]
+    while log and now - log[0] > DISCOVERY_RATE_WINDOW_SEC:
+        log.popleft()
+    if len(log) >= DISCOVERY_RATE_LIMIT_PER_IP:
+        return False, "rate_limit_per_ip"
+    log.append(now)
+    _discovery_daily_count["n"] += 1
+    return True, ""
+
+
+DISCOVERY_SYSTEM_PROMPT = """You are the qualifier for CallMeIE Technologies, an Irish AI ops studio in Limerick run by founder Adam Vaughan. You match Irish SMB visitors to the closest CallMeIE product — or, when nothing fits, hand them off to Adam directly with warmth.
+
+PRODUCTS (with anchor pricing — always show "from €X"):
+- AI Receptionist · from €149/mo · answers phone 24/7, books appointments, texts back missed callers. Verticals: dental, motor factors, salon, solicitor, and a general fallback.
+- Document Ops · from €500 pilot · invoice OCR with 0.98 confidence gate, Irish VAT semantics (RCT, per-letter, exempt, intra-community), Sage/Xero/BrightBooks output, 7-year audit retention.
+- AI-First Websites · from €695 starter · Cloudflare-hosted Irish web design with receptionist + chatbot + workflow automation built in.
+
+DECISION RULES:
+- "Missed calls" pain + any vertical (dental, motor factors, salon, solicitor, restaurant) → AI Receptionist. Mention the matching vertical AI ("dental Claire", "motor factors AI", etc).
+- "Invoice review" or "invoices" or "bookkeeping" pain → Document Ops. Mention Irish VAT trained.
+- "Outdated website" or "online presence" pain → AI-First Websites. Mention 7-14 day delivery.
+- "Lead capture" pain + has-website → AI-First Websites. No website → Receptionist first (calls happen before sites).
+- Team size 16-50 + urgency "this month" → flag as bespoke ("we'd want to scope this with Adam, not paste you into a tier").
+- Anything else, "other", weird combos, or wrong-fit → FOUNDER HANDOFF. Use the warm phrasing: "None of our products quite fit yet, but I'm flagging this for Adam — he'll email you in the next day or two to chat through what you're working on. Sometimes the right answer is a referral, sometimes a custom build."
+
+OUTPUT RULES:
+- Reply ONLY with valid JSON, no preamble, no code-fence, no explanation outside JSON.
+- Schema: {"recommended_product": "receptionist"|"docs"|"websites"|"founder-handoff", "tier_anchor": "from €149/mo"|"from €500 pilot"|"from €695 starter"|"", "result_text": "<60-90 word warm Irish-tone match summary that names the vertical, the specific pain, the recommended product, the price anchor, and one sentence on what happens next>"}
+- Tone: warm, Irish, confident, plain-spoken. Not American, not pushy. Use "ring", "diary", "sound", "grand". Never sound like a brochure.
+- result_text MUST mention the product price anchor (or omit if founder-handoff).
+- result_text MUST end with a one-line next step ("Adam will email you in the next day or two." OR "The fastest move is ringing the demo line on plus one six six one seven six four three two one two." OR "Drop your invoice into the Doc Ops sample on /docs/ and you'll see the confidence-gated output for yourself.").
+- Be honest. If a visitor's situation doesn't match, say so. Don't sell a product they don't need.
+- Never invent features. Only reference what's listed above.
+"""
+
+
+async def _classify_discovery(answers: dict) -> dict:
+    """Call Claude Haiku 4.5 to classify a discovery submission. Returns a
+    dict with recommended_product / tier_anchor / result_text. Falls back
+    to a deterministic founder-handoff if the API call fails."""
+
+    user_prompt = (
+        f"Visitor answers (page context: {answers.get('page_context', 'unknown')}):\n"
+        f"- Business: {answers.get('business', '')}\n"
+        f"- Biggest unfinished labour: {answers.get('pain', '')}\n"
+        f"- Team size: {answers.get('team_size', '')}\n"
+        f"- Urgency: {answers.get('urgency', '')}\n\n"
+        f"Reply with the JSON only."
+    )
+
+    fallback = {
+        "recommended_product": "founder-handoff",
+        "tier_anchor": "",
+        "result_text": (
+            "I couldn't quite pattern-match this one against our products on autopilot, "
+            "so I'm flagging it for Adam. He'll email you in the next day or two to chat "
+            "through what you're working on — sometimes the right answer is a referral, "
+            "sometimes a custom build."
+        ),
+    }
+
+    if not ANTHROPIC_API_KEY:
+        print("[Discovery] No ANTHROPIC_API_KEY — returning founder-handoff fallback")
+        return fallback
+
+    try:
+        async with httpx.AsyncClient(timeout=20) as h:
+            r = await h.post(
+                "https://api.anthropic.com/v1/messages",
+                headers={
+                    "x-api-key": ANTHROPIC_API_KEY,
+                    "anthropic-version": "2023-06-01",
+                    "content-type": "application/json",
+                },
+                json={
+                    "model": "claude-haiku-4-5-20251001",
+                    "max_tokens": 400,
+                    "system": DISCOVERY_SYSTEM_PROMPT,
+                    "messages": [{"role": "user", "content": user_prompt}],
+                },
+            )
+        if r.status_code != 200:
+            print(f"[Discovery] Haiku error {r.status_code}: {r.text[:200]}")
+            return fallback
+        text = r.json()["content"][0]["text"].strip()
+        # Strip any stray code fence
+        if text.startswith("```"):
+            text = text.strip("`")
+            if text.lower().startswith("json"):
+                text = text[4:].strip()
+        parsed = json.loads(text)
+        # Defensive validation
+        rec = parsed.get("recommended_product", "founder-handoff")
+        if rec not in {"receptionist", "docs", "websites", "founder-handoff"}:
+            rec = "founder-handoff"
+        return {
+            "recommended_product": rec,
+            "tier_anchor": parsed.get("tier_anchor", "") or "",
+            "result_text": parsed.get("result_text", fallback["result_text"]),
+        }
+    except Exception as e:
+        print(f"[Discovery] Classification failed: {e}")
+        return fallback
+
+
+@app.post("/api/discovery")
+async def api_discovery(request: Request, background_tasks: BackgroundTasks):
+    """Discovery chatbot quiz submit. Body keys:
+        business, pain, team_size, urgency  — required (chip values)
+        page_context                        — required (hub|receptionist|docs|websites)
+        contact_email, contact_name         — optional, only when visitor opts to share
+    Returns recommendation + booking CTAs."""
+    body = await request.json()
+    page_context = body.get("page_context", "unknown")[:32]
+    business = body.get("business", "")[:64]
+    pain = body.get("pain", "")[:64]
+    team_size = body.get("team_size", "")[:32]
+    urgency = body.get("urgency", "")[:32]
+    contact_email = (body.get("contact_email") or "").strip()[:160]
+    contact_name = (body.get("contact_name") or "").strip()[:80]
+
+    if not (business and pain and team_size and urgency):
+        return JSONResponse({"error": "missing_required_answers"}, status_code=400)
+
+    # Rate limit by client IP (Render sets X-Forwarded-For)
+    fwd = request.headers.get("x-forwarded-for", "")
+    client_ip = (fwd.split(",")[0].strip() if fwd else (request.client.host if request.client else "")) or "unknown"
+    allowed, reason = _discovery_rate_check(client_ip)
+    if not allowed:
+        return JSONResponse({"error": reason}, status_code=429)
+    ip_hash = hashlib.sha256(client_ip.encode("utf-8")).hexdigest()[:24]
+
+    # Classify via Haiku (cost: ~€0.0007/call)
+    answers = {
+        "business": business,
+        "pain": pain,
+        "team_size": team_size,
+        "urgency": urgency,
+        "page_context": page_context,
+    }
+    classification = await _classify_discovery(answers)
+
+    # Persist
+    submission_id = None
+    try:
+        with get_db() as conn:
+            cur = conn.execute("""
+                INSERT INTO discovery_submissions
+                (page_context, business, pain, team_size, urgency,
+                 contact_email, contact_name, recommended_product, tier_anchor,
+                 result_text, ip_hash, user_agent)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+            """, (
+                page_context, business, pain, team_size, urgency,
+                contact_email, contact_name,
+                classification["recommended_product"], classification["tier_anchor"],
+                classification["result_text"], ip_hash,
+                request.headers.get("user-agent", "")[:200],
+            ))
+            conn.commit()
+            try:
+                submission_id = cur.lastrowid
+            except Exception:
+                pass
+    except Exception as e:
+        print(f"[Discovery] DB write failed: {e}")
+
+    # Owner alerts (async via background tasks so the visitor gets a fast response)
+    headline = (
+        f"[CallMeIE] DISCOVERY {classification['recommended_product'].upper()}\n"
+        f"{business} · {pain} · team {team_size} · urgency {urgency}\n"
+        f"Page: {page_context}"
+        + (f"\nContact: {contact_name} {contact_email}" if (contact_name or contact_email) else "")
+    )
+    tg_msg = (
+        f"💬 <b>New discovery: {classification['recommended_product']}</b>\n"
+        f"Business: {business} · Pain: {pain}\n"
+        f"Team: {team_size} · Urgency: {urgency}\n"
+        f"Page: {page_context}"
+        + (f"\nContact: {contact_name} · {contact_email}" if (contact_name or contact_email) else "")
+        + (f"\nTier: {classification['tier_anchor']}" if classification['tier_anchor'] else "")
+    )
+
+    async def _notify():
+        try:
+            if OWNER_NUMBER:
+                await send_sms(OWNER_NUMBER, headline)
+        except Exception as e:
+            print(f"[Discovery] SMS failed: {e}")
+        try:
+            await send_telegram(tg_msg)
+        except Exception as e:
+            print(f"[Discovery] Telegram failed: {e}")
+
+    background_tasks.add_task(_notify)
+
+    print(f"[Discovery] {classification['recommended_product']} | "
+          f"{business} · {pain} · {team_size} · {urgency} | page={page_context}")
+
+    # Build CTA list — tier-aware. WhatsApp + email always present.
+    rec = classification["recommended_product"]
+    learn_more_url = {
+        "receptionist":    "https://callmeie.ie/receptionist/#pricing",
+        "docs":            "https://callmeie.ie/docs/#pricing",
+        "websites":        "https://callmeie.ie/websites/",
+        "founder-handoff": None,
+    }.get(rec)
+
+    wa_text = (
+        f"Hi CallMeIE — just finished the discovery quiz on /{page_context}/. "
+        f"Recommended: {rec}. Pain: {pain}. Business: {business}. "
+        f"Want to chat."
+    )
+    from urllib.parse import quote
+    ctas = [
+        {
+            "label": "Continue on WhatsApp",
+            "href": f"https://wa.me/353857863564?text={quote(wa_text)}",
+            "kind": "primary",
+        },
+        {
+            "label": "Email Adam directly",
+            "href": (
+                "mailto:hello@callmeie.ie"
+                f"?subject={quote('CallMeIE discovery — ' + rec)}"
+                f"&body={quote(headline + chr(10) + chr(10) + 'Result: ' + classification['result_text'])}"
+            ),
+            "kind": "secondary",
+        },
+    ]
+    if learn_more_url:
+        ctas.append({
+            "label": "See full pricing",
+            "href": learn_more_url,
+            "kind": "tertiary",
+        })
+
+    return JSONResponse({
+        "recommended_product": rec,
+        "tier_anchor": classification["tier_anchor"],
+        "result_text": classification["result_text"],
+        "ctas": ctas,
+        "submission_id": submission_id,
+    })
+
+
 # --- Admin portal ---
 
 ASSISTANT_PROMPT = """You are {ai_name}, the receptionist at {business_name} in Ireland.
@@ -1989,6 +2289,18 @@ async def reject(submission_id: int, token: str = Query("")):
         )
         conn.commit()
     return {"status": "rejected"}
+
+
+@app.get("/admin/api/discovery-submissions")
+async def list_discovery_submissions(token: str = Query(""), limit: int = Query(100)):
+    """Recent discovery-quiz submissions — for admin portal tracking tab."""
+    check_admin(token)
+    with get_db() as conn:
+        rows = conn.execute(
+            "SELECT * FROM discovery_submissions ORDER BY created_at DESC LIMIT ?",
+            (limit,),
+        ).fetchall()
+    return [dict(r) for r in rows]
 
 
 # --- Health check ---
