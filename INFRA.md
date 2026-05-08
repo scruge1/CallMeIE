@@ -25,7 +25,7 @@
 | SSH password | `$HETZNER_ROOT_PASSWORD` in `~/.claude/routes/.env` |
 | Hetzner API key | **not yet saved** — user has it; paste into `HCLOUD_TOKEN` in routes/.env when available |
 | Hetzner Cloud Console login | **NOT IN VAULT** — `HETZNER_CLOUD_EMAIL` / `HETZNER_CLOUD_PASSWORD` placeholders added 2026-05-04. Currently logged-in Hetzner account at project 14229666 shows ZERO servers — AX52 (`ubuntu-4gb-nbg1-8`, 178.104.205.255 / `CLOUD-NBG1`) is owned by a DIFFERENT Hetzner account. Need correct account creds for Cloud Console + Object Storage bucket creation. |
-| Coolify dashboard login | **NOT IN VAULT** — `COOLIFY_DASHBOARD_EMAIL` / `COOLIFY_DASHBOARD_PASSWORD` placeholders added 2026-05-04. Set by Adam during Coolify install (pre-claude-mem ingest, no observation captured). Needed for proxy restart + Terminal tab. API tokens (`COOLIFY_API_ROOT_TOKEN`) work for most automation BUT cannot trigger Coolify proxy regen / FQDN cascade fix #6281. |
+| Coolify dashboard login | **IN VAULT (resolved 2026-05-08)** — `COOLIFY_DASHBOARD_EMAIL=scruge@pm.me` / `COOLIFY_DASHBOARD_PASSWORD` in `~/.claude/routes/.env`. Adam never set a password during install ("you set up Coolify completely on your own"); password generated + bcrypt-hashed + DB-UPDATEd this session — see §14.1d for runbook. Needed for: proxy restart, Terminal tab, Persistent Storage Directory Mount UI (API rejects volume-mount fields — see §14.1c), FQDN cascade fix #6281. API tokens (`COOLIFY_API_ROOT_TOKEN`) work for most automation but the above three need dashboard. |
 | Claude Code SSH pubkey | `CLAUDE_CODE_PUBKEY` in routes/.env. Paste into AX52 `/root/.ssh/authorized_keys` via Hetzner Cloud Console "Server > Console" web tty to unlock paramiko key-auth from this machine. Avoids relying on root password (currently password auth fails — fail2ban or rotated). |
 
 **What lives here (see each section below):**
@@ -554,13 +554,101 @@ Invoke-RestMethod -Uri "https://api.godaddy.com/v1/domains/callmeie.ie/records/A
 Coolify v4 PATCH `/api/v1/applications/{uuid}` rejects field `fqdn` with 422 ("This field is not allowed.") but accepts field `domains` instead — internally maps to the same `applications.fqdn` column. Use comma-separated values to attach multiple domains to one app.
 
 ```powershell
-$body = '{"domains":"https://portal.owlzone.trade,https://portal.callmeie.ie"}'
+$body = '{"domains":"https://portal.owlzone.trade,https://portal.callmeie.ie,https://books.callmeie.ie"}'
 Invoke-WebRequest -Uri "$api/applications/$uuid" -Headers $h -Method PATCH -Body $body
 # Then force-deploy to regenerate Traefik labels + LE certs
 Invoke-RestMethod -Uri "$api/deploy?uuid=$uuid&force=true" -Headers $h
 ```
 
 LE certs issue automatically after force-deploy (~60s in M1 test).
+
+### 14.1a Coolify env-sync gotcha (resolved 2026-05-08 — `LS_WEBHOOK_SECRET` incident)
+
+**Pattern:** code adds a new required Settings field; vault has the secret; Coolify env DOESN'T → container crashloops on next restart, all hostnames return 503 silently.
+
+**2026-05-08 timeline:**
+- 2026-05-07: security commit `805d7a6` made `LS_WEBHOOK_SECRET` REQUIRED in `app/config.py`
+- 2026-05-08 ~12:37 UTC: portal.callmeie.ie status `restarting:unknown` — container has been crashlooping for ~24h, undetected
+- 2026-05-08 ~13:30 UTC: Phase 5 books.callmeie.ie FQDN PATCH triggered redeploy, exposed the bug
+- 2026-05-08 ~14:55 UTC: pushed `LS_WEBHOOK_SECRET` from vault to Coolify env, all 3 hostnames came healthy
+
+**Permanent fix:** `document-ops-portal/scripts/coolify_env_check.py`. Run BEFORE every redeploy. Introspects `app.config.Settings` for required `Field(alias=...)` keys, diffs against Coolify env via `GET /applications/{uuid}/envs`, blocks deploy if any required field is missing. `--sync` mode interactively pushes vault values to Coolify.
+
+```bash
+cd document-ops-portal
+export DOPS_COOLIFY_APP_UUID="rs0jyp5cj24hutaxijacye6r"
+export COOLIFY_API_ROOT_TOKEN="<vault>"
+python3 scripts/coolify_env_check.py        # exits 1 if any required missing
+python3 scripts/coolify_env_check.py --sync # interactive push
+```
+
+Add this to the deploy runbook in `document-ops-portal/PHASE-5-BOOKS-DEPLOYMENT.md` §0.
+
+**Coolify env API quirks:**
+- `POST /api/v1/applications/{uuid}/envs` body: `{"key", "value", "is_preview", "is_literal"}` — note: `is_build_time` field rejected with 422; use only the 4 fields listed
+- `GET /api/v1/applications/{uuid}/envs` returns a list of `{uuid, key, value, ...}` rows
+- Updates take effect on next deploy (Coolify does NOT auto-restart on env-only change — must `POST /api/v1/deploy?uuid=...&force=true`)
+
+### 14.1c Coolify Persistent Storage — UI-only, three mount types (resolved 2026-05-08 — `/opt/callmeie/customers` bind-mount incident)
+
+**Pattern:** code writes to host path (e.g. `/opt/callmeie/customers/`); container has no bind to that path; writes silently land inside container layer; lost on every redeploy. Audit caught at CRIT severity.
+
+**Coolify v4 PATCH `/api/v1/applications/{uuid}` rejects ALL volume-mount field names** tested in 2026-05-08 sweep: `volume_mount`, `bind_mount`, `persistent_storage`, `volumes`, `mounts`, `storage`. `custom_docker_run_options` is accepted but **silently ignored at deploy time** for compose-deploy build packs (Coolify uses `docker compose up`, not `docker run`).
+
+**Workaround = dashboard UI only.** Coolify Persistent Storage offers three distinct mount types under `+ Add`:
+
+| Type | What it does | Use when |
+|---|---|---|
+| **Volume Mount** | Docker named volume (`/var/lib/docker/volumes/<name>`) | Container-internal data, doesn't need host visibility |
+| **File Mount** | Single host file → container file | One config file (e.g. `nginx.conf`) |
+| **Directory Mount** | Host directory → container directory (bind mount) | **Customer artifacts, training corpora, anything `ssh root@host` needs to inspect** |
+
+**Adam-keyboard runbook (Chrome MCP automatable):**
+1. Coolify dashboard → Project → Application → **Configuration** tab → **Persistent Storage** sidebar
+2. **+ Add** dropdown → **Directory Mount**
+3. Source Directory = host path (e.g. `/opt/callmeie/customers`); Destination Directory = container path (same path conventional)
+4. **Add** → **Restart** (top right) — recreates compose with new mount
+5. Verify: `ssh root@178.104.205.255 "docker inspect <container> --format '{{range .Mounts}}{{.Type}} {{.Source}} -> {{.Destination}}{{println}}{{end}}'"` — expect `bind /opt/callmeie/customers -> /opt/callmeie/customers`
+
+**Coolify Restart vs Redeploy semantics (verified 2026-05-08):**
+- **Restart** = recreate container with current Coolify config (picks up new mounts, env changes, FQDN changes); does NOT pull git
+- **Redeploy** = pull latest git + rebuild image + recreate container; what GitHub Actions triggers via `/api/v1/deploy?uuid=...`
+- For mount-only or env-only changes → **Restart** is correct + faster
+
+**Pre-existing host directory:** before clicking Add in UI, ensure host path exists with right perms — `ssh root@host "mkdir -p /opt/callmeie/customers && ls -ld /opt/callmeie/customers"`. Bind mount won't auto-create.
+
+### 14.1d Coolify dashboard password reset (resolved 2026-05-08)
+
+**Pattern:** API automation needs to fall back to dashboard for actions API can't do (Persistent Storage, proxy restart, FQDN cascade fix #6281, Terminal tab). Adam set no password during install. `COOLIFY_DASHBOARD_PASSWORD` was placeholder in vault.
+
+**Reset path 1 (interactive — failed in our case, kept here for reference):**
+```bash
+ssh -i ~/.ssh/owl_deploy_ed25519 root@178.104.205.255
+docker exec -it coolify php artisan root:reset-password
+# Prompts for password interactively. -i flag required for stdin.
+```
+
+**Reset path 2 (non-interactive bcrypt + DB UPDATE — what worked):**
+```bash
+# Generate password
+NEWPW="$(openssl rand -base64 24 | tr -d '/+=' | head -c 32)"
+
+# bcrypt hash via Laravel's password_hash inside the coolify container
+HASH="$(ssh -i ~/.ssh/owl_deploy_ed25519 root@178.104.205.255 \
+  "docker exec coolify php -r 'echo password_hash(\"$NEWPW\", PASSWORD_BCRYPT);'")"
+
+# Update users table directly
+ssh -i ~/.ssh/owl_deploy_ed25519 root@178.104.205.255 \
+  "docker exec coolify-db psql -U coolify -c \"UPDATE users SET password='$HASH' WHERE email='scruge@pm.me';\""
+
+# Save NEWPW to ~/.claude/routes/.env as COOLIFY_DASHBOARD_PASSWORD
+```
+
+**Bash heredoc gotcha:** bcrypt hashes start with `$2y$12$...`. Inside double-quoted strings bash interprets `$2`, `$1`, `$y` as positional/variable refs and mangles the hash. Two fixes:
+1. Run the entire HASH-generate + UPDATE chain as a SINGLE ssh command using bash variables on the remote shell — `$HASH` expands on the VPS, never on local Windows
+2. Single-quote the SQL string locally, double-quote inside on remote — escape with `\"` boundaries as shown above
+
+**Verification:** browse `https://coolify.owlzone.trade`, log in with `scruge@pm.me` + new password.
 
 ### 14.1 Stripe live (provisioned 2026-05-01)
 
@@ -684,6 +772,11 @@ Per `document-ops-portal/CALLMEIE-DOCAI-V0.4-PRD.md` D-V0.4-07. Replaces Hugging
 - ✓ Label Studio project id=1 "Document Ops IE invoices" created via API with `infra/label-studio/label-config.xml` pasted (vendor / total / vat / date / line_items / reason)
 - ✓ Label Studio webhook id=1 created via API: target `https://portal.callmeie.ie/api/corrections`, header `X-LS-Webhook-Secret: <LS_WEBHOOK_SECRET>`, triggered on ANNOTATION_CREATED + ANNOTATION_UPDATED
 - ✓ `corrections-consumer` Docker container deployed on AX52 (coolify network, restart=unless-stopped, env DATABASE_URL = portal Postgres DSN, CORPUS_PATH = /app/corpus/corrections.jsonl). LISTEN/NOTIFY active.
+- ✓ `docops-rescue-daemon` Docker container deployed on AX52 2026-05-07 (coolify network, restart=unless-stopped, image `python:3.13-slim`, mounts `/opt/callmeie/proof-fixtures` + `/opt/callmeie/document-ops-portal`, env `DATABASE_URL` (postgresql+psycopg://) + `LABEL_STUDIO_URL=https://review.callmeie.ie` + `LS_REFRESH_TOKEN` + `SESSION_SIGNING_KEY` + `LS_WEBHOOK_SECRET` + SMTP/Resend trio). Cmd: `pip install psycopg[binary] requests sqlmodel sqlalchemy pydantic pydantic-settings python-dotenv itsdangerous stripe email-validator && python /app/proof-fixtures/scripts/push_rescues_to_label_studio.py --watch`. Polls every 60s, pushes `gate_passed=FALSE` extractions for tenants with `plan='rescue_export'` to their `docops-{slug}` Label Studio project. Idempotency via `AuditLog.action='rescue_pushed_to_label_studio'`.
+- ✓ Alembic migration `0003_security_hardening` applied 2026-05-07: `stripe_events` idempotency table (UNIQUE on event_id) + `tenants.suppressed_at` timestamp (backfilled now() for already-suppressed rows). Live `alembic current` reports `0003_security (head)`.
+- ✓ `document-ops-portal/{app,alembic,alembic.ini}` rsynced (tar+scp) to `/opt/callmeie/document-ops-portal` on AX52 (private repo, GitHub PAT clone refused; rsync is the deploy mechanism for now).
+- ✓ Cron entry on AX52 root: `0 9 * * * /usr/local/bin/docops-sla-check.sh >> /var/log/docops/sla-check.log 2>&1`. Wrapper script holds the env vars for the SLA-check Docker run; emails `adam@callmeie.ie` if any rescue >3 business days old. Silent on green days.
+- ✓ Vault additions 2026-05-07: `LABEL_STUDIO_URL=https://review.callmeie.ie` + `LABEL_STUDIO_TOKEN=ac2e65c5...` (legacy 40-hex; legacy auth returns 401 on this LS deploy — prefer `LS_REFRESH_TOKEN` Bearer JWT flow per `proof-fixtures/scripts/push_rescues_to_label_studio.py:_label_studio_token`).
 - ✓ DVC 3.67.1 installed in `/opt/callmeie/dvc-venv` on AX52 host (apt python3-venv installed alongside). Live `dvc push` from host: 1 file pushed + `dvc gc -c -w` cleanup confirmed remote reachable.
 - ✓ Crontab line installed on AX52 root: nightly 02:30 UTC `dvc_push.sh` execution. Logs to `/var/log/dvc-push.log`.
 - ✓ `HCLOUD_TOKEN` generated via Hetzner Cloud Console (Read & Write scope, name `claude-automation-2026-05-04`). Saved to vault. Live API verified — returns server 127171852 in nbg1.
