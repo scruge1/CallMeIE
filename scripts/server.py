@@ -1900,7 +1900,8 @@ async def api_discovery(request: Request, background_tasks: BackgroundTasks):
     }
     classification = await _classify_discovery(answers)
 
-    # Persist
+    # Persist — use RETURNING id so Postgres returns the new row id
+    # (psycopg3 cur.lastrowid is None; SQLite 3.35+ also supports RETURNING).
     submission_id = None
     try:
         with get_db() as conn:
@@ -1910,6 +1911,7 @@ async def api_discovery(request: Request, background_tasks: BackgroundTasks):
                  contact_email, contact_name, recommended_product, tier_anchor,
                  result_text, ip_hash, user_agent)
                 VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+                RETURNING id
             """, (
                 page_context, business, pain, team_size, urgency,
                 contact_email, contact_name,
@@ -1917,11 +1919,17 @@ async def api_discovery(request: Request, background_tasks: BackgroundTasks):
                 classification["result_text"], ip_hash,
                 request.headers.get("user-agent", "")[:200],
             ))
+            row = cur.fetchone()
+            if row is not None:
+                # _DbProxy yields dict-like rows on PG (Row factory) and Row objects on SQLite
+                try:
+                    submission_id = row["id"]
+                except (TypeError, KeyError, IndexError):
+                    try:
+                        submission_id = row[0]
+                    except Exception:
+                        submission_id = None
             conn.commit()
-            try:
-                submission_id = cur.lastrowid
-            except Exception:
-                pass
     except Exception as e:
         print(f"[Discovery] DB write failed: {e}")
 
