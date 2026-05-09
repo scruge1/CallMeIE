@@ -2524,7 +2524,7 @@ async def provision_client(sub: dict) -> str:
             "transcriber": {"provider": "deepgram", "model": "nova-3",
                             "language": "en", "smartFormat": True, "numerals": True,
                             "endpointing": 10},
-            "serverUrl": f"https://callmeie.onrender.com/vapi/call-ended",
+            "serverUrl": f"https://api.callmeie.ie/vapi/call-ended",
             "endCallPhrases": ["goodbye", "thanks, bye", "cheers", "right, thanks"],
             "maxDurationSeconds": 600,
             "backgroundDenoisingEnabled": True,
@@ -3214,7 +3214,7 @@ def _owl_embed_snippet(site_id: str) -> str:
         f"<script>document.querySelectorAll('form[data-owl]').forEach(f => "
         f"f.addEventListener('submit', async e => {{ e.preventDefault(); "
         f"const fd = Object.fromEntries(new FormData(f)); "
-        f"const r = await fetch('https://callmeie.onrender.com/owl/submit', {{"
+        f"const r = await fetch('https://api.callmeie.ie/owl/submit', {{"
         f"method:'POST', headers:{{'Content-Type':'application/json'}}, "
         f"body: JSON.stringify({{site_id:'{site_id}', form_data: fd, "
         f"submitted_from: location.href}}) }}); "
@@ -3426,7 +3426,7 @@ async def owl_run_digest(background_tasks: BackgroundTasks, token: str = Query("
         lines.append(
             f"{s['display_name']}: {stats['leads_now']} leads ({delta_sign}{stats['leads_delta']}), "
             f"{stats['tickets_opened']} tickets. "
-            f"https://callmeie.onrender.com/owl/reports/{s['site_id']}?token={s['admin_token']}"
+            f"https://api.callmeie.ie/owl/reports/{s['site_id']}?token={s['admin_token']}"
         )
 
     digest = "OwlStudio monthly digest · " + datetime.now().strftime("%b %Y") + "\n\n" + "\n\n".join(lines) if lines else "OwlStudio: no active sites."
@@ -3649,7 +3649,7 @@ def owl_stripe_portal(request: Request, token: str = Query("")) -> JSONResponse:
     # Create the portal session. Hand-rolled HTTP via httpx — the project
     # doesn't depend on stripe-python and the webhook already proves we
     # can talk to the Stripe REST API directly.
-    return_url = "https://callmeie.onrender.com/owl/admin"
+    return_url = "https://api.callmeie.ie/owl/admin"
     try:
         with httpx.Client(timeout=15.0) as client:
             r = client.post(

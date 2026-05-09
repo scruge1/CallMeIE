@@ -34,7 +34,7 @@ import httpx
 
 RENDER = "https://api.render.com/v1"
 SERVICE_NAMES = ("CallMeIE", "ai-receptionist-server", "callmeie-receptionist")  # try each
-CALLMEIE_URL = "https://callmeie.onrender.com"
+CALLMEIE_URL = "https://api.callmeie.ie"
 
 
 def auth_headers(key: str) -> dict[str, str]:

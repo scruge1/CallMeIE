@@ -5,7 +5,7 @@ Creates (idempotent — safe to re-run):
   - 4 Products:      Audit · Essential Care · Growth Care · Concierge Care
   - 7 Prices:        Audit €99 (one-off) + each care tier monthly + yearly
   - 7 Payment Links: hosted Stripe checkout URLs for each
-  - 1 Webhook endpoint: POST https://callmeie.onrender.com/owl/stripe/webhook
+  - 1 Webhook endpoint: POST https://api.callmeie.ie/owl/stripe/webhook
     subscribed to: checkout.session.completed, customer.subscription.*,
     invoice.payment_failed, invoice.paid
 
@@ -276,7 +276,7 @@ def ensure_webhook(client: httpx.Client, url: str, events: list[str]) -> tuple[d
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--key", help="Stripe secret key. Falls back to STRIPE_API / OWL_STRIPE_API env var")
-    ap.add_argument("--webhook-url", default="https://callmeie.onrender.com/owl/stripe/webhook")
+    ap.add_argument("--webhook-url", default="https://api.callmeie.ie/owl/stripe/webhook")
     args = ap.parse_args()
 
     key = args.key or os.environ.get("STRIPE_API") or os.environ.get("OWL_STRIPE_API", "")
