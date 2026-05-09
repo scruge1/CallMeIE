@@ -676,6 +676,48 @@ def init_db():
                 except Exception as e:
                     # Postgres rejects duplicate ALTER - fine, column already exists
                     print(f"[init_db] skipped migration '{column}': {e}", file=sys.stderr)
+
+        # P5-2 — GDPR retention machinery. Adds `suppressed_at` to every
+        # PII-bearing table so the daily purge can soft-delete-then-hard-purge
+        # rows past their retention window. Idempotent: per-column try/except,
+        # one column-name introspection per table, both dialects supported.
+        # See scripts/purge_old_data.py for the cron logic that consumes
+        # these columns. owl_tickets also gets `closed_at` (didn't exist
+        # before; needed to scope the closed-tickets retention sweep).
+        if _USE_PG:
+            ts_col_type = "TIMESTAMPTZ"
+        else:
+            ts_col_type = "DATETIME"
+
+        retention_targets = [
+            ("submissions", "suppressed_at"),
+            ("discovery_submissions", "suppressed_at"),
+            ("owl_leads", "suppressed_at"),
+            ("owl_tickets", "suppressed_at"),
+            ("owl_tickets", "closed_at"),
+            ("leads", "suppressed_at"),
+            ("clients", "suppressed_at"),
+        ]
+        for table, column in retention_targets:
+            try:
+                if _USE_PG:
+                    cols = {row["column_name"] for row in conn.execute(
+                        "SELECT column_name FROM information_schema.columns WHERE table_name = %s",
+                        (table,)
+                    ).fetchall()}
+                else:
+                    cols = {row["name"] for row in conn.execute(
+                        f"PRAGMA table_info({table})"
+                    ).fetchall()}
+                if column not in cols:
+                    conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {ts_col_type}")
+            except Exception as e:
+                # Already-exists or table-not-yet-created: tolerate. owl_*
+                # tables get init'd later in _owl_init_tables() so on first
+                # boot they may be missing here; the next boot will pick
+                # them up. Hand-rerun: just restart the container.
+                print(f"[init_db] retention migration {table}.{column} skipped: {e}", file=sys.stderr)
+
         conn.commit()
 
 
@@ -2680,6 +2722,134 @@ async def list_clients(token: str = Query("")):
     return [dict(r) for r in rows]
 
 
+# =========================================================================
+# P5-2 — GDPR Subject Access Request (Art 15) + Erasure (Art 17) endpoints.
+# Token-gated admin surface; Adam fulfils SAR/erasure requests received
+# via hello@callmeie.ie by hitting these. /admin/api/data-export returns
+# every row matching contact_email across the 5 PII-bearing tables; the
+# erasure endpoint marks suppressed_at on those rows so the daily cron
+# (purge_old_data.py) hard-deletes after the 30-day backup-grace window.
+# =========================================================================
+
+_SAR_TABLES = [
+    # (table, email_column, label)
+    ("submissions",          "contact_email",   "submissions"),
+    ("discovery_submissions", "contact_email",  "discovery_submissions"),
+    ("leads",                "name",            "leads_by_name_NA"),  # leads has no email; skip via empty match
+    ("owl_tickets",          "submitter_email", "owl_tickets"),
+]
+
+
+@app.get("/admin/api/data-export")
+async def data_export(email: str = Query(""), token: str = Query("")):
+    """SAR (GDPR Art 15) — return every row matching email across PII tables.
+
+    Case-insensitive match. Returns a JSON envelope with rows per table.
+    Adam-fulfilled within 7 calendar days per privacy policy §6 commitment.
+    """
+    check_admin(token)
+    email = (email or "").strip().lower()
+    if not email:
+        raise HTTPException(status_code=400, detail="email required")
+
+    out: dict = {"email": email, "tables": {}}
+    with get_db() as conn:
+        # submissions, discovery_submissions, owl_tickets — direct email columns
+        for table, col in [
+            ("submissions", "contact_email"),
+            ("discovery_submissions", "contact_email"),
+            ("owl_tickets", "submitter_email"),
+        ]:
+            try:
+                rows = conn.execute(
+                    f"SELECT * FROM {table} WHERE LOWER({col}) = ?",
+                    (email,)
+                ).fetchall()
+                out["tables"][table] = [dict(r) for r in rows]
+            except Exception as e:
+                out["tables"][table] = {"error": str(e)}
+
+        # owl_leads — payload_json is JSON-encoded form payload; do a LIKE
+        # over the column. Imperfect but covers the common case where the
+        # visitor's email lands inside the payload.
+        try:
+            rows = conn.execute(
+                "SELECT * FROM owl_leads WHERE LOWER(payload_json) LIKE ?",
+                (f"%{email}%",)
+            ).fetchall()
+            out["tables"]["owl_leads"] = [dict(r) for r in rows]
+        except Exception as e:
+            out["tables"]["owl_leads"] = {"error": str(e)}
+
+        # leads (Vapi-captured) — has no contact_email column; only name+phone.
+        # SAR by email is N/A here; flag explicitly so the response is honest.
+        out["tables"]["leads"] = {"note": "leads table has no email column; SAR-by-email N/A — pull by phone separately if needed"}
+
+    matched = sum(len(v) for v in out["tables"].values() if isinstance(v, list))
+    out["matched_rows"] = matched
+    print(f"[SAR] data-export email={email} matched={matched}", flush=True)
+    return out
+
+
+@app.post("/admin/api/erase")
+async def erase(email: str = Query(""), token: str = Query("")):
+    """Erasure (GDPR Art 17) — mark suppressed_at on all matching rows.
+
+    Hard-delete happens via the daily cron after the 30-day backup-grace
+    window per the privacy policy commitment. Returns counts per table.
+    Note: clients table is NOT auto-suppressed — those are active customer
+    relationships on a 6-year Revenue retention; manual review required.
+    """
+    check_admin(token)
+    email = (email or "").strip().lower()
+    if not email:
+        raise HTTPException(status_code=400, detail="email required")
+
+    counts: dict[str, int] = {}
+    now_expr = "NOW()" if _USE_PG else "datetime('now')"
+    with get_db() as conn:
+        for table, col in [
+            ("submissions", "contact_email"),
+            ("discovery_submissions", "contact_email"),
+            ("owl_tickets", "submitter_email"),
+        ]:
+            try:
+                cur = conn.execute(
+                    f"UPDATE {table} SET suppressed_at = {now_expr} "
+                    f"WHERE LOWER({col}) = ? AND suppressed_at IS NULL",
+                    (email,)
+                )
+                counts[table] = getattr(cur, "rowcount", 0) or 0
+            except Exception as e:
+                counts[table] = -1
+                print(f"[ERASE] {table} failed: {e}", flush=True)
+
+        # owl_leads — match via payload_json LIKE (same shape as SAR)
+        try:
+            cur = conn.execute(
+                f"UPDATE owl_leads SET suppressed_at = {now_expr} "
+                f"WHERE LOWER(payload_json) LIKE ? AND suppressed_at IS NULL",
+                (f"%{email}%",)
+            )
+            counts["owl_leads"] = getattr(cur, "rowcount", 0) or 0
+        except Exception as e:
+            counts["owl_leads"] = -1
+            print(f"[ERASE] owl_leads failed: {e}", flush=True)
+
+        conn.commit()
+
+    total = sum(v for v in counts.values() if v > 0)
+    print(f"[ERASE] email={email} total_suppressed={total} per_table={counts}", flush=True)
+    return {
+        "email": email,
+        "matched": total,
+        "suppressed": total,
+        "per_table": counts,
+        "hard_delete_after": "30 days (daily cron — purge_old_data.py)",
+        "note": "clients table not auto-suppressed; contact Adam directly for active customer erasure (6-year Revenue retention applies).",
+    }
+
+
 @app.get("/admin/api/backup-sheet/status")
 async def backup_sheet_status_endpoint(token: str = Query("")):
     check_admin(token)
@@ -2960,6 +3130,32 @@ def _owl_init_tables() -> None:
         """))
         conn.execute(_ddl_fix("CREATE INDEX IF NOT EXISTS idx_owl_leads_site_ts ON owl_leads(site_id, ts)"))
         conn.execute(_ddl_fix("CREATE INDEX IF NOT EXISTS idx_owl_tickets_site_ts ON owl_tickets(site_id, ts)"))
+
+        # P5-2 — owl_leads + owl_tickets retention columns. Mirrors the
+        # block in init_db() but runs here too because the owl_* tables
+        # are created in this function (which runs after init_db()) so
+        # the init_db() pass would skip them on first boot. Idempotent.
+        ts_col_type = "TIMESTAMPTZ" if _USE_PG else "DATETIME"
+        owl_retention_targets = [
+            ("owl_leads", "suppressed_at"),
+            ("owl_tickets", "suppressed_at"),
+            ("owl_tickets", "closed_at"),
+        ]
+        for table, column in owl_retention_targets:
+            try:
+                if _USE_PG:
+                    cols = {row["column_name"] for row in conn.execute(
+                        "SELECT column_name FROM information_schema.columns WHERE table_name = %s",
+                        (table,)
+                    ).fetchall()}
+                else:
+                    cols = {row["name"] for row in conn.execute(
+                        f"PRAGMA table_info({table})"
+                    ).fetchall()}
+                if column not in cols:
+                    conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {ts_col_type}")
+            except Exception as e:
+                print(f"[_owl_init_tables] retention migration {table}.{column} skipped: {e}", file=sys.stderr)
 
 
 _owl_init_tables()

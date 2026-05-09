@@ -1,0 +1,68 @@
+name: Daily GDPR retention purge
+
+# Fires daily at 03:00 UTC (~03:00/04:00 Dublin off-peak). Runs the
+# scripts/purge_old_data.py script against DATABASE_URL to enforce the
+# retention windows promised in legal/privacy.html §4 + dpa.html.
+#
+# DEFAULT MODE = DRY-RUN. The first scheduled runs after deploy will
+# only print what WOULD be deleted (no writes). Once Adam verifies the
+# output is sensible, flip the workflow to --apply via PR (one-line
+# change in the run step).
+#
+# Manual trigger available via "Run workflow" button on the Actions tab;
+# use input `mode: apply` for a one-off committed purge.
+
+on:
+  schedule:
+    - cron: "0 3 * * *"
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "dry-run (default) or apply"
+        required: false
+        default: "dry-run"
+        type: choice
+        options:
+          - dry-run
+          - apply
+
+jobs:
+  purge:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install minimal deps
+        # The purge script only needs psycopg (for Postgres). sqlite3
+        # ships with stdlib. Skip the full requirements.txt to keep the
+        # job fast + isolated from server boot dependencies.
+        run: |
+          python -m pip install --upgrade pip
+          pip install "psycopg[binary]>=3.1,<4"
+
+      - name: Run purge
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "::error::DATABASE_URL secret not set. Add it at"
+            echo "  https://github.com/scruge1/CallMeIE/settings/secrets/actions"
+            exit 1
+          fi
+
+          # Default = dry-run (manual workflow_dispatch can override to apply).
+          MODE="${{ github.event.inputs.mode }}"
+          if [ "$MODE" = "apply" ]; then
+            echo "Running in APPLY mode — rows will be deleted."
+            python scripts/purge_old_data.py --apply
+          else
+            echo "Running in DRY-RUN mode — no rows will be deleted."
+            python scripts/purge_old_data.py --dry-run
+          fi
