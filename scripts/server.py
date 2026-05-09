@@ -635,6 +635,23 @@ def init_db():
                 user_agent          TEXT
             )
         """))
+        # P5-1 — created_at indexes on hot tables. Admin queries scan
+        # ORDER BY created_at DESC LIMIT N (server.py:2671 etc.). Without
+        # indexes these are full table scans; sub-second today on small
+        # tables, painful at 100k+ rows. CREATE INDEX IF NOT EXISTS is
+        # idempotent so this runs every container start with no cost.
+        for sql in [
+            "CREATE INDEX IF NOT EXISTS idx_submissions_created_at ON submissions(created_at DESC)",
+            "CREATE INDEX IF NOT EXISTS idx_call_events_created_at ON call_events(created_at DESC)",
+            "CREATE INDEX IF NOT EXISTS idx_leads_created_at ON leads(created_at DESC)",
+            "CREATE INDEX IF NOT EXISTS idx_call_diagnostics_created_at ON call_diagnostics(created_at DESC)",
+            "CREATE INDEX IF NOT EXISTS idx_discovery_submissions_created_at ON discovery_submissions(created_at DESC)",
+            "CREATE INDEX IF NOT EXISTS idx_clients_created_at ON clients(created_at DESC)",
+        ]:
+            try:
+                conn.execute(sql)
+            except Exception as e:  # noqa: BLE001 — index create must not block boot
+                print(f"[init_db] index create skipped: {sql} -- {e}", flush=True)
         # Dialect-specific column introspection for ALTER TABLE idempotency
         if _USE_PG:
             existing_columns = {
@@ -2828,8 +2845,24 @@ async def list_discovery_submissions(token: str = Query(""), limit: int = Query(
 
 
 # --- Health check ---
+# P2-8 — public /health is intentionally minimal. The previous shape
+# leaked clients_loaded, provider-configured booleans, and the live
+# discovery daily counter — useful operator info but free recon for
+# competitors / abusers. Detailed introspection is gated behind
+# /admin/health (token-required) below.
 @app.get("/health")
 async def health():
+    return {
+        "status": "ok",
+        "service": "callmeie-receptionist",
+    }
+
+
+@app.get("/admin/health")
+async def admin_health(token: str = ""):
+    """Token-gated detailed introspection (operator only)."""
+    if token != ADMIN_TOKEN:
+        raise HTTPException(status_code=401, detail="invalid_token")
     return {
         "status": "ok",
         "service": "callmeie-receptionist",
