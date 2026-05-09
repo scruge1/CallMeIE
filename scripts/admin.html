@@ -117,11 +117,15 @@
     <button class="tab" onclick="switchTab('calls')">
       Call Log <span id="liveDot" style="display:inline-block;width:7px;height:7px;background:#22d3ee;border-radius:50%;margin-left:4px;vertical-align:middle"></span>
     </button>
+    <button class="tab" onclick="switchTab('discovery')">
+      Discovery <span id="discoveryBadge" class="badge" style="display:none"></span>
+    </button>
   </div>
 
   <div id="pendingSection" class="section active"></div>
   <div id="clientsSection" class="section"></div>
   <div id="callsSection" class="section"></div>
+  <div id="discoverySection" class="section"></div>
 </div>
 
 <div id="toast" class="toast" style="display:none"></div>
@@ -158,16 +162,14 @@ window.onload = () => {
 let callsAutoRefresh = null;
 
 function switchTab(tab) {
+  const tabs = ['pending', 'clients', 'calls', 'discovery'];
   document.querySelectorAll('.tab').forEach((t, i) => {
-    t.classList.toggle('active',
-      (i === 0 && tab === 'pending') ||
-      (i === 1 && tab === 'clients') ||
-      (i === 2 && tab === 'calls')
-    );
+    t.classList.toggle('active', tabs[i] === tab);
   });
   document.getElementById('pendingSection').classList.toggle('active', tab === 'pending');
   document.getElementById('clientsSection').classList.toggle('active', tab === 'clients');
   document.getElementById('callsSection').classList.toggle('active', tab === 'calls');
+  document.getElementById('discoverySection').classList.toggle('active', tab === 'discovery');
 
   if (tab === 'calls') {
     loadEvents();
@@ -178,10 +180,115 @@ function switchTab(tab) {
     clearInterval(callsAutoRefresh);
     callsAutoRefresh = null;
   }
+  if (tab === 'discovery') {
+    loadDiscovery();
+  }
 }
 
 async function loadAll() {
-  await Promise.all([loadSubmissions(), loadClients(), loadBackupStatus()]);
+  await Promise.all([loadSubmissions(), loadClients(), loadBackupStatus(), loadDiscoveryBadge()]);
+}
+
+// ── Discovery quiz submissions (P2-2) ────────────────────────────────────────
+
+async function loadDiscoveryBadge() {
+  // Cheap badge render — count rows so the operator can see "12 new
+  // discovery submissions this week" without opening the tab.
+  try {
+    const r = await fetch(`${BASE}/admin/api/discovery-submissions?token=${TOKEN}`);
+    if (!r.ok) return;
+    const rows = await r.json();
+    const badge = document.getElementById('discoveryBadge');
+    if (!badge) return;
+    if (rows.length > 0) {
+      badge.textContent = rows.length;
+      badge.style.display = 'inline-block';
+    }
+  } catch (e) { /* noop — badge is decorative */ }
+}
+
+async function loadDiscovery() {
+  const section = document.getElementById('discoverySection');
+  section.innerHTML = '<div style="color:#94a3b8">Loading…</div>';
+  try {
+    const r = await fetch(`${BASE}/admin/api/discovery-submissions?token=${TOKEN}`);
+    if (!r.ok) {
+      section.innerHTML = `<div style="color:#fca5a5">Error: ${r.status}</div>`;
+      return;
+    }
+    const rows = await r.json();
+    if (!rows.length) {
+      section.innerHTML = '<div style="color:#94a3b8">No discovery quiz submissions yet.</div>';
+      return;
+    }
+
+    // Top-line aggregates.
+    const byProduct = {};
+    const byPage = {};
+    const byUrgency = {};
+    let withContact = 0;
+    rows.forEach(r => {
+      byProduct[r.recommended_product || 'unknown'] = (byProduct[r.recommended_product || 'unknown'] || 0) + 1;
+      byPage[r.page_context || 'unknown'] = (byPage[r.page_context || 'unknown'] || 0) + 1;
+      byUrgency[r.urgency || 'unknown'] = (byUrgency[r.urgency || 'unknown'] || 0) + 1;
+      if (r.contact_email || r.contact_name) withContact++;
+    });
+    const stats = [
+      `${rows.length} total`,
+      `${withContact} with contact`,
+      ...Object.entries(byProduct).map(([k,v]) => `${k}: ${v}`),
+    ].join(' · ');
+
+    // Table rows.
+    const fmtDate = s => {
+      try {
+        const d = new Date(s);
+        return d.toLocaleDateString('en-IE', {month:'short', day:'numeric'}) + ' ' +
+               d.toLocaleTimeString('en-IE', {hour:'2-digit', minute:'2-digit'});
+      } catch (_) { return s; }
+    };
+    const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({
+      '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+    }[c]));
+
+    const trs = rows.map(r => `
+      <tr>
+        <td style="white-space:nowrap;color:#94a3b8;font-size:0.8rem">${esc(fmtDate(r.created_at))}</td>
+        <td><span class="badge" style="background:${
+          r.recommended_product === 'receptionist' ? '#22c55e' :
+          r.recommended_product === 'docs' ? '#3b82f6' :
+          r.recommended_product === 'websites' ? '#a855f7' :
+          '#f59e0b'
+        }">${esc(r.recommended_product || '?')}</span></td>
+        <td style="font-size:0.85rem">${esc(r.business || '')}</td>
+        <td style="font-size:0.85rem">${esc(r.pain || '')}</td>
+        <td style="font-size:0.85rem;color:#94a3b8">${esc(r.team_size || '')} · ${esc(r.urgency || '')}</td>
+        <td style="font-size:0.85rem">${esc(r.contact_name || '')}<br>
+            <a href="mailto:${esc(r.contact_email || '')}?subject=CallMeIE%20discovery%20follow-up" style="color:#22d3ee">${esc(r.contact_email || '')}</a></td>
+        <td style="font-size:0.8rem;color:#94a3b8">${esc(r.page_context || '')}</td>
+      </tr>
+    `).join('');
+
+    section.innerHTML = `
+      <div style="margin-bottom:14px;color:#cbd5e1;font-size:0.9rem">${stats}</div>
+      <table style="width:100%;border-collapse:collapse">
+        <thead>
+          <tr style="background:#1e293b;color:#cbd5e1;font-size:0.78rem;text-align:left">
+            <th style="padding:8px">when</th>
+            <th style="padding:8px">recommended</th>
+            <th style="padding:8px">business</th>
+            <th style="padding:8px">pain</th>
+            <th style="padding:8px">team · urgency</th>
+            <th style="padding:8px">contact</th>
+            <th style="padding:8px">from</th>
+          </tr>
+        </thead>
+        <tbody>${trs}</tbody>
+      </table>
+    `;
+  } catch (e) {
+    section.innerHTML = `<div style="color:#fca5a5">Error: ${e.message}</div>`;
+  }
 }
 
 // ── Call Log ──────────────────────────────────────────────────────────────────
