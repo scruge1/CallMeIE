@@ -1617,8 +1617,20 @@ async def submit_onboarding(request: Request):
     ai_name         = body.get("ai_name", "")
     notes           = body.get("notes", "")
 
-    # Log full submission (Render logs are retained)
-    print(f"[ONBOARDING] {json.dumps(body, indent=2)}")
+    # P0-11 — never log full PII payload to stdout. Render captures
+    # stdout into log retention which is OUTSIDE the DPA's data-handling
+    # commitments and is GDPR Art. 5 storage-limitation risk. We log
+    # only cardinal facts (business name, business type, plan) so Adam
+    # can spot duplicate / abusive submissions at a glance, and the
+    # full row is in the `submissions` table where retention is
+    # governed.
+    print(
+        f"[ONBOARDING] business={business_name!r} type={business_type!r} "
+        f"plan={plan!r} hours_set={bool(hours)} services_set={bool(services)} "
+        f"insurance_set={bool(insurance)} ai_name_set={bool(ai_name)} "
+        f"faqs_n={len(faqs) if isinstance(faqs, (list, str)) else 0}",
+        flush=True,
+    )
 
     if not business_name:
         return JSONResponse({"error": "business_name required"}, status_code=400)
