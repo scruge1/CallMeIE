@@ -1723,28 +1723,98 @@ from collections import defaultdict, deque
 DISCOVERY_RATE_WINDOW_SEC = 3600  # 1h sliding window
 DISCOVERY_RATE_LIMIT_PER_IP = 5   # max 5 sessions per IP per hour
 DISCOVERY_DAILY_CAP = 500         # global daily ceiling (cost shield)
+DISCOVERY_REAP_EVERY = 256        # housekeeping cadence — see _maybe_reap_ip_log
 
 _discovery_ip_log: dict[str, deque] = defaultdict(deque)
 _discovery_daily_count = {"date": "", "n": 0}
+_discovery_reap_counter = {"n": 0}
 
 
-def _discovery_rate_check(ip: str) -> tuple[bool, str]:
-    """Return (allowed, reason). Cleans expired entries inline."""
+def _maybe_reap_ip_log(now: float) -> None:
+    """Periodically drop empty deques from `_discovery_ip_log` to keep the
+    in-memory dict from growing unbounded over the life of the process.
+
+    Without this, every visited IP keeps a deque entry forever even after
+    its rate-limit window expires. On Render free-tier the dyno restarts
+    daily so the leak resets, but post-Hetzner migration the dyno stays
+    up — same shape as P5-7.
+    """
+    _discovery_reap_counter["n"] += 1
+    if _discovery_reap_counter["n"] < DISCOVERY_REAP_EVERY:
+        return
+    _discovery_reap_counter["n"] = 0
+    cutoff = now - DISCOVERY_RATE_WINDOW_SEC
+    dead_keys = [
+        k for k, v in _discovery_ip_log.items()
+        if not v or v[-1] < cutoff
+    ]
+    for k in dead_keys:
+        _discovery_ip_log.pop(k, None)
+
+
+def _discovery_rate_check(ip: str) -> tuple[bool, str, dict]:
+    """Return ``(allowed, reason, headers)``. Cleans expired entries inline.
+
+    ``headers`` is a dict of canonical rate-limit response headers per the
+    ``draft-ietf-httpapi-ratelimit-headers`` shape (RateLimit-Limit,
+    RateLimit-Remaining, RateLimit-Reset) plus the legacy ``X-RateLimit-*``
+    aliases that most JS clients still read. On the deny path we also set
+    ``Retry-After`` (RFC 7231) so the widget can show an honest countdown
+    instead of a generic "couldn't reach backend" message.
+    """
     now = time.time()
     today = datetime.now(ZoneInfo(CALLMEIE_TIMEZONE)).strftime("%Y-%m-%d")
     if _discovery_daily_count["date"] != today:
         _discovery_daily_count["date"] = today
         _discovery_daily_count["n"] = 0
-    if _discovery_daily_count["n"] >= DISCOVERY_DAILY_CAP:
-        return False, "daily_cap_reached"
+
     log = _discovery_ip_log[ip]
     while log and now - log[0] > DISCOVERY_RATE_WINDOW_SEC:
         log.popleft()
-    if len(log) >= DISCOVERY_RATE_LIMIT_PER_IP:
-        return False, "rate_limit_per_ip"
+
+    used = len(log)
+    remaining = max(0, DISCOVERY_RATE_LIMIT_PER_IP - used)
+    # Window resets when the OLDEST hit in the deque ages out. If the deque
+    # is empty, reset is "now-ish" (window already drained).
+    reset_seconds = int(DISCOVERY_RATE_WINDOW_SEC - (now - log[0])) if log else 0
+    reset_seconds = max(0, reset_seconds)
+
+    headers = {
+        "RateLimit-Limit": str(DISCOVERY_RATE_LIMIT_PER_IP),
+        "RateLimit-Remaining": str(remaining),
+        "RateLimit-Reset": str(reset_seconds),
+        "X-RateLimit-Limit": str(DISCOVERY_RATE_LIMIT_PER_IP),
+        "X-RateLimit-Remaining": str(remaining),
+        "X-RateLimit-Reset": str(reset_seconds),
+    }
+
+    if _discovery_daily_count["n"] >= DISCOVERY_DAILY_CAP:
+        # Global cap: visitor's IP-window doesn't matter; everyone has to
+        # wait for tomorrow's reset. Compute seconds until midnight in the
+        # configured timezone for the most useful Retry-After.
+        local_now = datetime.now(ZoneInfo(CALLMEIE_TIMEZONE))
+        next_midnight = local_now.replace(hour=0, minute=0, second=0, microsecond=0)
+        # If we're past midnight already (we always are on a non-empty
+        # day), bump to tomorrow.
+        from datetime import timedelta
+        next_midnight = next_midnight + timedelta(days=1)
+        retry_after = max(60, int((next_midnight - local_now).total_seconds()))
+        headers["Retry-After"] = str(retry_after)
+        return False, "daily_cap_reached", headers
+
+    if used >= DISCOVERY_RATE_LIMIT_PER_IP:
+        # Per-IP cap: visitor can retry when the OLDEST hit ages out.
+        retry_after = max(60, int(DISCOVERY_RATE_WINDOW_SEC - (now - log[0])))
+        headers["Retry-After"] = str(retry_after)
+        return False, "rate_limit_per_ip", headers
+
     log.append(now)
     _discovery_daily_count["n"] += 1
-    return True, ""
+    _maybe_reap_ip_log(now)
+    # On allow, decrement remaining for the just-recorded hit.
+    headers["RateLimit-Remaining"] = str(max(0, remaining - 1))
+    headers["X-RateLimit-Remaining"] = str(max(0, remaining - 1))
+    return True, "", headers
 
 
 DISCOVERY_SYSTEM_PROMPT = """You are the qualifier for CallMeIE Technologies, an Irish AI ops studio in Limerick run by founder Adam Vaughan. You match Irish SMB visitors to the closest CallMeIE product — or, when nothing fits, hand them off to Adam directly with warmth.
@@ -1949,9 +2019,19 @@ async def api_discovery(request: Request, background_tasks: BackgroundTasks):
     # Rate limit by client IP (Render sets X-Forwarded-For)
     fwd = request.headers.get("x-forwarded-for", "")
     client_ip = (fwd.split(",")[0].strip() if fwd else (request.client.host if request.client else "")) or "unknown"
-    allowed, reason = _discovery_rate_check(client_ip)
+    allowed, reason, ratelimit_headers = _discovery_rate_check(client_ip)
     if not allowed:
-        return JSONResponse({"error": reason}, status_code=429)
+        # P0-8 — Retry-After + RateLimit-* headers so the widget can
+        # render an honest countdown instead of the generic "couldn't
+        # reach backend" message it was showing for any non-2xx.
+        return JSONResponse(
+            {
+                "error": reason,
+                "retry_after": int(ratelimit_headers.get("Retry-After", "60")),
+            },
+            status_code=429,
+            headers=ratelimit_headers,
+        )
     ip_hash = hashlib.sha256(client_ip.encode("utf-8")).hexdigest()[:24]
 
     # Classify via Haiku (cost: ~€0.0007/call)
