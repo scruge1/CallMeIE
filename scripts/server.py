@@ -2208,17 +2208,28 @@ async def api_discovery(request: Request, background_tasks: BackgroundTasks):
 
     # Build CTA list — tier-aware. WhatsApp + email always present.
     rec = classification["recommended_product"]
+
+    # P5-5 — funnel attribution. Append the discovery submission id as a
+    # URL param to every product-page CTA so when the visitor clicks
+    # through and eventually pays, the Stripe checkout passes
+    # client_reference_id back via webhook → docops portal writes it
+    # onto tenants.discovery_submission_id (alembic 0009). End result:
+    # we can join "this paying tenant came from THIS discovery quiz
+    # answer".
+    sid = str(submission_id) if submission_id is not None else ""
+    sid_param = f"?ref=discovery-{sid}" if sid else ""
     learn_more_url = {
-        "receptionist":    "https://callmeie.ie/receptionist/#pricing",
-        "docs":            "https://callmeie.ie/docs/#pricing",
-        "websites":        "https://callmeie.ie/websites/",
+        "receptionist":    f"https://callmeie.ie/receptionist/{sid_param}#pricing",
+        "docs":            f"https://callmeie.ie/docs/{sid_param}#pricing",
+        "websites":        f"https://callmeie.ie/websites/{sid_param}",
         "founder-handoff": None,
     }.get(rec)
 
     wa_text = (
         f"Hi CallMeIE — just finished the discovery quiz on /{page_context}/. "
         f"Recommended: {rec}. Pain: {pain}. Business: {business}. "
-        f"Want to chat."
+        + (f"Ref: discovery-{sid}. " if sid else "")
+        + "Want to chat."
     )
     from urllib.parse import quote
     ctas = [
