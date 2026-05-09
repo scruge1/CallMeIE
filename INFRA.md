@@ -80,6 +80,9 @@ curl -X PATCH -H "Authorization: Bearer $TOK" -H "Content-Type: application/json
 | Name | Type | UUID | Status | Public URL (current) | Target URL |
 |---|---|---|---|---|---|
 | owltradezone | application (git) | `kvpvd10evtfhn074p0kgk525` | running | `https://owlzone.trade` | same |
+| document-ops-portal | application (git) | `rs0jyp5cj24hutaxijacye6r` | running | `https://portal.callmeie.ie` (+ portal.owlzone.trade, books.callmeie.ie) | same |
+| **callmeie-api** (NEW 2026-05-09) | application (git, dockerfile, scripts/) | `xml9wji6109b1kergfz05665` | running:unknown | `http://xml9wji6109b1kergfz05665.178.104.205.255.sslip.io` | `https://api.callmeie.ie` (post-Stage-3 cutover) |
+| **callmeie-api-pg** (NEW 2026-05-09) | database (postgres:16-alpine) | `zpy3t4torksez48k8attrzbr` | running | internal: `postgres://callmeie:…@zpy3t4torksez48k8attrzbr:5432/callmeie` | n/a (internal-only) |
 | owl-vaultwarden | service (vaultwarden) | `hx8st0ta4xecr0d0cm2b5l44` | running:healthy | `http://vaultwarden-hx8st0ta4xecr0d0cm2b5l44.178.104.205.255.sslip.io` | `https://vault.owlzone.trade` (DNS added, Traefik label update pending) |
 | owl-uptime-kuma | service (uptime-kuma) | `t10jb009nm5e36oy1n8bki97` | running:healthy | `http://uptimekuma-t10jb009nm5e36oy1n8bki97.178.104.205.255.sslip.io` | `https://uptime.owlzone.trade` (same) |
 | owl-umami | service (umami) | `txd1tt0zup0yckhlfojdf301` | running:healthy | `http://umami-txd1tt0zup0yckhlfojdf301.178.104.205.255.sslip.io` | `https://analytics.owlzone.trade` (same) |
@@ -103,7 +106,19 @@ The table is `service_applications` (NOT `services_applications`). `custom_label
 
 ---
 
-## 3 · Render (cloud runtime — to migrate to Coolify later)
+## 3 · Render (legacy runtime — migration to Coolify in progress, P0-9 2026-05-09)
+
+> **Migration status (2026-05-09):** Stages 1+2 complete. Coolify
+> deploy `callmeie-api` (uuid `xml9wji6109b1kergfz05665`) is live at
+> `http://xml9wji6109b1kergfz05665.178.104.205.255.sslip.io` with a
+> dedicated Postgres (uuid `zpy3t4torksez48k8attrzbr`,
+> `callmeie-api-pg`). All 25 prod env vars copied from Render via
+> `scripts/migrate-env-render-to-coolify.py`. Health + discovery
+> verified end-to-end (xAI → Postgres → response, ~3s warm). Render
+> still owns `https://callmeie.onrender.com` + the `api.callmeie.ie`
+> CNAME and is serving live traffic. Stages 3-4 (Vapi serverUrl /
+> Stripe webhook / onboard form / DNS / decommission) pending — see
+> `MIGRATION-RENDER-TO-COOLIFY.md` runbook.
 
 | Field | Value |
 |---|---|
