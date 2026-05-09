@@ -36,7 +36,7 @@ from pathlib import Path
 
 import httpx
 
-CALLMEIE = "https://callmeie.onrender.com"
+CALLMEIE = "https://api.callmeie.ie"
 ROUTES_ENV = Path(os.path.expanduser("~")) / ".claude" / "routes" / ".env"
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent / "New repos" / "owl-studio-website-directions"
 

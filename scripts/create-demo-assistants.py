@@ -32,7 +32,7 @@ if not VAPI_API_KEY:
 VAPI_BASE = "https://api.vapi.ai"
 HEADERS = {"Authorization": f"Bearer {VAPI_API_KEY}", "Content-Type": "application/json"}
 
-WEBHOOK_BASE = "https://callmeie.onrender.com"
+WEBHOOK_BASE = "https://api.callmeie.ie"
 
 # Existing dental assistant ID (already deployed)
 DENTAL_ASSISTANT_ID = "0b37deb5-2fc2-4e7b-81b1-e61e97103506"

@@ -25,7 +25,7 @@ jobs:
       - name: POST /billing/meter/sync
         env:
           METER_SYNC_TOKEN: ${{ secrets.METER_SYNC_TOKEN }}
-          BILLING_ENDPOINT: https://callmeie.onrender.com/billing/meter/sync
+          BILLING_ENDPOINT: https://api.callmeie.ie/billing/meter/sync
         run: |
           set -euo pipefail
           if [ -z "$METER_SYNC_TOKEN" ]; then
