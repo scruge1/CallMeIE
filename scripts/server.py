@@ -43,6 +43,49 @@ sys.path.insert(0, os.path.dirname(__file__))
 
 app = FastAPI(title="CallMeIE — AI Receptionist Server")
 
+
+# P0-7 — wrap any uncaught exception in a JSON envelope so the visitor
+# never sees a plaintext "Internal Server Error" body. Anything that
+# survives the route handlers (programmer errors, deps failing, etc.)
+# routes through here. Without this, uvicorn renders the FastAPI default
+# 500 page (plaintext) which is what P4 caught on the discovery widget
+# when malformed JSON hit /api/discovery.
+from fastapi.exceptions import RequestValidationError
+from starlette.exceptions import HTTPException as _StarletteHTTPException
+
+
+@app.exception_handler(_StarletteHTTPException)
+async def _http_exception_envelope(request, exc):
+    """Re-render any HTTPException with a JSON body even if the route
+    raised the bare exception (some routes do that intentionally for
+    auth + permission boundaries)."""
+    return JSONResponse(
+        {"error": (exc.detail if isinstance(exc.detail, str) else "http_error"),
+         "status": exc.status_code},
+        status_code=exc.status_code,
+        headers=getattr(exc, "headers", None),
+    )
+
+
+@app.exception_handler(RequestValidationError)
+async def _validation_envelope(request, exc):
+    return JSONResponse(
+        {"error": "invalid_request", "message": "Required fields missing or malformed."},
+        status_code=400,
+    )
+
+
+@app.exception_handler(Exception)
+async def _catchall_envelope(request, exc):
+    """Last-resort handler. Logs the full exception server-side and
+    returns a friendly JSON envelope. Visitor never sees plaintext."""
+    print(f"[server] uncaught exception on {request.url.path}: {type(exc).__name__}: {exc}", flush=True)
+    return JSONResponse(
+        {"error": "server_error",
+         "message": "Something failed on our side. Email hello@callmeie.ie or WhatsApp +353 85 786 3564 and we'll sort it."},
+        status_code=500,
+    )
+
 # AUD-038 — Vapi metered billing + Stripe Customer Portal routes.
 # Routers stay inert (401/503) until VAPI_WEBHOOK_SECRET / STRIPE_SECRET_KEY
 # env vars are present on Render. Importable on cold boot — any import error
@@ -1870,8 +1913,16 @@ async def api_discovery(request: Request, background_tasks: BackgroundTasks):
         page_context                        — required (hub|receptionist|docs|websites)
         contact_email, contact_name         — optional, only when visitor opts to share
     Returns recommendation + booking CTAs."""
-    body = await request.json()
-    page_context = body.get("page_context", "unknown")[:32]
+    # Malformed JSON used to crash through to the FastAPI default 500
+    # plaintext page (P4 caught this at 2026-05-09). Catch the parse
+    # error explicitly and render a JSON 400 envelope instead.
+    try:
+        body = await request.json()
+    except (json.JSONDecodeError, ValueError):
+        return JSONResponse({"error": "invalid_json", "message": "Request body must be valid JSON."}, status_code=400)
+    if not isinstance(body, dict):
+        return JSONResponse({"error": "invalid_body", "message": "Request body must be a JSON object."}, status_code=400)
+    page_context = (body.get("page_context") or "unknown")[:32]
     business = body.get("business", "")[:64]
     pain = body.get("pain", "")[:64]
     team_size = body.get("team_size", "")[:32]
