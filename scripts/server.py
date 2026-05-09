@@ -3625,9 +3625,75 @@ async def owl_stripe_webhook(request: Request, background_tasks: BackgroundTasks
                 (None if care_tier_map == "none" else care_tier_map, site_id),
             )
 
+    # P1-3 — auto-provision owl_sites row when a website-build deposit pays
+    # and no site_id was attached to the Stripe metadata. Before this, the
+    # webhook fired SMS to Adam and that was it — Adam had to manually
+    # create the owl_sites row + send the customer their admin_token before
+    # anything else worked. With this branch the row + admin_token + welcome
+    # SMS land in one shot.
+    auto_provisioned_site_id = None
+    if event_type == "checkout.session.completed" and not site_id:
+        # Owl-Studio website-build deposits we recognise. Care plans go
+        # through the same webhook but care_tier_map handles them above —
+        # no site row to auto-create for a care-plan because care attaches
+        # to an EXISTING site.
+        SITE_BUILD_KEYS = {"site-starter-deposit": "starter", "site-pro-deposit": "pro"}
+        tier_for_build = SITE_BUILD_KEYS.get(product_key)
+        if tier_for_build:
+            details = obj.get("customer_details") or {}
+            cust_email = (details.get("email") or "").strip().lower()
+            cust_name = (details.get("name") or "").strip()
+            cust_phone = (details.get("phone") or "").strip()
+            if cust_email:
+                # Generate site_id from email + tier + ts so re-runs of the
+                # same checkout don't collide. Idempotent at the dedupe layer
+                # above (stripe_event_id UNIQUE) so this branch can't fire
+                # twice on the same event.
+                slug = re.sub(r"[^a-z0-9]+", "-", cust_email.split("@")[0].lower()).strip("-") or "client"
+                ts_suffix = str(int(time.time()))[-6:]
+                new_site_id = f"{slug}-{ts_suffix}"
+                token_val = _secrets.token_urlsafe(24)
+                try:
+                    with get_db() as conn:
+                        conn.execute(
+                            """INSERT INTO owl_sites
+                                 (site_id, display_name, tier, care_tier, lead_email, lead_sms,
+                                  edit_emails, admin_token, live_url, status)
+                               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                            (
+                                new_site_id,
+                                cust_name or cust_email,
+                                tier_for_build,
+                                None,  # care_tier — set later if customer adds care plan
+                                cust_email,
+                                cust_phone,
+                                "[]",
+                                token_val,
+                                f"https://callmeie.ie/clients/{new_site_id}/",  # placeholder until live
+                                "intake",  # status: intake -> build -> live
+                            ),
+                        )
+                    auto_provisioned_site_id = new_site_id
+                    site_id = new_site_id
+                    # Patch the just-inserted owl_payments row so the
+                    # site_id is on the audit trail.
+                    with get_db() as conn:
+                        conn.execute(
+                            "UPDATE owl_payments SET site_id = ? WHERE stripe_event_id = ?",
+                            (new_site_id, event_id),
+                        )
+                except Exception as e:  # noqa: BLE001 — auto-provision must not break the webhook
+                    print(f"[owl_stripe] auto-provision failed for {cust_email}: {e}", flush=True)
+
     # Owner SMS on notable events
     if event_type == "checkout.session.completed":
-        sms = f"OwlStudio Stripe * paid * {product_key} * {amount/100:.0f} {currency} * cust {customer_id[:12]}"
+        if auto_provisioned_site_id:
+            sms = (
+                f"OwlStudio * NEW SITE * {auto_provisioned_site_id} * "
+                f"{product_key} * {amount/100:.0f} {currency} * cust {customer_id[:12]}"
+            )
+        else:
+            sms = f"OwlStudio Stripe * paid * {product_key} * {amount/100:.0f} {currency} * cust {customer_id[:12]}"
         if OWNER_NUMBER:
             background_tasks.add_task(send_sms, OWNER_NUMBER, sms)
     elif event_type == "invoice.payment_failed":
@@ -3635,7 +3701,12 @@ async def owl_stripe_webhook(request: Request, background_tasks: BackgroundTasks
         if OWNER_NUMBER:
             background_tasks.add_task(send_sms, OWNER_NUMBER, sms)
 
-    return JSONResponse({"ok": True, "event_type": event_type, "product_key": product_key})
+    return JSONResponse({
+        "ok": True,
+        "event_type": event_type,
+        "product_key": product_key,
+        "auto_provisioned_site_id": auto_provisioned_site_id,
+    })
 
 
 # ─── Stripe Customer Portal (AUD-015) ─────────────────────────────────
