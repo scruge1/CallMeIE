@@ -1947,7 +1947,20 @@ async def _try_grok(user_prompt: str) -> dict | None:
         if r.status_code != 200:
             print(f"[Discovery] Grok error {r.status_code}: {r.text[:300]}")
             return None
-        raw = r.json()["choices"][0]["message"]["content"]
+        body = r.json()
+        raw = body["choices"][0]["message"]["content"]
+        # P2-6 — log per-call token usage so Adam can spot xAI burn
+        # without instrumenting per-tenant costs end-to-end. Grok-4-fast
+        # pricing today: $0.20/M input, $0.50/M output.
+        usage = body.get("usage") or {}
+        in_t = int(usage.get("prompt_tokens") or 0)
+        out_t = int(usage.get("completion_tokens") or 0)
+        cost_micro_usd = (in_t * 200 + out_t * 500) // 1000  # micros = cents/100, so cost in micro-usd
+        print(
+            f"[llm-cost] route=discovery provider=grok model=grok-4-fast-non-reasoning "
+            f"prompt_tokens={in_t} completion_tokens={out_t} cost_micro_usd={cost_micro_usd}",
+            flush=True,
+        )
         parsed = _extract_json(raw)
         if not parsed:
             print(f"[Discovery] Grok returned non-JSON: {raw[:300]}")
@@ -1985,7 +1998,18 @@ async def _try_haiku(user_prompt: str) -> dict | None:
             else:
                 print(f"[Discovery] Haiku error {r.status_code}: {body}")
             return None
-        raw = r.json()["content"][0]["text"].strip()
+        body_json = r.json()
+        raw = body_json["content"][0]["text"].strip()
+        # P2-6 — Anthropic Haiku 4.5 pricing today: $1/M input, $5/M output.
+        usage = body_json.get("usage") or {}
+        in_t = int(usage.get("input_tokens") or 0)
+        out_t = int(usage.get("output_tokens") or 0)
+        cost_micro_usd = (in_t * 1000 + out_t * 5000) // 1000
+        print(
+            f"[llm-cost] route=discovery provider=haiku model=claude-haiku-4-5 "
+            f"prompt_tokens={in_t} completion_tokens={out_t} cost_micro_usd={cost_micro_usd}",
+            flush=True,
+        )
         parsed = _extract_json(raw)
         if not parsed:
             print(f"[Discovery] Haiku returned non-JSON: {raw[:300]}")
