@@ -1,0 +1,38 @@
+name: Meta Ads canary (hourly auto-pause at 80% cap)
+
+on:
+  schedule:
+    # Every hour at :15 — offset to avoid colliding with 00:00 batch jobs
+    - cron: '15 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  canary:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install httpx psycopg2-binary
+
+      - name: Run canary
+        env:
+          META_MARKETING_TOKEN: ${{ secrets.META_MARKETING_TOKEN }}
+          META_AD_ACCOUNT_ID: ${{ secrets.META_AD_ACCOUNT_ID }}
+          META_AD_DAILY_BUDGET_MAX_USD: ${{ secrets.META_AD_DAILY_BUDGET_MAX_USD || '2.00' }}
+          META_AD_DAILY_BUDGET_HARDCAP_USD: ${{ secrets.META_AD_DAILY_BUDGET_HARDCAP_USD || '5.00' }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: python scripts/ads_canary.py

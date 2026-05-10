@@ -3049,6 +3049,166 @@ async def ads_campaign_insights(
         return {"error": str(e)[:300]}
 
 
+# ---------- Phase B — draft campaigns + templates ------------------------
+
+try:
+    import meta_ad_templates as _meta_ad_templates
+except Exception as _e:
+    print(f"[meta_ad_templates] import failed: {_e}", file=sys.stderr)
+    _meta_ad_templates = None
+
+
+@app.get("/admin/api/ads/templates")
+async def ads_templates(token: str = Query("")):
+    """List per-service campaign templates available for draft creation."""
+    check_admin(token)
+    if _meta_ad_templates is None:
+        return {"templates": [], "error": "templates_module_not_loaded"}
+    out = []
+    for k, v in _meta_ad_templates.TEMPLATES.items():
+        out.append({
+            "key": k,
+            "campaign_name": v["campaign_name"],
+            "headline": v["headline"],
+            "body_preview": v["body"][:140],
+            "link_url": v["link_url"],
+            "objective": v["objective"],
+        })
+    return {"templates": out}
+
+
+@app.get("/admin/api/ads/pages")
+async def ads_pages(token: str = Query("")):
+    """List FB pages the System User can pick from for the ad creative."""
+    check_admin(token)
+    if _meta_ads is None or not _meta_ads.is_configured():
+        return {"configured": False, "pages": []}
+    try:
+        return _meta_ads.list_pages()
+    except Exception as e:
+        return {"error": str(e)[:300], "pages": []}
+
+
+@app.post("/admin/api/ads/draft")
+async def ads_draft(request: Request, token: str = Query("")):
+    """Phase B — creates campaign+adset+creative+ad triple from a template.
+
+    Body JSON: {
+      template_key: 'receptionist'|'docops'|'websites'|'audit',
+      page_id: '123...',
+      daily_budget_usd: 2.0,
+      overrides?: {headline?, body?, link_url?, campaign_name?}
+    }
+
+    All four objects land status=PAUSED. Hardcap enforced.
+    """
+    check_admin(token)
+    if _meta_ads is None or not _meta_ads.is_configured():
+        raise HTTPException(status_code=503, detail="meta_ads not configured")
+    if _meta_ad_templates is None:
+        raise HTTPException(status_code=503, detail="templates_module_not_loaded")
+
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="invalid_json")
+
+    template_key = (body.get("template_key") or "").strip()
+    page_id = (body.get("page_id") or "").strip()
+    try:
+        daily_budget_usd = float(body.get("daily_budget_usd") or 0)
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="daily_budget_usd_must_be_number")
+    overrides = body.get("overrides") or {}
+
+    if template_key not in _meta_ad_templates.TEMPLATES:
+        raise HTTPException(status_code=400, detail=f"unknown_template:{template_key}")
+    if not page_id:
+        raise HTTPException(status_code=400, detail="page_id_required")
+    if daily_budget_usd <= 0:
+        raise HTTPException(status_code=400, detail="daily_budget_must_be_positive")
+
+    try:
+        result = _meta_ads.create_draft_triple(
+            template_key=template_key,
+            page_id=page_id,
+            daily_budget_usd=daily_budget_usd,
+            overrides=overrides,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"draft_failed:{str(e)[:200]}")
+
+    if "error" in result:
+        return JSONResponse(status_code=502, content={
+            "step_failed": result.get("error", {}).get("step"),
+            "partial": {k: v for k, v in result.items() if k != "error"},
+            "error": result.get("error"),
+        })
+
+    # Telegram ping on successful draft
+    try:
+        send_telegram(
+            f"📝 Draft campaign created\n"
+            f"Template: {template_key}\n"
+            f"Campaign ID: {result.get('campaign_id')}\n"
+            f"Daily budget: ${daily_budget_usd:.2f}\n"
+            f"Status: PAUSED (Phase C activate to go live)"
+        )
+    except Exception:
+        pass
+
+    return result
+
+
+@app.post("/admin/api/ads/campaigns/{campaign_id}/activate")
+async def ads_activate(campaign_id: str, token: str = Query("")):
+    """Phase C — flip PAUSED → ACTIVE. STARTS REAL SPEND. Telegram alert fires."""
+    check_admin(token)
+    if _meta_ads is None or not _meta_ads.is_configured():
+        raise HTTPException(status_code=503, detail="meta_ads not configured")
+    try:
+        result = _meta_ads.set_campaign_status(campaign_id, "ACTIVE")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"activate_failed:{str(e)[:200]}")
+
+    try:
+        send_telegram(
+            f"🚀 Campaign ACTIVATED — real spend starting\n"
+            f"Campaign ID: {campaign_id}\n"
+            f"Result: {result}\n"
+            f"Pause via /admin Ads tab if needed."
+        )
+    except Exception:
+        pass
+    return result
+
+
+@app.post("/admin/api/ads/campaigns/{campaign_id}/pause")
+async def ads_pause(campaign_id: str, token: str = Query("")):
+    """Emergency stop — flip ACTIVE → PAUSED. No alert (silent kill)."""
+    check_admin(token)
+    if _meta_ads is None or not _meta_ads.is_configured():
+        raise HTTPException(status_code=503, detail="meta_ads not configured")
+    try:
+        return _meta_ads.set_campaign_status(campaign_id, "PAUSED")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"pause_failed:{str(e)[:200]}")
+
+
+@app.get("/admin/api/ads/canary")
+async def ads_canary(token: str = Query("")):
+    """Canary view — for every ACTIVE campaign, today's spend vs cap."""
+    check_admin(token)
+    if _meta_ads is None or not _meta_ads.is_configured():
+        return {"configured": False}
+    try:
+        return {"campaigns": _meta_ads.list_active_campaign_spend()}
+    except Exception as e:
+        return {"error": str(e)[:300]}
+
+
 # =========================================================================
 # P2-4 channel — WhatsApp Cloud API webhook.
 # GET /webhooks/whatsapp  — Meta verification handshake (hub.challenge echo)

@@ -123,6 +123,9 @@
     <button class="tab" onclick="switchTab('leads')">
       Leads <span id="leadsBadge" class="badge" style="display:none"></span>
     </button>
+    <button class="tab" onclick="switchTab('ads')">
+      Ads <span id="adsLiveDot" style="display:none;width:7px;height:7px;background:#4ade80;border-radius:50%;margin-left:4px;vertical-align:middle"></span>
+    </button>
   </div>
 
   <div id="pendingSection" class="section active"></div>
@@ -130,6 +133,7 @@
   <div id="callsSection" class="section"></div>
   <div id="discoverySection" class="section"></div>
   <div id="leadsSection" class="section"></div>
+  <div id="adsSection" class="section"></div>
 </div>
 
 <div id="toast" class="toast" style="display:none"></div>
@@ -166,7 +170,7 @@ window.onload = () => {
 let callsAutoRefresh = null;
 
 function switchTab(tab) {
-  const tabs = ['pending', 'clients', 'calls', 'discovery', 'leads'];
+  const tabs = ['pending', 'clients', 'calls', 'discovery', 'leads', 'ads'];
   document.querySelectorAll('.tab').forEach((t, i) => {
     t.classList.toggle('active', tabs[i] === tab);
   });
@@ -175,6 +179,7 @@ function switchTab(tab) {
   document.getElementById('callsSection').classList.toggle('active', tab === 'calls');
   document.getElementById('discoverySection').classList.toggle('active', tab === 'discovery');
   document.getElementById('leadsSection').classList.toggle('active', tab === 'leads');
+  document.getElementById('adsSection').classList.toggle('active', tab === 'ads');
 
   if (tab === 'calls') {
     loadEvents();
@@ -190,6 +195,9 @@ function switchTab(tab) {
   }
   if (tab === 'leads') {
     loadLeads();
+  }
+  if (tab === 'ads') {
+    loadAds();
   }
 }
 
@@ -759,6 +767,207 @@ function fmtDate(s) {
   if (!s) return '';
   const d = new Date(s + (s.endsWith('Z') ? '' : 'Z'));
   return d.toLocaleDateString('en-IE', { day:'numeric', month:'short', hour:'2-digit', minute:'2-digit' });
+}
+
+// ── P-ADS Phase B/C — ads tab ──────────────────────────────────────────
+let adsTemplates = [];
+let adsPages = [];
+let adsAccountInfo = null;
+let adsCampaigns = [];
+
+async function loadAds() {
+  const sec = document.getElementById('adsSection');
+  sec.innerHTML = '<div class="empty">Loading ads…</div>';
+  try {
+    const [acctR, tplR, pagesR, campsR, canaryR] = await Promise.all([
+      fetch(`${BASE}/admin/api/ads/account?token=${TOKEN}`),
+      fetch(`${BASE}/admin/api/ads/templates?token=${TOKEN}`),
+      fetch(`${BASE}/admin/api/ads/pages?token=${TOKEN}`),
+      fetch(`${BASE}/admin/api/ads/campaigns?token=${TOKEN}&limit=200`),
+      fetch(`${BASE}/admin/api/ads/canary?token=${TOKEN}`),
+    ]);
+    adsAccountInfo = await acctR.json();
+    adsTemplates = (await tplR.json()).templates || [];
+    adsPages = (await pagesR.json()).data || [];
+    adsCampaigns = (await campsR.json()).data || [];
+    const canary = (await canaryR.json()).campaigns || [];
+    renderAdsTab(canary);
+  } catch (e) {
+    sec.innerHTML = `<div class="empty">Error: ${esc(e.message)}</div>`;
+  }
+}
+
+function renderAdsTab(canary) {
+  const sec = document.getElementById('adsSection');
+  if (!adsAccountInfo || !adsAccountInfo.configured) {
+    sec.innerHTML = `<div class="empty">Meta Ads not configured. Set META_API + META_AD_ACCOUNT_ID in env.</div>`;
+    return;
+  }
+  const a = adsAccountInfo.account || {};
+  const caps = adsAccountInfo.budget_caps || {};
+
+  const acctCard = `
+    <div class="card">
+      <div class="card-header">
+        <div class="biz-name">${esc(a.name || 'Ad Account')}</div>
+        <span class="biz-type">${esc(a.currency || '')} • ${esc(a.timezone || '')}</span>
+      </div>
+      <div class="meta">
+        <strong>Balance:</strong> ${a.balance_cents != null ? (a.balance_cents/100).toFixed(2) : '—'}
+        &nbsp;&nbsp;<strong>Spent:</strong> ${a.amount_spent_cents != null ? (a.amount_spent_cents/100).toFixed(2) : '—'}
+        &nbsp;&nbsp;<strong>Status:</strong> ${a.status === 1 ? 'Active' : a.status}
+      </div>
+      <div class="detail-row">
+        <strong>Budget caps</strong> — default per campaign: $${caps.default_daily_max_usd}/day · hardcap: $${caps.hardcap_usd}/day (server refuses above)
+      </div>
+    </div>`;
+
+  // Draft creation form
+  const tplOpts = adsTemplates.map(t =>
+    `<option value="${esc(t.key)}">${esc(t.campaign_name)}</option>`).join('');
+  const pageOpts = adsPages.map(p =>
+    `<option value="${esc(p.id)}">${esc(p.name)} (${esc(p.id)})</option>`).join('');
+  const draftCard = `
+    <div class="card">
+      <div class="card-header">
+        <div class="biz-name">Create draft campaign</div>
+        <span class="status-badge status-pending">PAUSED on create</span>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
+        <label style="font-size:0.82rem;color:#94a3b8">Template
+          <select id="draftTemplate" style="width:100%;padding:8px;background:#0f172a;color:#e2e8f0;border:1px solid #334155;border-radius:6px;margin-top:4px">${tplOpts}</select>
+        </label>
+        <label style="font-size:0.82rem;color:#94a3b8">FB Page
+          <select id="draftPage" style="width:100%;padding:8px;background:#0f172a;color:#e2e8f0;border:1px solid #334155;border-radius:6px;margin-top:4px">${pageOpts || '<option value="">No pages — assign one in Business Manager</option>'}</select>
+        </label>
+        <label style="font-size:0.82rem;color:#94a3b8">Daily budget (USD)
+          <input id="draftBudget" type="number" min="0.5" max="${caps.hardcap_usd || 5}" step="0.5" value="${caps.default_daily_max_usd || 2}" style="width:100%;padding:8px;background:#0f172a;color:#e2e8f0;border:1px solid #334155;border-radius:6px;margin-top:4px">
+        </label>
+        <div style="align-self:end">
+          <button class="btn btn-provision" onclick="createDraft()">Create draft (PAUSED)</button>
+        </div>
+      </div>
+      <div class="detail-row" style="color:#fbbf24">
+        Activation = real spend. Confirmation prompt on activate. Hardcap $${caps.hardcap_usd}/day.
+      </div>
+    </div>`;
+
+  // Active canary table
+  let canaryCard = '';
+  if (canary.length > 0) {
+    const rows = canary.map(c => {
+      const pctColor = c.pct_of_cap >= 80 ? '#ef4444' : (c.pct_of_cap >= 50 ? '#fbbf24' : '#4ade80');
+      return `<tr>
+        <td style="padding:6px 8px">${esc(c.name)}</td>
+        <td style="padding:6px 8px">$${c.spend_today.toFixed(2)} / $${c.daily_cap_usd.toFixed(2)}</td>
+        <td style="padding:6px 8px;color:${pctColor};font-weight:600">${c.pct_of_cap}%</td>
+        <td style="padding:6px 8px"><button class="btn btn-reject" style="font-size:0.75rem;padding:4px 10px" onclick="pauseCampaign('${esc(c.id)}')">Pause</button></td>
+      </tr>`;
+    }).join('');
+    canaryCard = `
+      <div class="card">
+        <div class="card-header">
+          <div class="biz-name">Live canary — today's spend</div>
+        </div>
+        <table style="width:100%;font-size:0.85rem;border-collapse:collapse">
+          <thead><tr style="text-align:left;color:#64748b;border-bottom:1px solid #334155">
+            <th style="padding:6px 8px">Campaign</th><th style="padding:6px 8px">Spend / Cap</th><th style="padding:6px 8px">% Used</th><th style="padding:6px 8px"></th>
+          </tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>`;
+    document.getElementById('adsLiveDot').style.display = 'inline-block';
+  } else {
+    document.getElementById('adsLiveDot').style.display = 'none';
+  }
+
+  // Existing campaigns list
+  const campRows = adsCampaigns.length === 0
+    ? '<div class="empty">No campaigns yet. Create draft above.</div>'
+    : adsCampaigns.map(c => {
+        const ins = (c.insights && c.insights.data && c.insights.data[0]) || {};
+        const statusClass = c.status === 'ACTIVE' ? 'status-active'
+          : c.status === 'PAUSED' ? 'status-pending' : 'status-rejected';
+        const actionBtn = c.status === 'ACTIVE'
+          ? `<button class="btn btn-reject" onclick="pauseCampaign('${esc(c.id)}')">Pause</button>`
+          : c.status === 'PAUSED'
+          ? `<button class="btn btn-provision" onclick="activateCampaign('${esc(c.id)}', '${esc(c.name)}')">Activate (real spend)</button>`
+          : '';
+        return `<div class="card">
+          <div class="card-header">
+            <div class="biz-name">${esc(c.name)}</div>
+            <span class="status-badge ${statusClass}">${esc(c.status)}</span>
+          </div>
+          <div class="meta">
+            <strong>Objective:</strong> ${esc(c.objective || '')}
+            &nbsp;&nbsp;<strong>Daily budget:</strong> ${c.daily_budget ? '$'+(c.daily_budget/100).toFixed(2) : '—'}
+            &nbsp;&nbsp;<strong>ID:</strong> <span class="assist-id">${esc(c.id)}</span>
+          </div>
+          <div class="detail-row">
+            <strong>Last 7d:</strong> $${ins.spend || '0'} spend · ${ins.impressions || 0} impr · ${ins.clicks || 0} clicks · CTR ${ins.ctr || '0'}%
+          </div>
+          <div class="actions" style="margin-top:8px">${actionBtn}</div>
+        </div>`;
+      }).join('');
+
+  sec.innerHTML = acctCard + draftCard + canaryCard +
+    `<div style="font-size:0.9rem;color:#94a3b8;margin:18px 0 8px">All campaigns</div>` + campRows;
+}
+
+async function createDraft() {
+  const template_key = document.getElementById('draftTemplate').value;
+  const page_id = document.getElementById('draftPage').value;
+  const daily_budget_usd = parseFloat(document.getElementById('draftBudget').value);
+  if (!page_id) { showToast('Pick a Page first', 'error'); return; }
+  if (!daily_budget_usd || daily_budget_usd <= 0) { showToast('Enter a budget', 'error'); return; }
+
+  try {
+    const res = await fetch(`${BASE}/admin/api/ads/draft?token=${TOKEN}`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({template_key, page_id, daily_budget_usd}),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      showToast(`Draft failed: ${data.detail || data.error || 'unknown'}`, 'error');
+      return;
+    }
+    showToast(`Draft created (PAUSED). Campaign ${data.campaign_id}`, 'success');
+    loadAds();
+  } catch (e) {
+    showToast(`Network error: ${e.message}`, 'error');
+  }
+}
+
+async function activateCampaign(id, name) {
+  if (!confirm(`ACTIVATE campaign "${name}"?\n\nThis starts REAL spending immediately.\nClick OK only if budget + creative + targeting are reviewed.`)) return;
+  try {
+    const res = await fetch(`${BASE}/admin/api/ads/campaigns/${encodeURIComponent(id)}/activate?token=${TOKEN}`, {method: 'POST'});
+    const data = await res.json();
+    if (res.ok) {
+      showToast('Campaign LIVE — real spend starting', 'success');
+      loadAds();
+    } else {
+      showToast(`Activate failed: ${data.detail || JSON.stringify(data)}`, 'error');
+    }
+  } catch (e) {
+    showToast(`Network error: ${e.message}`, 'error');
+  }
+}
+
+async function pauseCampaign(id) {
+  try {
+    const res = await fetch(`${BASE}/admin/api/ads/campaigns/${encodeURIComponent(id)}/pause?token=${TOKEN}`, {method: 'POST'});
+    if (res.ok) {
+      showToast('Campaign paused', 'success');
+      loadAds();
+    } else {
+      const data = await res.json();
+      showToast(`Pause failed: ${data.detail || 'unknown'}`, 'error');
+    }
+  } catch (e) {
+    showToast(`Network error: ${e.message}`, 'error');
+  }
 }
 </script>
 </body>

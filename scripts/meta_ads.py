@@ -171,6 +171,232 @@ def set_campaign_status(campaign_id: str, status: str) -> dict[str, Any]:
         return r.json()
 
 
+def list_pages() -> dict[str, Any]:
+    """List FB pages the System User can access (needed to attach ads to a page)."""
+    token, _ = _config()
+    with httpx.Client(timeout=10) as h:
+        r = h.get(f"{GRAPH_BASE}/me/accounts",
+                  params={"fields": "id,name,access_token", "access_token": token})
+        r.raise_for_status()
+        return r.json()
+
+
+def create_draft_adset(
+    campaign_id: str,
+    name: str,
+    daily_budget_usd: float,
+    targeting: dict[str, Any],
+    optimization_goal: str = "LEAD_GENERATION",
+    billing_event: str = "IMPRESSIONS",
+) -> dict[str, Any]:
+    """Phase B — adset under campaign, status=PAUSED. Hardcap enforced."""
+    token, account_id = _config()
+    if daily_budget_usd <= 0:
+        raise ValueError("daily_budget must be > 0")
+    daily_budget_cents = int(round(daily_budget_usd * 100))
+    _enforce_budget_cap(daily_budget_cents)
+
+    payload = {
+        "name": name[:255],
+        "campaign_id": campaign_id,
+        "status": "PAUSED",
+        "daily_budget": daily_budget_cents,
+        "billing_event": billing_event,
+        "optimization_goal": optimization_goal,
+        "bid_strategy": "LOWEST_COST_WITHOUT_CAP",
+        "targeting": json.dumps(targeting),
+        "access_token": token,
+    }
+    with httpx.Client(timeout=20) as h:
+        r = h.post(f"{GRAPH_BASE}/{account_id}/adsets", data=payload)
+        if r.status_code >= 400:
+            return {"error": r.json(), "status_code": r.status_code}
+        return r.json()
+
+
+def create_draft_creative(
+    page_id: str,
+    name: str,
+    headline: str,
+    body: str,
+    link_url: str,
+    cta_type: str = "LEARN_MORE",
+    image_hash: str | None = None,
+) -> dict[str, Any]:
+    """Phase B — ad creative. image_hash optional (None = text-only link spec)."""
+    token, account_id = _config()
+    link_data: dict[str, Any] = {
+        "link": link_url,
+        "message": body[:300],
+        "name": headline[:40],
+        "call_to_action": {"type": cta_type, "value": {"link": link_url}},
+    }
+    if image_hash:
+        link_data["image_hash"] = image_hash
+
+    creative_spec = {
+        "page_id": page_id,
+        "link_data": link_data,
+    }
+    payload = {
+        "name": name[:255],
+        "object_story_spec": json.dumps(creative_spec),
+        "access_token": token,
+    }
+    with httpx.Client(timeout=20) as h:
+        r = h.post(f"{GRAPH_BASE}/{account_id}/adcreatives", data=payload)
+        if r.status_code >= 400:
+            return {"error": r.json(), "status_code": r.status_code}
+        return r.json()
+
+
+def create_draft_ad(
+    adset_id: str,
+    name: str,
+    creative_id: str,
+) -> dict[str, Any]:
+    """Phase B — ad linking creative to adset, status=PAUSED."""
+    token, account_id = _config()
+    payload = {
+        "name": name[:255],
+        "adset_id": adset_id,
+        "creative": json.dumps({"creative_id": creative_id}),
+        "status": "PAUSED",
+        "access_token": token,
+    }
+    with httpx.Client(timeout=20) as h:
+        r = h.post(f"{GRAPH_BASE}/{account_id}/ads", data=payload)
+        if r.status_code >= 400:
+            return {"error": r.json(), "status_code": r.status_code}
+        return r.json()
+
+
+def create_draft_triple(
+    template_key: str,
+    page_id: str,
+    daily_budget_usd: float,
+    overrides: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Phase B one-shot — campaign + adset + creative + ad, all PAUSED.
+
+    Returns {campaign_id, adset_id, creative_id, ad_id, template_key}.
+    Atomic-ish: if any step fails, returns partial state w/ error so caller
+    can decide whether to clean up. No automatic rollback (Meta API is async).
+    """
+    from meta_ad_templates import TEMPLATES  # noqa
+    if template_key not in TEMPLATES:
+        raise ValueError(f"unknown template: {template_key}")
+    tpl = dict(TEMPLATES[template_key])
+    if overrides:
+        tpl.update(overrides)
+
+    out: dict[str, Any] = {"template_key": template_key}
+
+    # 1. Campaign
+    camp = create_draft_campaign(
+        name=tpl["campaign_name"],
+        objective=tpl["objective"],
+        daily_budget_usd=daily_budget_usd,
+    )
+    if "error" in camp:
+        out["error"] = {"step": "campaign", **camp}
+        return out
+    out["campaign_id"] = camp.get("id")
+
+    # 2. Adset
+    adset = create_draft_adset(
+        campaign_id=out["campaign_id"],
+        name=tpl["adset_name"],
+        daily_budget_usd=daily_budget_usd,
+        targeting=tpl["targeting"],
+        optimization_goal=tpl.get("optimization_goal", "LEAD_GENERATION"),
+        billing_event=tpl.get("billing_event", "IMPRESSIONS"),
+    )
+    if "error" in adset:
+        out["error"] = {"step": "adset", **adset}
+        return out
+    out["adset_id"] = adset.get("id")
+
+    # 3. Creative
+    creative = create_draft_creative(
+        page_id=page_id,
+        name=tpl["creative_name"],
+        headline=tpl["headline"],
+        body=tpl["body"],
+        link_url=tpl["link_url"],
+        cta_type=tpl.get("cta_type", "LEARN_MORE"),
+    )
+    if "error" in creative:
+        out["error"] = {"step": "creative", **creative}
+        return out
+    out["creative_id"] = creative.get("id")
+
+    # 4. Ad
+    ad = create_draft_ad(
+        adset_id=out["adset_id"],
+        name=tpl["ad_name"],
+        creative_id=out["creative_id"],
+    )
+    if "error" in ad:
+        out["error"] = {"step": "ad", **ad}
+        return out
+    out["ad_id"] = ad.get("id")
+    return out
+
+
+def get_account_spend_today() -> dict[str, Any]:
+    """Phase C canary helper — total spend today for the account."""
+    token, account_id = _config()
+    with httpx.Client(timeout=15) as h:
+        r = h.get(
+            f"{GRAPH_BASE}/{account_id}/insights",
+            params={
+                "fields": "spend,impressions,clicks",
+                "date_preset": "today",
+                "access_token": token,
+            },
+        )
+        r.raise_for_status()
+        return r.json()
+
+
+def list_active_campaign_spend(default_max_usd: float | None = None) -> list[dict[str, Any]]:
+    """Phase C canary — for every ACTIVE campaign, return today's spend +
+    pct-of-cap. default_max_usd defaults to META_AD_DAILY_BUDGET_MAX_USD.
+    """
+    if default_max_usd is None:
+        default_max_usd, _ = _budget_caps()
+    token, account_id = _config()
+    fields = ("id,name,status,daily_budget,"
+              "insights.date_preset(today){spend,impressions,clicks}")
+    with httpx.Client(timeout=15) as h:
+        r = h.get(
+            f"{GRAPH_BASE}/{account_id}/campaigns",
+            params={"fields": fields, "filtering": json.dumps([
+                {"field": "effective_status", "operator": "IN",
+                 "value": ["ACTIVE"]}
+            ]), "access_token": token},
+        )
+        r.raise_for_status()
+        data = r.json().get("data", [])
+
+    out = []
+    for c in data:
+        ins = (c.get("insights") or {}).get("data") or [{}]
+        spend_eur = float(ins[0].get("spend") or 0)
+        camp_cap_usd = float(c.get("daily_budget") or 0) / 100 or default_max_usd
+        pct = (spend_eur / camp_cap_usd * 100) if camp_cap_usd > 0 else 0
+        out.append({
+            "id": c.get("id"),
+            "name": c.get("name"),
+            "spend_today": spend_eur,
+            "daily_cap_usd": camp_cap_usd,
+            "pct_of_cap": round(pct, 1),
+            "should_pause": pct >= 80,
+        })
+    return out
+
+
 # ---------------------------------------------------------------------------
 # Smoke check (used by /admin/api/ads/account endpoint)
 # ---------------------------------------------------------------------------
