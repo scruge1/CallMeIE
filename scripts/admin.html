@@ -469,8 +469,9 @@ async function loadSubmissions() {
 }
 
 async function loadClients() {
+  // P5-6 — endpoint moved to /assistants; /clients is a deprecated alias.
   const [clientsRes, healthRes] = await Promise.all([
-    fetch(`${BASE}/admin/api/clients?token=${TOKEN}`),
+    fetch(`${BASE}/admin/api/assistants?token=${TOKEN}`),
     fetch(`${BASE}/admin/api/health?token=${TOKEN}`),
   ]);
   if (!clientsRes.ok) return;
