@@ -16,7 +16,11 @@ Hardcap enforced at meta_ads._enforce_budget_cap.
 """
 from __future__ import annotations
 
-# Standard Ireland targeting — countries=IE, ages 25-65
+# Standard Ireland targeting — countries=IE, ages 25-65.
+# Detailed-interest IDs intentionally OMITTED — Meta is deprecating these in
+# 2026 (privacy push) and Advantage+ Audience broad targeting consistently
+# outperforms hand-picked interests for service-business lead gen. Audience
+# discovery happens via creative + landing page, not interest IDs.
 _BASE_IE_TARGETING = {
     "geo_locations": {"countries": ["IE"]},
     "age_min": 25,
@@ -25,16 +29,20 @@ _BASE_IE_TARGETING = {
     "facebook_positions": ["feed", "marketplace"],
     "instagram_positions": ["stream", "explore"],
     "device_platforms": ["mobile", "desktop"],
+    # targeting_automation lets Meta find the audience — Advantage+ broad
+    "targeting_automation": {"advantage_audience": 1},
 }
 
 
 def _merge_targeting(extra_interests: list[dict] | None = None) -> dict:
-    """Merge base IE targeting with service-specific interests."""
+    """Return base IE targeting. extra_interests param kept for API compat
+    but ignored — see comment on _BASE_IE_TARGETING about 2026 dep ladder."""
     base = dict(_BASE_IE_TARGETING)
     base["geo_locations"] = dict(base["geo_locations"])
-    if extra_interests:
-        base["flexible_spec"] = [{"interests": extra_interests}]
     return base
+
+
+_AD_IMG_DIR = "scripts/ad-images"  # repo-relative; resolved at upload time
 
 
 TEMPLATES: dict[str, dict] = {
@@ -44,90 +52,85 @@ TEMPLATES: dict[str, dict] = {
     "receptionist": {
         "campaign_name": "CallMeIE Receptionist — IE — TBD",
         "adset_name": "Receptionist — IE — SMB owners",
-        "ad_name": "Receptionist — Headline test 1",
+        "ad_name": "Receptionist — Headline v1",
         "creative_name": "Receptionist creative v1",
         "objective": "OUTCOME_LEADS",
         "optimization_goal": "LEAD_GENERATION",
         "billing_event": "IMPRESSIONS",
-        "headline": "AI receptionist that rings back",
-        "body": ("Missed calls cost work. Claire answers in your voice, "
-                 "books the diary, texts you the lead. Sound? €149 setup, "
-                 "€297/month. Ireland-based. No setup fee for first 10."),
-        "link_url": "https://callmeie.ie/receptionist/",
-        "cta_type": "LEARN_MORE",
-        "targeting": _merge_targeting([
-            {"id": "6003020834693", "name": "Small business"},
-            {"id": "6003277229371", "name": "Entrepreneurship"},
-        ]),
+        # Headline ≤ 7 words (2026 best practice — fits before mobile truncation)
+        "headline": "Never miss a call again",
+        # First 125 chars must hold (before "see more"): the value prop
+        "body": ("Claire answers in your voice, books the diary, texts you the lead. "
+                 "€149 setup + €297/month. Limerick-based."),
+        "link_url": "https://callmeie.ie/receptionist/?utm_source=meta&utm_medium=paid&utm_campaign=receptionist",
+        # CTA matches local service intent (research: CONTACT_US > LEARN_MORE for service)
+        "cta_type": "CONTACT_US",
+        "image_square": f"{_AD_IMG_DIR}/receptionist-1080.jpg",
+        "image_link": f"{_AD_IMG_DIR}/receptionist-1200x628.jpg",
+        "targeting": _merge_targeting(),
     },
 
     # --------------------------------------------------------------------
-    # Doc Ops — SOPs / contracts / invoicing automation
+    # Doc Ops — invoice/VAT extraction + handling
     # --------------------------------------------------------------------
     "docops": {
         "campaign_name": "CallMeIE Doc Ops — IE — TBD",
         "adset_name": "Doc Ops — IE — Operations leads",
-        "ad_name": "Doc Ops — Headline test 1",
+        "ad_name": "Doc Ops — Headline v1",
         "creative_name": "Doc Ops creative v1",
         "objective": "OUTCOME_LEADS",
         "optimization_goal": "LEAD_GENERATION",
         "billing_event": "IMPRESSIONS",
         "headline": "Stop chasing paperwork",
-        "body": ("AI extracts your invoices, contracts, SOPs into the "
-                 "systems you already use. €99 audit shows what to "
-                 "automate. From €249/month full handling."),
-        "link_url": "https://callmeie.ie/docs/",
-        "cta_type": "LEARN_MORE",
-        "targeting": _merge_targeting([
-            {"id": "6003020834693", "name": "Small business"},
-            {"id": "6003397425735", "name": "Business administration"},
-        ]),
+        "body": ("AI lifts invoices and VAT receipts into the systems you already use. "
+                 "€99 audit shows what to automate first."),
+        "link_url": "https://callmeie.ie/docs/?utm_source=meta&utm_medium=paid&utm_campaign=docops",
+        "cta_type": "CONTACT_US",
+        "image_square": f"{_AD_IMG_DIR}/docops-1080.jpg",
+        "image_link": f"{_AD_IMG_DIR}/docops-1200x628.jpg",
+        "targeting": _merge_targeting(),
     },
 
     # --------------------------------------------------------------------
-    # Websites — AI-first sites for trades + restaurants
+    # Websites — AI-first sites for trades + hospitality
     # --------------------------------------------------------------------
     "websites": {
         "campaign_name": "CallMeIE Websites — IE — TBD",
         "adset_name": "Websites — IE — Trades & hospitality",
-        "ad_name": "Websites — Headline test 1",
+        "ad_name": "Websites — Headline v1",
         "creative_name": "Websites creative v1",
         "objective": "OUTCOME_LEADS",
         "optimization_goal": "LEAD_GENERATION",
         "billing_event": "IMPRESSIONS",
-        "headline": "Website that books work for you",
-        "body": ("Plumbers, electricians, restaurants — AI-first site "
-                 "that takes the call, books the diary, captures the "
-                 "lead. From €695. Care plans from €45/month."),
-        "link_url": "https://callmeie.ie/websites/",
-        "cta_type": "LEARN_MORE",
-        "targeting": _merge_targeting([
-            {"id": "6003020834693", "name": "Small business"},
-            {"id": "6003522631307", "name": "Restaurant"},
-        ]),
+        "headline": "Website that books your work",
+        "body": ("AI-first site that takes the call, books the diary, captures the lead. "
+                 "Plumbers, electricians, restaurants. From €695."),
+        "link_url": "https://callmeie.ie/websites/?utm_source=meta&utm_medium=paid&utm_campaign=websites",
+        "cta_type": "CONTACT_US",
+        "image_square": f"{_AD_IMG_DIR}/websites-1080.jpg",
+        "image_link": f"{_AD_IMG_DIR}/websites-1200x628.jpg",
+        "targeting": _merge_targeting(),
     },
 
     # --------------------------------------------------------------------
-    # Audit — €99 ops + tech audit funnel (lead magnet)
+    # Audit — €99 ops + tech audit (lead magnet)
     # --------------------------------------------------------------------
     "audit": {
         "campaign_name": "CallMeIE Audit — IE — TBD",
         "adset_name": "Audit — IE — Owner-operators",
-        "ad_name": "Audit — Headline test 1",
+        "ad_name": "Audit — Headline v1",
         "creative_name": "Audit creative v1",
         "objective": "OUTCOME_LEADS",
         "optimization_goal": "LEAD_GENERATION",
         "billing_event": "IMPRESSIONS",
-        "headline": "€99 ops audit — see what's leaking",
-        "body": ("60-minute review. We map your phone, paperwork and "
-                 "site. You get a 1-page punch list with the cheapest "
-                 "fixes first. Apply against any package later."),
-        "link_url": "https://callmeie.ie/local-seo/",
+        "headline": "€99 audit — see what's leaking",
+        "body": ("60 minutes. We map your phone, paperwork and site. "
+                 "You get a 1-page punch list. Cheapest fixes first."),
+        "link_url": "https://callmeie.ie/local-seo/?utm_source=meta&utm_medium=paid&utm_campaign=audit",
         "cta_type": "GET_QUOTE",
-        "targeting": _merge_targeting([
-            {"id": "6003020834693", "name": "Small business"},
-            {"id": "6003397425735", "name": "Business administration"},
-        ]),
+        "image_square": f"{_AD_IMG_DIR}/audit-1080.jpg",
+        "image_link": f"{_AD_IMG_DIR}/audit-1200x628.jpg",
+        "targeting": _merge_targeting(),
     },
 }
 
