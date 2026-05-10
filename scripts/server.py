@@ -24,6 +24,8 @@ Endpoints:
   GET  /health                 — Health check
 """
 
+import hashlib
+import hmac
 import json
 import os
 import sqlite3
@@ -34,7 +36,7 @@ from zoneinfo import ZoneInfo
 import httpx
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse, Response
 
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
@@ -2994,6 +2996,122 @@ async def update_lead(
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"update_failed: {e}")
+
+
+# =========================================================================
+# P2-4 channel — WhatsApp Cloud API webhook.
+# GET /webhooks/whatsapp  — Meta verification handshake (hub.challenge echo)
+# POST /webhooks/whatsapp — inbound message events (signature-verified)
+#
+# Setup (Meta Developers console — Adam-keyboard):
+#   1. developers.facebook.com → Apps → Create app (Business type)
+#   2. Add product: WhatsApp
+#   3. Generate WHATSAPP_VERIFY_TOKEN (random ≥32 chars, our side)
+#   4. Configure webhook URL = https://api.callmeie.ie/webhooks/whatsapp
+#      Verify token = WHATSAPP_VERIFY_TOKEN value
+#      Subscribe fields: messages
+#   5. Copy WhatsApp Business Account ID + System User access token
+#   6. Save WHATSAPP_APP_SECRET (App Settings → Basic → App Secret) for sig verify
+#
+# Coolify env vars to set after Meta setup:
+#   WHATSAPP_VERIFY_TOKEN     — our random string, SAME value in Meta console
+#   WHATSAPP_APP_SECRET       — Meta app secret for HMAC-SHA256 signature verify
+#   WHATSAPP_PHONE_NUMBER_ID  — for outbound replies (Phase 2b)
+#   WHATSAPP_ACCESS_TOKEN     — system user permanent token (Phase 2b — replies)
+# =========================================================================
+
+WHATSAPP_VERIFY_TOKEN = os.environ.get("WHATSAPP_VERIFY_TOKEN", "").strip()
+WHATSAPP_APP_SECRET = os.environ.get("WHATSAPP_APP_SECRET", "").strip()
+
+
+def _verify_whatsapp_signature(body_bytes: bytes, sig_header: str) -> bool:
+    """Verify X-Hub-Signature-256 = sha256(body, app_secret). Constant-time compare."""
+    if not WHATSAPP_APP_SECRET or not sig_header:
+        return False
+    if not sig_header.startswith("sha256="):
+        return False
+    expected = hmac.new(
+        WHATSAPP_APP_SECRET.encode("utf-8"),
+        body_bytes,
+        hashlib.sha256,
+    ).hexdigest()
+    received = sig_header[7:]
+    return hmac.compare_digest(expected, received)
+
+
+@app.get("/webhooks/whatsapp")
+async def whatsapp_verify(request: Request):
+    """Meta webhook handshake. Echoes hub.challenge if hub.verify_token matches."""
+    qp = request.query_params
+    mode = qp.get("hub.mode", "")
+    token = qp.get("hub.verify_token", "")
+    challenge = qp.get("hub.challenge", "")
+    if mode == "subscribe" and token and WHATSAPP_VERIFY_TOKEN and \
+       hmac.compare_digest(token, WHATSAPP_VERIFY_TOKEN):
+        # Meta wants the challenge as plaintext, not JSON.
+        return PlainTextResponse(challenge)
+    raise HTTPException(status_code=403, detail="verify_failed")
+
+
+@app.post("/webhooks/whatsapp")
+async def whatsapp_inbound(request: Request):
+    """Inbound WhatsApp messages. Calls LeadIngestor on message events."""
+    raw = await request.body()
+    sig = request.headers.get("x-hub-signature-256", "")
+    if not _verify_whatsapp_signature(raw, sig):
+        # Don't leak which check failed (sig vs no-secret).
+        raise HTTPException(status_code=403, detail="bad_signature")
+
+    try:
+        body = json.loads(raw.decode("utf-8") or "{}")
+    except Exception:
+        raise HTTPException(status_code=400, detail="invalid_json")
+
+    # Meta payload: { object: 'whatsapp_business_account',
+    #   entry: [{ id, changes: [{ value: { messaging_product, metadata,
+    #     contacts: [{ profile: { name }, wa_id }],
+    #     messages: [{ from, id, timestamp, type, text: { body } }],
+    #     statuses: [...]  // delivery acks
+    #   }, field: 'messages' }]}] }
+    handled = 0
+    for entry in body.get("entry", []) or []:
+        for change in entry.get("changes", []) or []:
+            value = change.get("value") or {}
+            contacts = {c.get("wa_id"): (c.get("profile") or {}).get("name")
+                        for c in (value.get("contacts") or [])}
+            for msg in value.get("messages", []) or []:
+                msg_id = msg.get("id") or ""
+                wa_id = msg.get("from") or ""
+                msg_type = msg.get("type") or ""
+                text = ""
+                if msg_type == "text":
+                    text = (msg.get("text") or {}).get("body", "")
+                elif msg_type == "button":
+                    text = (msg.get("button") or {}).get("text", "")
+                elif msg_type == "interactive":
+                    inter = msg.get("interactive") or {}
+                    if inter.get("type") == "button_reply":
+                        text = (inter.get("button_reply") or {}).get("title", "")
+                    elif inter.get("type") == "list_reply":
+                        text = (inter.get("list_reply") or {}).get("title", "")
+                # Audio / image / location etc — log but don't block; payload
+                # captured in raw_payload below.
+                profile_name = contacts.get(wa_id)
+
+                if _lead_ingestor is not None and wa_id:
+                    _lead_ingestor.upsert(get_db, "whatsapp", {
+                        "contact_phone": wa_id,            # E.164 without +
+                        "contact_name": profile_name,
+                        "wa_message_id": msg_id,
+                        "wa_message_type": msg_type,
+                        "text": text,
+                        "timestamp": msg.get("timestamp"),
+                    }, source_id=msg_id)
+                    handled += 1
+
+    # Always return 200 fast — Meta retries on non-2xx + counts retry against
+    # the per-message rate limit. Failures are logged but don't 500.
+    return {"ok": True, "handled": handled}
 
 
 # =========================================================================
