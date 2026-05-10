@@ -216,7 +216,7 @@ def _redact(d: dict) -> dict:
 def _fire_telegram(channel: str, who: str, what: str) -> None:
     """Fire-and-forget Telegram alert for priority>=2 channels."""
     bot_token = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
-    chat_id = os.environ.get("TELEGRAM_OWNER_CHAT_ID", "").strip()
+    chat_id = os.environ.get("TELEGRAM_CHAT_ID", "").strip()
     if not bot_token or not chat_id:
         return
     try:

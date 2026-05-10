@@ -13,7 +13,7 @@ Invocation paths:
 Env required:
   DATABASE_URL    — Coolify Postgres
   RESEND_API_KEY  — for email send
-  TELEGRAM_BOT_TOKEN, TELEGRAM_OWNER_CHAT_ID — for ping
+  TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID — for ping
 
 Designed to run from:
   - GitHub Actions cron (existing pattern from purge-old-data.yml)
@@ -39,7 +39,7 @@ if DATABASE_URL.startswith("postgres://"):
 
 RESEND_API_KEY = os.environ.get("RESEND_API_KEY", "").strip()
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
-TELEGRAM_OWNER_CHAT_ID = os.environ.get("TELEGRAM_OWNER_CHAT_ID", "").strip()
+TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "").strip()
 ROLLUP_TO = os.environ.get("ROLLUP_TO_EMAIL", "hello@callmeie.ie").strip()
 ROLLUP_FROM = os.environ.get("ROLLUP_FROM_EMAIL", "alerts@callmeie.ie").strip()
 
@@ -239,14 +239,14 @@ def _send_resend(subject: str, body: str) -> bool:
 
 
 def _send_telegram(text: str) -> bool:
-    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_OWNER_CHAT_ID:
+    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
         return False
     try:
         import urllib.parse
         import urllib.request
         url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
         data = urllib.parse.urlencode({
-            "chat_id": TELEGRAM_OWNER_CHAT_ID,
+            "chat_id": TELEGRAM_CHAT_ID,
             "text": text[:4000],
         }).encode("utf-8")
         with urllib.request.urlopen(url, data=data, timeout=5) as r:
