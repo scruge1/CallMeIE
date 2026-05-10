@@ -604,8 +604,12 @@ def init_db():
                 action      TEXT
             )
         """))
+        # P5-6 — was `clients`; renamed to `assistants` to disambiguate
+        # from billing/db.py `clients` (paying-tier billing entity, different
+        # shape, different DB). See alembic/versions/0002_rename_clients_to_assistants.py
+        # + scripts/CLIENTS-VS-ASSISTANTS.md for rationale.
         conn.execute(_ddl_fix("""
-            CREATE TABLE IF NOT EXISTS clients (
+            CREATE TABLE IF NOT EXISTS assistants (
                 id            INTEGER PRIMARY KEY AUTOINCREMENT,
                 assistant_id  TEXT UNIQUE,
                 name          TEXT,
@@ -646,7 +650,7 @@ def init_db():
             "CREATE INDEX IF NOT EXISTS idx_leads_created_at ON leads(created_at DESC)",
             "CREATE INDEX IF NOT EXISTS idx_call_diagnostics_created_at ON call_diagnostics(created_at DESC)",
             "CREATE INDEX IF NOT EXISTS idx_discovery_submissions_created_at ON discovery_submissions(created_at DESC)",
-            "CREATE INDEX IF NOT EXISTS idx_clients_created_at ON clients(created_at DESC)",
+            "CREATE INDEX IF NOT EXISTS idx_assistants_created_at ON assistants(created_at DESC)",
         ]:
             try:
                 conn.execute(sql)
@@ -696,7 +700,7 @@ def init_db():
             ("owl_tickets", "suppressed_at"),
             ("owl_tickets", "closed_at"),
             ("leads", "suppressed_at"),
-            ("clients", "suppressed_at"),
+            ("assistants", "suppressed_at"),  # P5-6 — was `clients`
         ]
         for table, column in retention_targets:
             try:
@@ -904,7 +908,7 @@ def get_client(assistant_id: str) -> dict:
     try:
         with get_db() as conn:
             row = conn.execute(
-                "SELECT * FROM clients WHERE assistant_id = ?", (assistant_id,)
+                "SELECT * FROM assistants WHERE assistant_id = ?", (assistant_id,)
             ).fetchone()
             if row:
                 return {
@@ -2726,9 +2730,14 @@ async def list_submissions(token: str = Query("")):
 @app.get("/admin/api/clients")
 async def list_clients(token: str = Query("")):
     check_admin(token)
+    # P5-6 — table renamed `clients` -> `assistants` (alembic 0002).
+    # Endpoint URL kept for back-compat w/ admin.html JS that calls
+    # /admin/api/clients. The endpoint name is a misnomer post-rename;
+    # follow-up: rename to /admin/api/assistants once admin.html is
+    # updated (cross-repo coordination — defer to dedicated session).
     with get_db() as conn:
         rows = conn.execute(
-            "SELECT * FROM clients ORDER BY created_at DESC"
+            "SELECT * FROM assistants ORDER BY created_at DESC"
         ).fetchall()
     return [dict(r) for r in rows]
 
@@ -2959,7 +2968,7 @@ async def client_health(token: str = Query("")):
 
     with get_db() as conn:
         db_clients = conn.execute(
-            "SELECT assistant_id, name FROM clients WHERE status = 'active'"
+            "SELECT assistant_id, name FROM assistants WHERE status = 'active'"
         ).fetchall()
 
     all_clients = {row["assistant_id"]: row["name"] for row in db_clients}
