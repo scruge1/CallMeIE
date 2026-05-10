@@ -104,6 +104,13 @@ except Exception as _e:
     # Log but keep the rest of the server alive — billing is additive.
     print(f"[billing] router init failed: {_e}", flush=True)
 
+# P2-4 — unified_leads ingestor (best-effort; never blocks channel writes)
+try:
+    import lead_ingestor as _lead_ingestor
+except Exception as _e:
+    print(f"[lead_ingestor] import failed: {_e}", file=sys.stderr)
+    _lead_ingestor = None
+
 _SCRIPTS_DIR = os.path.dirname(os.path.abspath(__file__))
 _REPO_ROOT = os.path.dirname(_SCRIPTS_DIR)
 ADMIN_HTML_PATH = os.path.join(_SCRIPTS_DIR, "admin.html")
@@ -1699,20 +1706,37 @@ async def submit_onboarding(request: Request):
         return JSONResponse({"error": "business_name required"}, status_code=400)
 
     # Save to DB for admin review
+    submission_row_id = None
     try:
         with get_db() as conn:
-            conn.execute("""
+            cur = conn.execute("""
                 INSERT INTO submissions
                 (business_name, contact_name, contact_phone, contact_email,
                  business_type, address, hours, services, emergency_number,
                  calendar_email, plan, ai_name, notes)
                 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
+                RETURNING id
             """, (business_name, contact_name, contact_phone, contact_email,
                   business_type, address, hours, services, emergency_number,
                   calendar_email, plan, ai_name, notes))
+            try:
+                submission_row_id = cur.fetchone()[0]
+            except Exception:
+                submission_row_id = None
             conn.commit()
     except Exception as e:
         print(f"[DB] Failed to save submission: {e}")
+
+    # P2-4 — non-blocking unified_leads upsert
+    if _lead_ingestor is not None:
+        _lead_ingestor.upsert(get_db, "onboard", {
+            "contact_email": contact_email,
+            "contact_phone": contact_phone,
+            "contact_name": contact_name,
+            "business_name": business_name,
+            "business_type": business_type,
+            "plan": plan,
+        }, source_id=submission_row_id)
 
     backup_submission_to_sheet({
         "business_name": business_name,
@@ -2177,6 +2201,20 @@ async def api_discovery(request: Request, background_tasks: BackgroundTasks):
             conn.commit()
     except Exception as e:
         print(f"[Discovery] DB write failed: {e}")
+
+    # P2-4 — non-blocking unified_leads upsert
+    if _lead_ingestor is not None:
+        _lead_ingestor.upsert(get_db, "discovery", {
+            "contact_email": contact_email,
+            "contact_name": contact_name,
+            "business": business,
+            "pain": pain,
+            "team_size": team_size,
+            "urgency": urgency,
+            "page_context": page_context,
+            "recommended_product": classification.get("recommended_product"),
+            "tier_anchor": classification.get("tier_anchor"),
+        }, source_id=submission_id)
 
     # Owner alerts (async via background tasks so the visitor gets a fast response)
     headline = (
@@ -2739,6 +2777,226 @@ async def list_assistants(token: str = Query("")):
 
 
 # =========================================================================
+# P2-4 — unified leads pipeline (single view across 5 channels).
+# GET /admin/api/leads     — list w/ filter + search + cursor pagination
+# PATCH /admin/api/leads/{id} — status transition w/ audit log
+# Schema in alembic 0003_unified_leads.py + see PDR-NEXT-P2-4-UNIFIED-LEADS.md
+# =========================================================================
+
+_VALID_STATUS = {"new", "contacted", "qualified", "closed_won", "closed_lost", "spam"}
+_STATUS_TRANSITIONS = {
+    "new":         {"contacted", "qualified", "closed_lost", "spam"},
+    "contacted":   {"qualified", "closed_lost", "closed_won"},
+    "qualified":   {"closed_won", "closed_lost"},
+    # Terminal states require explicit reopen — handled by 'reopen' kw not here.
+    "closed_won":  set(),
+    "closed_lost": set(),
+    "spam":        set(),
+}
+
+
+@app.get("/admin/api/leads")
+async def list_leads(
+    token: str = Query(""),
+    channel: str = Query("", description="CSV of channels to include"),
+    status: str = Query("", description="CSV of statuses to include"),
+    q: str = Query("", description="search across email/name/business"),
+    days: int = Query(30, ge=1, le=365),
+    limit: int = Query(50, ge=1, le=200),
+    cursor: str = Query("", description="opaque keyset cursor"),
+):
+    """List unified_leads w/ filter + search + keyset pagination + aggregates."""
+    check_admin(token)
+
+    where = ["created_at >= NOW() - INTERVAL '%s days'" % int(days)]
+    params: list = []
+
+    if channel:
+        chans = [c.strip() for c in channel.split(",") if c.strip()]
+        if chans:
+            placeholders = ",".join(["?"] * len(chans))
+            where.append(f"primary_channel IN ({placeholders})")
+            params.extend(chans)
+
+    if status:
+        stats = [s.strip() for s in status.split(",") if s.strip() in _VALID_STATUS]
+        if stats:
+            placeholders = ",".join(["?"] * len(stats))
+            where.append(f"status IN ({placeholders})")
+            params.extend(stats)
+
+    if q:
+        like = f"%{q}%"
+        where.append("(contact_email ILIKE ? OR contact_name ILIKE ? OR business_name ILIKE ?)")
+        params.extend([like, like, like])
+
+    if cursor:
+        # Cursor format: "<iso8601_last_touch_at>|<id>" base64-decoded
+        import base64
+        try:
+            decoded = base64.b64decode(cursor.encode()).decode()
+            ts, last_id = decoded.rsplit("|", 1)
+            where.append("(last_touch_at, id::text) < (?::timestamptz, ?)")
+            params.extend([ts, last_id])
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"bad_cursor: {e}")
+
+    where_sql = " AND ".join(where) if where else "TRUE"
+    sql_rows = (
+        "SELECT id, dedupe_key, dedupe_kind, contact_email, contact_phone, "
+        "contact_name, business_name, primary_channel, channels, status, "
+        "priority, source_refs, notes, created_at, last_touch_at, "
+        "status_changed_at, qualified_at, closed_at "
+        f"FROM unified_leads WHERE {where_sql} "
+        f"ORDER BY last_touch_at DESC, id DESC LIMIT {int(limit) + 1}"
+    )
+
+    rows = []
+    aggregates = {"total": 0, "by_status": {}, "by_channel": {}, "this_week": {}}
+    try:
+        with get_db() as conn:
+            cur = conn.execute(sql_rows, tuple(params))
+            rows = [dict(r) for r in cur.fetchall()]
+
+            # Aggregates over the SAME filter (minus cursor)
+            agg_where = [w for w in where if not w.startswith("(last_touch_at, id::text)")]
+            agg_params = list(params[: len(params) - (2 if cursor else 0)])
+            agg_where_sql = " AND ".join(agg_where) if agg_where else "TRUE"
+            agg = conn.execute(
+                f"SELECT count(*) AS total FROM unified_leads WHERE {agg_where_sql}",
+                tuple(agg_params),
+            ).fetchone()
+            aggregates["total"] = int(agg["total"]) if agg else 0
+
+            by_status = conn.execute(
+                f"SELECT status, count(*) AS n FROM unified_leads WHERE {agg_where_sql} GROUP BY status",
+                tuple(agg_params),
+            ).fetchall()
+            aggregates["by_status"] = {r["status"]: int(r["n"]) for r in by_status}
+
+            by_channel = conn.execute(
+                f"SELECT primary_channel, count(*) AS n FROM unified_leads WHERE {agg_where_sql} GROUP BY primary_channel",
+                tuple(agg_params),
+            ).fetchall()
+            aggregates["by_channel"] = {r["primary_channel"]: int(r["n"]) for r in by_channel}
+
+            this_week = conn.execute(
+                f"SELECT status, count(*) AS n FROM unified_leads "
+                f"WHERE created_at >= NOW() - INTERVAL '7 days' GROUP BY status"
+            ).fetchall()
+            aggregates["this_week"] = {r["status"]: int(r["n"]) for r in this_week}
+    except Exception as e:
+        # unified_leads table may not exist yet (alembic 0003 not applied).
+        # Don't 500 — return empty + info banner.
+        return {"leads": [], "next_cursor": None, "aggregates": aggregates,
+                "error": "table_not_ready", "detail": str(e)[:200]}
+
+    # Pagination — over-fetched 1 to detect next page
+    next_cursor = None
+    if len(rows) > int(limit):
+        last = rows[int(limit) - 1]
+        rows = rows[: int(limit)]
+        import base64
+        ts = last["last_touch_at"].isoformat() if hasattr(last["last_touch_at"], "isoformat") else str(last["last_touch_at"])
+        next_cursor = base64.b64encode(f"{ts}|{last['id']}".encode()).decode()
+
+    # Normalise datetime/UUID to JSON-friendly
+    for r in rows:
+        for k, v in list(r.items()):
+            if hasattr(v, "isoformat"):
+                r[k] = v.isoformat()
+            elif not isinstance(v, (str, int, float, bool, list, dict, type(None))):
+                r[k] = str(v)
+
+    return {"leads": rows, "next_cursor": next_cursor, "aggregates": aggregates}
+
+
+@app.patch("/admin/api/leads/{lead_id}")
+async def update_lead(
+    lead_id: str,
+    request: Request,
+    token: str = Query(""),
+):
+    """Update lead status / notes / priority. Validates state transitions + writes audit log."""
+    check_admin(token)
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="invalid_json")
+
+    new_status = body.get("status")
+    new_notes = body.get("notes")
+    new_priority = body.get("priority")
+    transition_note = body.get("reason") or ""
+
+    if new_status is not None and new_status not in _VALID_STATUS:
+        raise HTTPException(status_code=422, detail=f"invalid_status: {new_status}")
+
+    try:
+        with get_db() as conn:
+            # Read current state
+            cur = conn.execute(
+                "SELECT status FROM unified_leads WHERE id = ?", (lead_id,)
+            )
+            row = cur.fetchone()
+            if not row:
+                raise HTTPException(status_code=404, detail="lead_not_found")
+            current_status = row["status"]
+
+            # Validate transition
+            if new_status is not None and new_status != current_status:
+                allowed = _STATUS_TRANSITIONS.get(current_status, set())
+                if new_status not in allowed:
+                    raise HTTPException(
+                        status_code=422,
+                        detail=f"invalid_transition: {current_status}->{new_status}",
+                    )
+
+            # Build UPDATE clause
+            set_parts = []
+            params: list = []
+            if new_status is not None and new_status != current_status:
+                set_parts.append("status = ?")
+                params.append(new_status)
+                set_parts.append("status_changed_at = NOW()")
+                if new_status == "qualified":
+                    set_parts.append("qualified_at = NOW()")
+                if new_status in ("closed_won", "closed_lost"):
+                    set_parts.append("closed_at = NOW()")
+            if new_notes is not None:
+                set_parts.append("notes = ?")
+                params.append(str(new_notes)[:4000])
+            if new_priority is not None:
+                try:
+                    p = max(0, min(3, int(new_priority)))
+                except Exception:
+                    p = 0
+                set_parts.append("priority = ?")
+                params.append(p)
+
+            if not set_parts:
+                return {"id": lead_id, "action": "noop"}
+
+            set_sql = ", ".join(set_parts)
+            params.append(lead_id)
+            conn.execute(f"UPDATE unified_leads SET {set_sql} WHERE id = ?", tuple(params))
+
+            # Audit log on status change
+            if new_status is not None and new_status != current_status:
+                conn.execute(
+                    "INSERT INTO lead_status_log (lead_id, from_status, to_status, actor, note) "
+                    "VALUES (?, ?, ?, 'adam', ?)",
+                    (lead_id, current_status, new_status, transition_note[:500])
+                )
+            conn.commit()
+        return {"id": lead_id, "action": "updated", "status": new_status or current_status}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"update_failed: {e}")
+
+
+# =========================================================================
 # P5-2 — GDPR Subject Access Request (Art 15) + Erasure (Art 17) endpoints.
 # Token-gated admin surface; Adam fulfils SAR/erasure requests received
 # via hello@callmeie.ie by hitting these. /admin/api/data-export returns
@@ -3232,11 +3490,29 @@ async def owl_submit(request: Request, background_tasks: BackgroundTasks) -> JSO
     client_ip = request.client.host if request.client else ""
     payload_json = json.dumps(form_data, ensure_ascii=False)[:8000]
 
+    owl_lead_row_id = None
     with get_db() as conn:
-        conn.execute(
-            "INSERT INTO owl_leads (site_id, form_type, payload_json, submitter_ip, submitted_from) VALUES (?, ?, ?, ?, ?)",
+        cur = conn.execute(
+            "INSERT INTO owl_leads (site_id, form_type, payload_json, submitter_ip, submitted_from) "
+            "VALUES (?, ?, ?, ?, ?) RETURNING id",
             (site_id, form_type, payload_json, client_ip, submitted_from),
         )
+        try:
+            owl_lead_row_id = cur.fetchone()[0]
+        except Exception:
+            owl_lead_row_id = None
+
+    # P2-4 — non-blocking unified_leads upsert (best-effort extraction from JSONB blob)
+    if _lead_ingestor is not None:
+        _lead_ingestor.upsert(get_db, "owl_form", {
+            "contact_email": form_data.get("email") or form_data.get("contact_email"),
+            "contact_phone": form_data.get("phone") or form_data.get("contact_phone"),
+            "contact_name": form_data.get("name") or form_data.get("contact_name"),
+            "business_name": site.get("display_name"),
+            "site_id": site_id,
+            "form_type": form_type,
+            "payload": form_data,
+        }, source_id=owl_lead_row_id)
 
     # Notify owner via SMS in background (existing Twilio infra)
     summary_bits = []
