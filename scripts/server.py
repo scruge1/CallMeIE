@@ -2999,6 +2999,57 @@ async def update_lead(
 
 
 # =========================================================================
+# P-ADS Phase A — Meta Marketing API admin endpoints (read-only).
+# Token + account_id loaded by meta_ads.py from env. All write paths enforce
+# META_AD_DAILY_BUDGET_HARDCAP_USD; campaigns always created PAUSED.
+# Setup runbook: callmeie-fix/META-ADS-API-SETUP.md
+# =========================================================================
+
+try:
+    import meta_ads as _meta_ads
+except Exception as _e:
+    print(f"[meta_ads] import failed: {_e}", file=sys.stderr)
+    _meta_ads = None
+
+
+@app.get("/admin/api/ads/account")
+async def ads_account(token: str = Query("")):
+    """Smoke check + account info. Read-only."""
+    check_admin(token)
+    if _meta_ads is None:
+        return {"configured": False, "reason": "module_import_failed"}
+    return _meta_ads.smoke_check()
+
+
+@app.get("/admin/api/ads/campaigns")
+async def ads_campaigns(token: str = Query(""), limit: int = Query(50, ge=1, le=200)):
+    """List campaigns w/ last-7d insights. Read-only."""
+    check_admin(token)
+    if _meta_ads is None or not _meta_ads.is_configured():
+        return {"configured": False, "campaigns": []}
+    try:
+        return _meta_ads.list_campaigns(limit=limit)
+    except Exception as e:
+        return {"configured": True, "error": str(e)[:300], "campaigns": []}
+
+
+@app.get("/admin/api/ads/campaigns/{campaign_id}/insights")
+async def ads_campaign_insights(
+    campaign_id: str,
+    token: str = Query(""),
+    days: int = Query(7, ge=1, le=90),
+):
+    """Daily breakdown of spend/impressions/clicks for a campaign."""
+    check_admin(token)
+    if _meta_ads is None or not _meta_ads.is_configured():
+        return {"configured": False}
+    try:
+        return _meta_ads.get_campaign_insights(campaign_id, days=days)
+    except Exception as e:
+        return {"error": str(e)[:300]}
+
+
+# =========================================================================
 # P2-4 channel — WhatsApp Cloud API webhook.
 # GET /webhooks/whatsapp  — Meta verification handshake (hub.challenge echo)
 # POST /webhooks/whatsapp — inbound message events (signature-verified)
