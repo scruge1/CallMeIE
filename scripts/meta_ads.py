@@ -141,11 +141,15 @@ def create_draft_campaign(
     daily_budget_cents = int(round(daily_budget_usd * 100))
     _enforce_budget_cap(daily_budget_cents)
 
+    # daily_budget set at CAMPAIGN level (CBO on) — adset will inherit and
+    # MUST omit daily_budget at adset level (Meta rejects budget on both).
+    # bid_strategy explicit to avoid 1815857 default-strategy mismatch.
     payload = {
         "name": name[:255],
         "objective": objective,
         "status": "PAUSED",  # ALWAYS PAUSED — Phase C activates separately
         "daily_budget": daily_budget_cents,
+        "bid_strategy": "LOWEST_COST_WITHOUT_CAP",
         "special_ad_categories": "[]",  # no special category
         "access_token": token,
     }
@@ -181,6 +185,36 @@ def list_pages() -> dict[str, Any]:
         return r.json()
 
 
+def upload_ad_image(image_path: str) -> dict[str, Any]:
+    """Upload an image to /act_X/adimages, returns {hash, url, ...} on success.
+
+    Cached image_hash can be reused across creatives — uploading the same file
+    twice returns the same hash, so this is idempotent without explicit dedup.
+    """
+    import os
+    token, account_id = _config()
+    if not os.path.exists(image_path):
+        raise FileNotFoundError(f"image not found: {image_path}")
+    with open(image_path, "rb") as fp:
+        files = {"filename": (os.path.basename(image_path), fp, "image/jpeg")}
+        with httpx.Client(timeout=60) as h:
+            r = h.post(
+                f"{GRAPH_BASE}/{account_id}/adimages",
+                data={"access_token": token},
+                files=files,
+            )
+            if r.status_code >= 400:
+                return {"error": r.json(), "status_code": r.status_code}
+            data = r.json()
+            # API returns {images: {<filename>: {hash, url, ...}}}
+            images = data.get("images", {})
+            if not images:
+                return {"error": "no_images_returned", "raw": data}
+            first = next(iter(images.values()))
+            return {"hash": first.get("hash"), "url": first.get("url"),
+                    "width": first.get("width"), "height": first.get("height")}
+
+
 def create_draft_adset(
     campaign_id: str,
     name: str,
@@ -196,15 +230,25 @@ def create_draft_adset(
     daily_budget_cents = int(round(daily_budget_usd * 100))
     _enforce_budget_cap(daily_budget_cents)
 
+    # CBO-on: budget at campaign level only. NO daily_budget on adset.
+    # bid_strategy inherits from campaign. Adset gets:
+    # - billing_event + optimization_goal (required)
+    # - targeting + status
+    # - start_time mandatory for OUTCOME_LEADS adsets in 2024+ API
+    # - dsa_beneficiary + dsa_payor mandatory for EU/IE ads (DSA, Feb 2024)
+    import time
+    dsa_org = os.environ.get("META_DSA_BENEFICIARY", "Callmeie Technologies")
+    dsa_payor = os.environ.get("META_DSA_PAYOR", dsa_org)
     payload = {
         "name": name[:255],
         "campaign_id": campaign_id,
         "status": "PAUSED",
-        "daily_budget": daily_budget_cents,
         "billing_event": billing_event,
         "optimization_goal": optimization_goal,
-        "bid_strategy": "LOWEST_COST_WITHOUT_CAP",
         "targeting": json.dumps(targeting),
+        "start_time": int(time.time()) + 600,
+        "dsa_beneficiary": dsa_org,
+        "dsa_payor": dsa_payor,
         "access_token": token,
     }
     with httpx.Client(timeout=20) as h:
@@ -279,10 +323,12 @@ def create_draft_triple(
 ) -> dict[str, Any]:
     """Phase B one-shot — campaign + adset + creative + ad, all PAUSED.
 
-    Returns {campaign_id, adset_id, creative_id, ad_id, template_key}.
-    Atomic-ish: if any step fails, returns partial state w/ error so caller
-    can decide whether to clean up. No automatic rollback (Meta API is async).
+    Returns {campaign_id, adset_id, creative_id, ad_id, template_key,
+    image_hash}. If template defines image_link, it is uploaded to ad
+    account first and passed to creative for non-text-only ad rendering.
+    Atomic-ish: partial-state on any step failure.
     """
+    import os
     from meta_ad_templates import TEMPLATES  # noqa
     if template_key not in TEMPLATES:
         raise ValueError(f"unknown template: {template_key}")
@@ -291,6 +337,25 @@ def create_draft_triple(
         tpl.update(overrides)
 
     out: dict[str, Any] = {"template_key": template_key}
+
+    # 0. Image upload (optional — text-only fallback if path missing)
+    image_hash: str | None = None
+    img_path = tpl.get("image_link") or tpl.get("image_square")
+    if img_path:
+        # Resolve relative path against this script's directory (assume
+        # ad-images is sibling to /app or /scripts in the running container).
+        candidates = [img_path, os.path.join(os.path.dirname(os.path.abspath(__file__)), img_path)]
+        resolved = next((p for p in candidates if os.path.exists(p)), None)
+        if resolved:
+            try:
+                upload = upload_ad_image(resolved)
+                if "error" not in upload:
+                    image_hash = upload.get("hash")
+                    out["image_hash"] = image_hash
+                else:
+                    out["image_warn"] = upload.get("error")
+            except Exception as e:
+                out["image_warn"] = str(e)[:200]
 
     # 1. Campaign
     camp = create_draft_campaign(
@@ -325,6 +390,7 @@ def create_draft_triple(
         body=tpl["body"],
         link_url=tpl["link_url"],
         cta_type=tpl.get("cta_type", "LEARN_MORE"),
+        image_hash=image_hash,
     )
     if "error" in creative:
         out["error"] = {"step": "creative", **creative}
