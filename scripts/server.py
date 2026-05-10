@@ -2727,14 +2727,10 @@ async def list_submissions(token: str = Query("")):
     return [dict(r) for r in rows]
 
 
-@app.get("/admin/api/clients")
-async def list_clients(token: str = Query("")):
+@app.get("/admin/api/assistants")
+@app.get("/admin/api/clients")  # P5-6 deprecated alias — admin.html JS migrates to /assistants. Will be removed once no callers remain.
+async def list_assistants(token: str = Query("")):
     check_admin(token)
-    # P5-6 — table renamed `clients` -> `assistants` (alembic 0002).
-    # Endpoint URL kept for back-compat w/ admin.html JS that calls
-    # /admin/api/clients. The endpoint name is a misnomer post-rename;
-    # follow-up: rename to /admin/api/assistants once admin.html is
-    # updated (cross-repo coordination — defer to dedicated session).
     with get_db() as conn:
         rows = conn.execute(
             "SELECT * FROM assistants ORDER BY created_at DESC"
