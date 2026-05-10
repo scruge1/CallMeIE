@@ -120,12 +120,16 @@
     <button class="tab" onclick="switchTab('discovery')">
       Discovery <span id="discoveryBadge" class="badge" style="display:none"></span>
     </button>
+    <button class="tab" onclick="switchTab('leads')">
+      Leads <span id="leadsBadge" class="badge" style="display:none"></span>
+    </button>
   </div>
 
   <div id="pendingSection" class="section active"></div>
   <div id="clientsSection" class="section"></div>
   <div id="callsSection" class="section"></div>
   <div id="discoverySection" class="section"></div>
+  <div id="leadsSection" class="section"></div>
 </div>
 
 <div id="toast" class="toast" style="display:none"></div>
@@ -162,7 +166,7 @@ window.onload = () => {
 let callsAutoRefresh = null;
 
 function switchTab(tab) {
-  const tabs = ['pending', 'clients', 'calls', 'discovery'];
+  const tabs = ['pending', 'clients', 'calls', 'discovery', 'leads'];
   document.querySelectorAll('.tab').forEach((t, i) => {
     t.classList.toggle('active', tabs[i] === tab);
   });
@@ -170,6 +174,7 @@ function switchTab(tab) {
   document.getElementById('clientsSection').classList.toggle('active', tab === 'clients');
   document.getElementById('callsSection').classList.toggle('active', tab === 'calls');
   document.getElementById('discoverySection').classList.toggle('active', tab === 'discovery');
+  document.getElementById('leadsSection').classList.toggle('active', tab === 'leads');
 
   if (tab === 'calls') {
     loadEvents();
@@ -183,10 +188,137 @@ function switchTab(tab) {
   if (tab === 'discovery') {
     loadDiscovery();
   }
+  if (tab === 'leads') {
+    loadLeads();
+  }
 }
 
 async function loadAll() {
-  await Promise.all([loadSubmissions(), loadClients(), loadBackupStatus(), loadDiscoveryBadge()]);
+  await Promise.all([loadSubmissions(), loadClients(), loadBackupStatus(), loadDiscoveryBadge(), loadLeadsBadge()]);
+}
+
+// ── P2-4 unified leads pipeline ──────────────────────────────────────────
+
+let _leadsState = { channel: '', status: 'new,contacted,qualified', q: '', cursor: null };
+
+async function loadLeadsBadge() {
+  try {
+    const r = await fetch(`${BASE}/admin/api/leads?token=${TOKEN}&status=new&limit=1`);
+    if (!r.ok) return;
+    const d = await r.json();
+    const n = d.aggregates && d.aggregates.by_status && d.aggregates.by_status.new;
+    const el = document.getElementById('leadsBadge');
+    if (el && n) { el.textContent = n; el.style.display = 'inline-block'; }
+  } catch (e) {}
+}
+
+async function loadLeads(append) {
+  const sec = document.getElementById('leadsSection');
+  if (!append) sec.innerHTML = '<div class="empty">Loading…</div>';
+  const params = new URLSearchParams({ token: TOKEN, days: 30, limit: 50 });
+  if (_leadsState.channel) params.set('channel', _leadsState.channel);
+  if (_leadsState.status) params.set('status', _leadsState.status);
+  if (_leadsState.q) params.set('q', _leadsState.q);
+  if (append && _leadsState.cursor) params.set('cursor', _leadsState.cursor);
+  try {
+    const r = await fetch(`${BASE}/admin/api/leads?${params.toString()}`);
+    if (!r.ok) { sec.innerHTML = '<div class="empty">Error loading leads</div>'; return; }
+    const d = await r.json();
+    if (d.error === 'table_not_ready') {
+      sec.innerHTML = '<div class="empty">unified_leads table not deployed yet — alembic 0003 pending. Run <code>alembic upgrade head</code> on Coolify.</div>';
+      return;
+    }
+    const agg = d.aggregates || {};
+    const bs = agg.by_status || {};
+    const tw = agg.this_week || {};
+    const kpis = `
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px">
+        <div class="card"><div style="font-size:0.75rem;color:#94a3b8;text-transform:uppercase">New (this week)</div><div style="font-size:1.6rem;font-weight:700;color:#22d3ee">${tw.new||0}</div></div>
+        <div class="card"><div style="font-size:0.75rem;color:#94a3b8;text-transform:uppercase">Contacted</div><div style="font-size:1.6rem;font-weight:700">${bs.contacted||0}</div></div>
+        <div class="card"><div style="font-size:0.75rem;color:#94a3b8;text-transform:uppercase">Qualified</div><div style="font-size:1.6rem;font-weight:700;color:#10b981">${bs.qualified||0}</div></div>
+        <div class="card"><div style="font-size:0.75rem;color:#94a3b8;text-transform:uppercase">Closed Won</div><div style="font-size:1.6rem;font-weight:700;color:#10b981">${bs.closed_won||0}</div></div>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">
+        <select onchange="_leadsState.channel=this.value;_leadsState.cursor=null;loadLeads()" style="background:#1e293b;color:#e2e8f0;border:1px solid #334155;border-radius:6px;padding:6px 10px">
+          <option value="">All channels</option>
+          <option value="discovery"${_leadsState.channel==='discovery'?' selected':''}>Discovery</option>
+          <option value="onboard"${_leadsState.channel==='onboard'?' selected':''}>Onboard</option>
+          <option value="owl_form"${_leadsState.channel==='owl_form'?' selected':''}>Owl form</option>
+          <option value="audit"${_leadsState.channel==='audit'?' selected':''}>Audit (€99)</option>
+          <option value="email"${_leadsState.channel==='email'?' selected':''}>Email</option>
+          <option value="whatsapp"${_leadsState.channel==='whatsapp'?' selected':''}>WhatsApp</option>
+          <option value="manual"${_leadsState.channel==='manual'?' selected':''}>Manual</option>
+        </select>
+        <select onchange="_leadsState.status=this.value;_leadsState.cursor=null;loadLeads()" style="background:#1e293b;color:#e2e8f0;border:1px solid #334155;border-radius:6px;padding:6px 10px">
+          <option value="">All statuses</option>
+          <option value="new,contacted,qualified"${_leadsState.status==='new,contacted,qualified'?' selected':''}>Active</option>
+          <option value="new"${_leadsState.status==='new'?' selected':''}>New</option>
+          <option value="contacted"${_leadsState.status==='contacted'?' selected':''}>Contacted</option>
+          <option value="qualified"${_leadsState.status==='qualified'?' selected':''}>Qualified</option>
+          <option value="closed_won"${_leadsState.status==='closed_won'?' selected':''}>Closed won</option>
+          <option value="closed_lost"${_leadsState.status==='closed_lost'?' selected':''}>Closed lost</option>
+          <option value="spam"${_leadsState.status==='spam'?' selected':''}>Spam</option>
+        </select>
+        <input type="search" placeholder="Search email/name/business…" value="${esc(_leadsState.q)}" oninput="_leadsState.q=this.value;clearTimeout(window._leadsDebounce);window._leadsDebounce=setTimeout(()=>{_leadsState.cursor=null;loadLeads()},300)" style="flex:1;background:#1e293b;color:#e2e8f0;border:1px solid #334155;border-radius:6px;padding:6px 10px">
+        <span style="margin-left:auto;color:#94a3b8;font-size:0.85rem;align-self:center">${agg.total||0} total</span>
+      </div>`;
+    const rowsHtml = (d.leads || []).map(l => {
+      const chipColor = { discovery:'#0e7490', onboard:'#7c3aed', owl_form:'#15803d', audit:'#b91c1c', email:'#92400e', whatsapp:'#10b981', manual:'#475569' }[l.primary_channel] || '#475569';
+      return `
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <span style="background:${chipColor};color:#fff;padding:2px 8px;border-radius:99px;font-size:0.7rem;text-transform:uppercase;letter-spacing:0.04em">${esc(l.primary_channel)}</span>
+              ${(l.channels||[]).filter(c=>c!==l.primary_channel).map(c=>`<span style="background:#334155;color:#cbd5e1;padding:2px 6px;border-radius:99px;font-size:0.65rem;margin-left:4px">${esc(c)}</span>`).join('')}
+              ${l.priority>=2?`<span style="background:#dc2626;color:#fff;padding:2px 6px;border-radius:99px;font-size:0.65rem;margin-left:4px">P${l.priority}</span>`:''}
+            </div>
+            <select onchange="updateLeadStatus('${l.id}', this.value, '${l.status}')" style="background:#1e293b;color:#e2e8f0;border:1px solid #334155;border-radius:4px;padding:4px 8px;font-size:0.85rem">
+              ${['new','contacted','qualified','closed_won','closed_lost','spam'].map(s=>`<option value="${s}"${l.status===s?' selected':''}>${s}</option>`).join('')}
+            </select>
+          </div>
+          <div style="font-size:0.95rem;margin-bottom:6px"><strong>${esc(l.business_name||l.contact_name||'(no name)')}</strong></div>
+          <div style="font-size:0.85rem;color:#94a3b8">
+            ${l.contact_email?`<span>${esc(l.contact_email)}</span>`:''}
+            ${l.contact_phone?` · <span>${esc(l.contact_phone)}</span>`:''}
+            ${l.contact_name && l.business_name?` · ${esc(l.contact_name)}`:''}
+          </div>
+          <div style="font-size:0.75rem;color:#64748b;margin-top:6px">
+            Last touch: ${esc(l.last_touch_at||'')} · Created: ${esc(l.created_at||'')}
+            ${l.notes?`<div style="margin-top:4px;color:#cbd5e1;font-style:italic">${esc(l.notes)}</div>`:''}
+          </div>
+        </div>`;
+    }).join('');
+    const more = d.next_cursor ? `<button onclick="_leadsState.cursor='${d.next_cursor}';loadLeads(true)" style="background:#22d3ee;color:#0f172a;border:0;padding:8px 16px;border-radius:6px;cursor:pointer;margin-top:12px">Load more</button>` : '';
+    if (append) {
+      sec.insertAdjacentHTML('beforeend', rowsHtml + more);
+    } else {
+      sec.innerHTML = kpis + (rowsHtml || '<div class="empty">No leads in this filter.</div>') + more;
+    }
+  } catch (e) {
+    sec.innerHTML = `<div class="empty">Error loading leads: ${esc(String(e))}</div>`;
+  }
+}
+
+async function updateLeadStatus(leadId, newStatus, oldStatus) {
+  try {
+    const r = await fetch(`${BASE}/admin/api/leads/${leadId}?token=${TOKEN}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: newStatus })
+    });
+    if (!r.ok) {
+      const err = await r.json().catch(()=>({}));
+      toast(`Status change rejected: ${err.detail||r.statusText}`, true);
+      // Reload to revert UI
+      loadLeads();
+      return;
+    }
+    toast(`Status: ${oldStatus} → ${newStatus}`);
+    loadLeadsBadge();
+  } catch (e) {
+    toast(`Error: ${e}`, true);
+    loadLeads();
+  }
 }
 
 // ── Discovery quiz submissions (P2-2) ────────────────────────────────────────

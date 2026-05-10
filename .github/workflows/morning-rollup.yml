@@ -1,0 +1,61 @@
+name: Daily lead pipeline roll-up
+
+# Fires daily at 06:30 UTC (~07:30 Dublin during summer; 06:30 in winter).
+# Reads unified_leads + lead_status_log, emails Adam via Resend +
+# Telegram one-line ping. Idempotent on 12h cooldown via cron_runs heartbeat.
+#
+# Belt-and-braces with in-app APScheduler (future) and Coolify cron.
+# If two of three fire same day, the cooldown guard skips duplicates.
+
+on:
+  schedule:
+    - cron: "30 6 * * *"
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "live (default), dry-run, or force"
+        required: false
+        default: "live"
+        type: choice
+        options:
+          - live
+          - dry-run
+          - force
+
+jobs:
+  rollup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install psycopg
+        run: |
+          python -m pip install --upgrade pip
+          pip install "psycopg[binary]>=3.1,<4"
+
+      - name: Run morning roll-up
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_OWNER_CHAT_ID: ${{ secrets.TELEGRAM_OWNER_CHAT_ID }}
+          ROLLUP_TO_EMAIL: ${{ secrets.ROLLUP_TO_EMAIL }}
+          ROLLUP_FROM_EMAIL: ${{ secrets.ROLLUP_FROM_EMAIL }}
+        run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "::error::DATABASE_URL secret not set."
+            exit 1
+          fi
+          MODE="${{ github.event.inputs.mode }}"
+          case "$MODE" in
+            dry-run) python scripts/morning_rollup.py --dry-run ;;
+            force)   python scripts/morning_rollup.py --force ;;
+            *)       python scripts/morning_rollup.py ;;
+          esac
