@@ -168,6 +168,135 @@
     font-size: 0.7rem; font-weight: 600; letter-spacing: 0.02em;
   }
 
+  /* ===== Light theme (PDR-ADMIN-DECISION-SURFACE-2026-05-12) ===== */
+  body.theme-light {
+    --bg-base: #f9fafb;
+    --bg-card: #ffffff;
+    --bg-elev: #f3f4f6;
+    --border: #e5e7eb;
+    --border-strong: #d1d5db;
+    --text: #111827;
+    --muted: #4b5563;
+    --dim: #6b7280;
+    --faint: #9ca3af;
+    --accent: #0891b2;
+    --accent-glow: rgba(8,145,178,0.18);
+    --ok: #16a34a;
+    --warn: #ca8a04;
+    --fail: #dc2626;
+    --shadow-sm: 0 1px 2px rgba(0,0,0,0.06);
+    --shadow-md: 0 4px 12px rgba(0,0,0,0.08);
+    --shadow-lg: 0 10px 30px rgba(0,0,0,0.10);
+    color: var(--text);
+  }
+  body.theme-light, body.theme-light * { color: inherit; }
+  body.theme-light h1, body.theme-light h2, body.theme-light h3 { color: var(--text); }
+  body.theme-light .card { color: var(--text); }
+  body.theme-light .subtitle, body.theme-light .empty { color: var(--muted); }
+  body.theme-light .btn { background: var(--accent); color: #ffffff; border: 0; }
+  body.theme-light input, body.theme-light textarea, body.theme-light select {
+    background: var(--bg-elev) !important; color: var(--text) !important;
+    border-color: var(--border) !important;
+  }
+  body.theme-light kbd {
+    background: var(--bg-elev); color: var(--accent); border-color: var(--border);
+  }
+
+  /* ===== Today / Decision-surface layout ===== */
+  .today-grid {
+    display: grid;
+    grid-template-columns: 1fr 360px;
+    gap: 16px;
+    align-items: start;
+  }
+  @media (max-width: 920px) {
+    .today-grid { grid-template-columns: 1fr; }
+  }
+  .action-row {
+    display: flex; align-items: center; gap: 12px;
+    padding: 14px 16px; background: var(--bg-card);
+    border: 1px solid var(--border); border-radius: 10px;
+    margin-bottom: 10px; cursor: pointer;
+    transition: border-color var(--transition), transform var(--transition);
+    box-shadow: var(--shadow-sm);
+  }
+  .action-row:hover { border-color: var(--accent); box-shadow: var(--shadow-md); }
+  .action-row .ar-rank {
+    min-width: 36px; height: 36px; border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 700; font-size: 0.85rem;
+    background: var(--bg-elev); color: var(--muted);
+  }
+  .action-row.heat-hot .ar-rank { background: rgba(239,68,68,0.16); color: #fca5a5; }
+  .action-row.heat-warm .ar-rank { background: rgba(251,191,36,0.16); color: #fde68a; }
+  body.theme-light .action-row.heat-hot .ar-rank { background: #fee2e2; color: #b91c1c; }
+  body.theme-light .action-row.heat-warm .ar-rank { background: #fef3c7; color: #92400e; }
+  .ar-body { flex: 1; min-width: 0; }
+  .ar-name { font-weight: 600; color: var(--text); font-size: 0.95rem; }
+  .ar-meta { font-size: 0.74rem; color: var(--muted); margin-top: 2px; }
+  .ar-state { font-size: 0.66rem; text-transform: uppercase; letter-spacing: 0.06em;
+              color: var(--accent); margin-top: 4px; font-weight: 600; }
+  .ar-cta { white-space: nowrap; }
+  .heat-pill {
+    display: inline-block; padding: 2px 8px; border-radius: 999px;
+    font-size: 0.66rem; font-weight: 600; letter-spacing: 0.04em;
+  }
+  .heat-pill.hot { background: rgba(239,68,68,0.16); color: #fca5a5; }
+  .heat-pill.warm { background: rgba(251,191,36,0.16); color: #fde68a; }
+  .heat-pill.cold { background: rgba(100,116,139,0.16); color: #94a3b8; }
+  body.theme-light .heat-pill.hot { background: #fee2e2; color: #b91c1c; }
+  body.theme-light .heat-pill.warm { background: #fef3c7; color: #92400e; }
+  body.theme-light .heat-pill.cold { background: #e5e7eb; color: #475569; }
+
+  /* Side panels (signal stream, money pulse, system pulse) */
+  .side-panel {
+    background: var(--bg-card); border: 1px solid var(--border);
+    border-radius: 10px; padding: 14px; margin-bottom: 12px;
+  }
+  .side-panel h4 {
+    margin: 0 0 10px; font-size: 0.78rem; font-weight: 600;
+    letter-spacing: 0.04em; color: var(--muted); text-transform: uppercase;
+  }
+
+  /* Right drawer (desktop) / full-sheet (mobile) */
+  #actionDrawer {
+    display: none;
+    position: fixed; top: 0; right: 0; bottom: 0;
+    width: 440px; max-width: 100vw;
+    background: var(--bg-card);
+    border-left: 1px solid var(--border);
+    box-shadow: var(--shadow-lg);
+    z-index: 2000; overflow-y: auto;
+    transform: translateX(100%); transition: transform 0.24s cubic-bezier(0.4,0,0.2,1);
+    padding: 22px 22px calc(22px + env(safe-area-inset-bottom));
+  }
+  #actionDrawer.open { display: block; transform: translateX(0); }
+  #drawerBackdrop {
+    display: none; position: fixed; inset: 0;
+    background: rgba(0,0,0,0.45); z-index: 1990;
+  }
+  #drawerBackdrop.open { display: block; }
+  #actionDrawer .dr-close {
+    position: absolute; top: 14px; right: 14px;
+    background: var(--bg-elev); color: var(--muted);
+    border: 1px solid var(--border); border-radius: 6px;
+    padding: 4px 10px; cursor: pointer; font-size: 0.78rem;
+  }
+  #actionDrawer .dr-section {
+    border-top: 1px solid var(--border); padding: 14px 0;
+  }
+  #actionDrawer .dr-section:first-of-type { border-top: 0; padding-top: 0; }
+  #actionDrawer .dr-section h4 {
+    margin: 0 0 8px; font-size: 0.72rem; letter-spacing: 0.06em;
+    color: var(--muted); text-transform: uppercase;
+  }
+  @media (max-width: 720px) {
+    #actionDrawer { width: 100vw; border-left: 0; border-top: 1px solid var(--border);
+      border-radius: 16px 16px 0 0;
+      top: auto; bottom: 0; max-height: 90vh; transform: translateY(100%); }
+    #actionDrawer.open { transform: translateY(0); }
+  }
+
   /* ===== PWA / Native-app feel on mobile (PDR 2026-05-11) ===== */
   /* Skeleton shimmer */
   @keyframes shimmer { 0% { background-position: -400px 0; } 100% { background-position: 400px 0; } }
@@ -377,6 +506,7 @@
   </div>
 
   <div class="tabs">
+    <button class="tab" onclick="switchTab('today')">🎯 Today</button>
     <button class="tab active" onclick="switchTab('pending')">
       Queue <span id="pendingBadge" class="badge" style="display:none"></span>
     </button>
@@ -402,7 +532,8 @@
     <button class="tab" onclick="switchTab('settings')">Settings</button>
   </div>
 
-  <div id="pendingSection" class="section active"></div>
+  <div id="todaySection" class="section active"></div>
+  <div id="pendingSection" class="section"></div>
   <div id="clientsSection" class="section"></div>
   <div id="callsSection" class="section">
     <div class="card" style="margin-bottom:12px;background:#0a0e1a;border:1px solid #22d3ee44">
@@ -449,19 +580,23 @@
 
 <div id="toast" class="toast" style="display:none"></div>
 
+<!-- Right-drawer / mobile bottom-sheet for action workspace -->
+<div id="drawerBackdrop" onclick="closeDrawer()"></div>
+<div id="actionDrawer">
+  <button class="dr-close" onclick="closeDrawer()">Close · Esc</button>
+  <div id="drawerBody">Loading…</div>
+</div>
+
 <!-- Mobile bottom-tab nav (hidden on desktop via @media query) -->
 <nav id="bottomNav">
+  <button data-tab="today" onclick="mobileTab('today')" class="active">
+    <span class="bn-icon">🎯</span><span>Today</span>
+  </button>
   <button data-tab="calls" onclick="mobileTab('calls')">
     <span class="bn-icon">📞</span><span>Calls</span>
   </button>
   <button data-tab="recordings" onclick="mobileTab('recordings')">
     <span class="bn-icon">🎙</span><span>Recordings</span>
-  </button>
-  <button data-tab="revenue" onclick="mobileTab('revenue')">
-    <span class="bn-icon">💶</span><span>Revenue</span>
-  </button>
-  <button data-tab="errors" onclick="mobileTab('errors')">
-    <span class="bn-icon">⚠</span><span>Errors</span>
   </button>
   <button onclick="openMoreSheet()">
     <span class="bn-icon">⋯</span><span>More</span>
@@ -472,6 +607,8 @@
 <div id="moreSheet">
   <div class="more-handle"></div>
   <button onclick="mobileTab('pending');closeMoreSheet()"><span class="ms-icon">📋</span>Queue</button>
+  <button onclick="mobileTab('revenue');closeMoreSheet()"><span class="ms-icon">💶</span>Revenue</button>
+  <button onclick="mobileTab('errors');closeMoreSheet()"><span class="ms-icon">⚠</span>Errors</button>
   <button onclick="mobileTab('clients');closeMoreSheet()"><span class="ms-icon">👥</span>Active Clients</button>
   <button onclick="mobileTab('discovery');closeMoreSheet()"><span class="ms-icon">🔍</span>Discovery</button>
   <button onclick="mobileTab('leads');closeMoreSheet()"><span class="ms-icon">🌱</span>Leads</button>
@@ -508,6 +645,7 @@ function logout() {
 
 // Check URL param (highest priority — fresh bookmark) → localStorage (persistent) → sessionStorage (legacy fallback)
 window.onload = () => {
+  initTheme();
   const params = new URLSearchParams(window.location.search);
   const urlToken = params.get('token');
   const t = urlToken || localStorage.getItem('admin_token') || sessionStorage.getItem('admin_token');
@@ -528,6 +666,9 @@ window.onload = () => {
     // Sprint 3 — cost strip every 60s
     loadOperationsSummary();
     setInterval(loadOperationsSummary, 60000);
+    // Decision-surface — load Today as default landing
+    loadToday();
+    setInterval(loadToday, 45000);  // re-rank every 45s
   }
   document.getElementById('tokenInput').addEventListener('keydown', e => {
     if (e.key === 'Enter') login();
@@ -537,7 +678,7 @@ window.onload = () => {
 let callsAutoRefresh = null;
 
 function switchTab(tab) {
-  const tabs = ['pending', 'clients', 'calls', 'discovery', 'leads', 'ads', 'assistants', 'recordings', 'revenue', 'flow', 'errors', 'inbox', 'settings'];
+  const tabs = ['today', 'pending', 'clients', 'calls', 'discovery', 'leads', 'ads', 'assistants', 'recordings', 'revenue', 'flow', 'errors', 'inbox', 'settings'];
   document.querySelectorAll('.tab').forEach((t, i) => {
     t.classList.toggle('active', tabs[i] === tab);
   });
@@ -555,6 +696,7 @@ function switchTab(tab) {
     clearInterval(callsAutoRefresh);
     callsAutoRefresh = null;
   }
+  if (tab === 'today') loadToday();
   if (tab === 'discovery') loadDiscovery();
   if (tab === 'leads') loadLeads();
   if (tab === 'ads') loadAds();
@@ -1291,17 +1433,22 @@ document.addEventListener('keydown', (e) => {
   const tag = (e.target && e.target.tagName) || '';
   if (['INPUT', 'TEXTAREA', 'SELECT'].includes(tag) || e.target.isContentEditable) return;
   if (e.ctrlKey || e.metaKey || e.altKey) return;
-  const tabs = ['pending', 'clients', 'calls', 'discovery', 'leads', 'ads', 'assistants', 'recordings', 'revenue', 'flow', 'errors', 'inbox', 'settings'];
+  const tabs = ['today', 'pending', 'clients', 'calls', 'discovery', 'leads', 'ads', 'assistants', 'recordings', 'revenue', 'flow', 'errors', 'inbox', 'settings'];
   if (e.key === '?') { e.preventDefault(); showKeyboardHelp(); return; }
-  if (e.key === 'Escape') { document.getElementById('kbHelp').style.display = 'none'; return; }
+  if (e.key === 'Escape') {
+    document.getElementById('kbHelp').style.display = 'none';
+    closeDrawer();
+    return;
+  }
   if (e.key === 'h') { toggleHealthDetail(); return; }
   if (e.key === 'r') { if (typeof loadAll === 'function') loadAll(); return; }
+  if (e.key === 't') { switchTab('today'); return; }
   if (e.key === '0') { switchTab('flow'); return; }
   if (e.key === 'e') { switchTab('errors'); return; }
   if (e.key === 'i') { switchTab('inbox'); return; }
   if (e.key === 's') { switchTab('settings'); return; }
   if (e.key >= '1' && e.key <= '9') {
-    const idx = parseInt(e.key, 10) - 1;
+    const idx = parseInt(e.key, 10);  // 1 maps to tabs[1]=pending; today is t key
     if (tabs[idx]) switchTab(tabs[idx]);
     return;
   }
@@ -1787,9 +1934,24 @@ async function loadSettings() {
     }
   } catch (e) { heatHtml = `err: ${esc(e.message)}`; }
 
+  const themeCurrent = localStorage.getItem('admin_theme') || 'dark';
   el.innerHTML = `
     <div class="card" style="padding:14px;margin-bottom:14px">
-      <h3 style="margin:0 0 10px;color:#22d3ee">Admin token rotation</h3>
+      <h3 style="margin:0 0 10px;color:var(--accent)">Theme</h3>
+      <p style="font-size:0.78rem;color:var(--muted);margin:0 0 12px">
+        Off-white minimal (light) vs. air-traffic-control (dark) vs. follow OS.
+      </p>
+      <div style="display:flex;gap:8px">
+        ${['dark','light','auto'].map(m => `
+          <button onclick="setTheme('${m}');loadSettings();showToast('Theme: ${m}','success')"
+            style="background:${themeCurrent===m?'var(--accent)':'var(--bg-elev)'};color:${themeCurrent===m?'#fff':'var(--text)'};border:1px solid var(--border);padding:8px 14px;border-radius:6px;cursor:pointer;font-size:0.85rem;text-transform:capitalize">
+            ${m}
+          </button>`).join('')}
+      </div>
+    </div>
+
+    <div class="card" style="padding:14px;margin-bottom:14px">
+      <h3 style="margin:0 0 10px;color:var(--accent)">Admin token rotation</h3>
       <p style="font-size:0.78rem;color:#94a3b8;margin:0 0 12px">
         Rotates ADMIN_TOKEN env on Coolify + restarts container. Old token works ~30s during restart.
         New token displayed ONCE — copy immediately.
@@ -1835,6 +1997,268 @@ async function rotateAdminToken() {
   } catch (e) {
     out.innerHTML = `<span style="color:#ef4444">err: ${esc(e.message)}</span>`;
   }
+}
+
+// ========== Decision-surface Today + drawer (PDR 2026-05-12) ==========
+
+const STATE_LABELS = {
+  demo_complete_hot: { icon: '🔥', label: 'Demo HOT' },
+  demo_complete_warm: { icon: '🌡', label: 'Demo WARM' },
+  demo_complete_browsing: { icon: '❄', label: 'Demo cold' },
+  recording_ready_no_demo: { icon: '🎙', label: 'Recording only' },
+  submission_pending: { icon: '📋', label: 'Onboarding pending' },
+  stripe_session_open: { icon: '💳', label: 'Payment in flight' },
+  system_fault: { icon: '⚠', label: 'System fault' },
+  whatsapp_unread: { icon: '💬', label: 'WhatsApp unread' },
+};
+
+async function loadToday() {
+  const el = document.getElementById('todaySection');
+  el.innerHTML = '<div class="empty">Ranking next-best-actions…</div>';
+  try {
+    const res = await fetch(`${BASE}/admin/api/today-actions?token=${encodeURIComponent(TOKEN)}&limit=12`);
+    if (!res.ok) { el.innerHTML = `<div class="empty">HTTP ${res.status}</div>`; return; }
+    const d = await res.json();
+
+    // Also pull operations summary for Money pulse + Signal stream context
+    let ops = null, events = null;
+    try {
+      ops = await (await fetch(`${BASE}/admin/api/operations-summary?token=${encodeURIComponent(TOKEN)}`)).json();
+    } catch(e) {}
+    try {
+      const er = await (await fetch(`${BASE}/admin/api/events?token=${encodeURIComponent(TOKEN)}&limit=12`));
+      events = await er.json();
+    } catch(e) {}
+
+    const actionsHtml = d.actions.length
+      ? d.actions.map((a, i) => {
+          const heat = a.heat === 'very_interested' || a.heat === 'hot' ? 'hot'
+                     : a.heat === 'curious' || a.heat === 'warm' ? 'warm' : 'cold';
+          const heatCls = `action-row heat-${heat}`;
+          const stateMeta = STATE_LABELS[a.state] || { icon: '•', label: a.state };
+          const phone = (a.subject && a.subject.phone) || '';
+          const callId = (a.context && a.context.call_id) || '';
+          const submissionId = (a.context && a.context.submission_id);
+          const sessionId = (a.context && a.context.session_id);
+          const tier = (a.context && a.context.tier_hint) || 'professional';
+          const onClickArg = JSON.stringify({
+            call_id: callId, phone: phone, tier: tier,
+            name: a.subject && a.subject.name, business: a.subject && a.subject.business,
+            state: a.state, suggested: a.suggested_action,
+            session_id: sessionId, submission_id: submissionId,
+          }).replace(/"/g, '&quot;');
+          return `<div class="${heatCls}" onclick='openDrawer(${JSON.stringify({
+            call_id: callId, phone: phone, tier: tier,
+            name: (a.subject && a.subject.name) || '?',
+            business: (a.subject && a.subject.business) || '?',
+            state: a.state, suggested: a.suggested_action,
+            session_id: sessionId, submission_id: submissionId,
+            label: a.suggested_action_label,
+          }).replace(/'/g, '&#39;')})'>
+            <div class="ar-rank">${stateMeta.icon}</div>
+            <div class="ar-body">
+              <div class="ar-name">${esc(a.subject && a.subject.name || '?')} <span style="color:var(--muted);font-weight:400">· ${esc(a.subject && a.subject.business || '?')}</span></div>
+              <div class="ar-meta">${esc(stateMeta.label)} · ${esc(phone || '—')}${a.context && a.context.summary ? ` · ${esc(a.context.summary.slice(0,60))}` : ''}</div>
+              <div class="ar-state"><span class="heat-pill ${heat}">${esc(a.heat || '?')}</span> · score ${a.rank_score}</div>
+            </div>
+            <div class="ar-cta">
+              <button class="btn btn-provision" onclick="event.stopPropagation();openDrawer(${JSON.stringify({
+                call_id: callId, phone: phone, tier: tier,
+                name: (a.subject && a.subject.name) || '?',
+                business: (a.subject && a.subject.business) || '?',
+                state: a.state, suggested: a.suggested_action,
+                session_id: sessionId, submission_id: submissionId,
+                label: a.suggested_action_label,
+              }).replace(/'/g, '&#39;')})">${esc(a.suggested_action_label || 'Act')}</button>
+            </div>
+          </div>`;
+        }).join('')
+      : '<div class="empty">No urgent actions. Run a ringtest to populate, or wait for next caller.</div>';
+
+    // Money pulse (compact)
+    const moneyHtml = ops ? `
+      <div class="side-panel">
+        <h4>Money pulse · today</h4>
+        <div style="display:flex;gap:14px;font-size:0.85rem">
+          <div><span style="color:var(--muted);font-size:0.7rem">REV</span><br><strong style="color:var(--ok)">${eur(ops.today.revenue_minor)}</strong></div>
+          <div><span style="color:var(--muted);font-size:0.7rem">COST</span><br><strong style="color:var(--fail)">${eur(ops.today.settled_fees_minor + ops.today.vapi_cost_minor)}</strong></div>
+          <div><span style="color:var(--muted);font-size:0.7rem">NET</span><br><strong style="color:var(--accent)">${eur(ops.today.net_minor - ops.today.vapi_cost_minor)}</strong></div>
+        </div>
+        <div style="color:var(--muted);font-size:0.72rem;margin-top:8px">${ops.today.calls_count} calls · ${ops.today.vapi_minutes} min · ${ops.last_7_days.demos_count} demos / 7d · ${ops.last_7_days.converted_count} conv</div>
+      </div>
+    ` : '<div class="side-panel"><h4>Money pulse</h4><div class="empty" style="padding:8px 0">no data</div></div>';
+
+    // System pulse (only loud if NOT ok)
+    let systemHtml = '';
+    try {
+      const hr = await fetch(`${BASE}/admin/api/health-detail?token=${encodeURIComponent(TOKEN)}`);
+      const hd = await hr.json();
+      if (hd.overall === 'ok') {
+        systemHtml = `<div class="side-panel" style="border-left:3px solid var(--ok)">
+          <h4>System pulse</h4>
+          <div style="font-size:0.78rem;color:var(--ok)">All systems green · ${hd.probes.length} probes</div>
+        </div>`;
+      } else {
+        const bad = hd.probes.filter(p => p.status !== 'ok');
+        systemHtml = `<div class="side-panel" style="border-left:3px solid var(${hd.overall==='fail'?'--fail':'--warn'})">
+          <h4>System pulse — ${esc(hd.overall.toUpperCase())}</h4>
+          ${bad.map(p => `<div style="font-size:0.78rem;color:var(--${p.status==='fail'?'fail':'warn'});margin-bottom:4px">${esc(p.name)}: ${esc(p.detail)}</div>`).join('')}
+        </div>`;
+      }
+    } catch(e) {}
+
+    // Signal stream (recent raw events)
+    const evList = (events || []).filter(e => e.event_type !== 'call-ended').slice(0, 8);
+    const signalHtml = `<div class="side-panel">
+      <h4>Signal stream</h4>
+      ${evList.length ? evList.map(ev => `
+        <div style="display:flex;gap:8px;align-items:center;font-size:0.74rem;padding:5px 0;border-bottom:1px solid var(--border)">
+          <span style="color:var(--dim);font-family:monospace;min-width:50px">${esc(String(ev.created_at).slice(11,19) || '?')}</span>
+          <span style="color:var(--accent)">${esc(ev.event_type)}</span>
+          <span style="color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(ev.summary || '')}</span>
+        </div>`).join('') : '<div class="empty" style="padding:8px 0">no recent events</div>'}
+    </div>`;
+
+    el.innerHTML = `
+      <div style="display:flex;justify-content:space-between;align-items:baseline;margin:0 0 14px">
+        <h2 style="margin:0;font-size:1.1rem;color:var(--text)">Next best actions</h2>
+        <span style="color:var(--muted);font-size:0.72rem">${d.actions.length} of ${d.total_seen} ranked · ${esc(d.ts.slice(11,19))} UTC</span>
+      </div>
+      <div class="today-grid">
+        <div>${actionsHtml}</div>
+        <div>${systemHtml}${moneyHtml}${signalHtml}</div>
+      </div>`;
+  } catch (e) { el.innerHTML = `<div class="empty">err: ${esc(e.message)}</div>`; }
+}
+
+function openDrawer(ctx) {
+  const drawer = document.getElementById('actionDrawer');
+  const backdrop = document.getElementById('drawerBackdrop');
+  const body = document.getElementById('drawerBody');
+  drawer.classList.add('open'); backdrop.classList.add('open');
+  body.innerHTML = `
+    <h3 style="margin:0 0 4px;color:var(--text)">${esc(ctx.name || '?')}</h3>
+    <div style="font-size:0.78rem;color:var(--muted);margin-bottom:14px">${esc(ctx.business || '?')} · ${esc(ctx.phone || '—')}</div>
+    <div id="drawerTimeline" class="dr-section"><h4>Timeline</h4><div class="empty" style="padding:8px 0">loading…</div></div>
+    <div id="drawerRecording" class="dr-section"><h4>Recording</h4><div class="empty" style="padding:8px 0">loading…</div></div>
+    <div class="dr-section">
+      <h4>Send setup link</h4>
+      <div style="display:grid;gap:8px">
+        <input id="drPhone" type="text" value="${esc(ctx.phone || '')}" placeholder="+353..."
+          style="background:var(--bg-elev);color:var(--text);border:1px solid var(--border);padding:8px 10px;border-radius:6px;font-family:monospace">
+        <select id="drTier" style="background:var(--bg-elev);color:var(--text);border:1px solid var(--border);padding:8px 10px;border-radius:6px">
+          <option value="professional" ${ctx.tier==='professional'?'selected':''}>Professional €249/mo</option>
+          <option value="growth" ${ctx.tier==='growth'?'selected':''}>Growth €397/mo</option>
+        </select>
+        <label style="font-size:0.78rem;color:var(--muted)"><input type="checkbox" id="drSetup" checked> Bundle €297 setup</label>
+        <button class="btn btn-provision" onclick="drawerSendLink()">Send link</button>
+        <div id="drResult" style="font-size:0.78rem;color:var(--muted);min-height:1.2em"></div>
+      </div>
+    </div>
+    ${ctx.session_id ? `<div class="dr-section"><h4>Stripe session</h4>
+      <div style="font-family:monospace;font-size:0.72rem;color:var(--muted);word-break:break-all">${esc(ctx.session_id)}</div>
+      <a href="https://dashboard.stripe.com/payments/${esc(ctx.session_id)}" target="_blank" style="color:var(--accent);font-size:0.78rem">→ open in Stripe</a>
+    </div>` : ''}
+    ${ctx.submission_id ? `<div class="dr-section"><h4>Onboarding</h4>
+      <button class="btn btn-provision" onclick="drawerProvision(${ctx.submission_id})">Provision assistant</button>
+      <button class="btn btn-reject" onclick="drawerReject(${ctx.submission_id})">Reject</button>
+    </div>` : ''}`;
+
+  // Async: timeline + recording
+  if (ctx.call_id) {
+    fetch(`${BASE}/admin/api/caller/${encodeURIComponent(ctx.call_id)}?token=${encodeURIComponent(TOKEN)}`)
+      .then(r => r.json()).then(d => {
+        const tl = document.getElementById('drawerTimeline');
+        if (!tl) return;
+        tl.innerHTML = `<h4>Timeline</h4>` + (d.events.length ? d.events.map(ev => {
+          const ts = (ev.ts||'').replace('T',' ').slice(11,19);
+          return `<div style="display:flex;gap:8px;font-size:0.74rem;padding:4px 0;border-bottom:1px solid var(--border)">
+            <span style="color:var(--dim);font-family:monospace">${esc(ts)}</span>
+            <span style="color:var(--accent)">${esc(ev.event_type)}</span>
+            <span style="color:var(--muted);flex:1;overflow:hidden;text-overflow:ellipsis">${esc(ev.summary || '')}</span>
+          </div>`;
+        }).join('') : '<div class="empty">No events</div>');
+      }).catch(()=>{});
+
+    fetch(`${BASE}/admin/api/recordings-enriched?token=${encodeURIComponent(TOKEN)}&limit=80`)
+      .then(r => r.json()).then(d => {
+        const rec = (d.recordings || []).find(r => r.call_id === ctx.call_id);
+        const recEl = document.getElementById('drawerRecording');
+        if (!recEl) return;
+        if (rec) {
+          recEl.innerHTML = `<h4>Recording</h4>
+            <audio controls src="${esc(rec.presigned_url)}" style="width:100%"></audio>
+            <a href="${esc(rec.presigned_url)}" download="${esc(rec.call_id)}.wav" target="_blank"
+               style="color:var(--accent);font-size:0.72rem">⬇ download</a>`;
+        } else {
+          recEl.innerHTML = `<h4>Recording</h4><div class="empty" style="padding:8px 0">No recording mirrored yet</div>`;
+        }
+      }).catch(()=>{});
+  } else {
+    document.getElementById('drawerTimeline').style.display = 'none';
+    document.getElementById('drawerRecording').style.display = 'none';
+  }
+}
+
+async function drawerSendLink() {
+  const phone = document.getElementById('drPhone').value.trim();
+  const tier = document.getElementById('drTier').value;
+  const includeSetup = document.getElementById('drSetup').checked;
+  const out = document.getElementById('drResult');
+  if (!phone.startsWith('+')) { out.textContent = '✗ phone must be E.164'; return; }
+  out.textContent = 'Sending…'; out.style.color = 'var(--warn)';
+  try {
+    const res = await fetch(`${BASE}/admin/api/send-setup-link?token=${encodeURIComponent(TOKEN)}`, {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({phone, tier, include_setup: includeSetup}),
+    });
+    const d = await res.json();
+    if (res.ok && d.ok) {
+      out.innerHTML = `✓ Sent · <a href="${esc(d.checkout_url)}" target="_blank" style="color:var(--accent)">checkout</a> · SMS ${esc(d.sms_status)}`;
+      out.style.color = 'var(--ok)';
+      showToast('SMS sent', 'success');
+    } else {
+      out.textContent = `✗ ${d.detail || JSON.stringify(d).slice(0,100)}`;
+      out.style.color = 'var(--fail)';
+    }
+  } catch (e) {
+    out.textContent = `✗ ${e.message}`; out.style.color = 'var(--fail)';
+  }
+}
+
+async function drawerProvision(id) {
+  if (!confirm('Provision assistant for this submission?')) return;
+  const r = await fetch(`${BASE}/admin/api/provision/${id}?token=${encodeURIComponent(TOKEN)}`, { method: 'POST' });
+  if (r.ok) { showToast('Provisioned', 'success'); closeDrawer(); loadToday(); }
+  else showToast('Provision failed', 'error');
+}
+
+async function drawerReject(id) {
+  if (!confirm('Reject this submission?')) return;
+  const r = await fetch(`${BASE}/admin/api/reject/${id}?token=${encodeURIComponent(TOKEN)}`, { method: 'POST' });
+  if (r.ok) { showToast('Rejected', 'error'); closeDrawer(); loadToday(); }
+  else showToast('Reject failed', 'error');
+}
+
+function closeDrawer() {
+  document.getElementById('actionDrawer').classList.remove('open');
+  document.getElementById('drawerBackdrop').classList.remove('open');
+}
+
+// ===== Theme system =====
+function setTheme(mode) {
+  if (mode === 'auto') {
+    const prefersLight = window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches;
+    document.body.classList.toggle('theme-light', prefersLight);
+  } else {
+    document.body.classList.toggle('theme-light', mode === 'light');
+  }
+  localStorage.setItem('admin_theme', mode);
+}
+function initTheme() {
+  const saved = localStorage.getItem('admin_theme') || 'dark';
+  setTheme(saved);
 }
 
 // ===== Mobile bottom-tab navigation =====
