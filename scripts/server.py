@@ -5610,6 +5610,180 @@ async def admin_call_scoring(token: str = Query(""), limit: int = Query(50)):
     return JSONResponse({"events": out, "count": len(out)})
 
 
+# ========== Sprint 4 (PRD-ADMIN-DASHBOARD-OWNER-CONTROL-2026-05-11) ==========
+# Gap 16 — Caller-entity grouping (recordings + events joined by call_id).
+# Gap 11 — Flow visualisation (read-only) — assistant squad routing diagram.
+# Gaps 9 (leads inbox) + 18 (failure clustering) deferred to Sprint 6.
+
+
+@app.get("/admin/api/recordings-enriched")
+async def admin_recordings_enriched(token: str = Query(""), limit: int = Query(50)):
+    """Gap 16 — Recordings + joined caller identity (CallRail pattern).
+
+    For each Hetzner recording, look up the same call_id in call_events to
+    pull: lead-captured (name/business_type), demo-complete (heat/next_action),
+    transfer events, assistant identity. Returns the unified caller-entity
+    rows for the Recordings tab UI.
+    """
+    check_admin(token)
+    ep = os.environ.get("HETZNER_OBJECT_STORAGE_ENDPOINT", "").strip()
+    ak = os.environ.get("HETZNER_OBJECT_STORAGE_ACCESS_KEY_ID", "").strip()
+    sk = os.environ.get("HETZNER_OBJECT_STORAGE_SECRET_ACCESS_KEY", "").strip()
+    bk = os.environ.get("HETZNER_OBJECT_STORAGE_BUCKET", "").strip()
+    if not all([ep, ak, sk, bk]):
+        raise HTTPException(status_code=500, detail="Hetzner creds missing")
+    try:
+        import boto3
+        from botocore.config import Config
+        s3 = boto3.client("s3", aws_access_key_id=ak, aws_secret_access_key=sk,
+                          endpoint_url=ep, region_name="eu-central",
+                          config=Config(signature_version="s3v4",
+                                        s3={"addressing_style": "path"}))
+        resp = s3.list_objects_v2(Bucket=bk, Prefix="recordings/", MaxKeys=min(limit, 500))
+        recordings = []
+        call_ids = []
+        for obj in resp.get("Contents", []):
+            call_id = obj["Key"].replace("recordings/", "").rsplit(".", 1)[0]
+            url = s3.generate_presigned_url(
+                "get_object",
+                Params={"Bucket": bk, "Key": obj["Key"]},
+                ExpiresIn=3600,
+            )
+            recordings.append({
+                "key": obj["Key"],
+                "call_id": call_id,
+                "size": obj["Size"],
+                "last_modified": obj["LastModified"].isoformat() if obj.get("LastModified") else None,
+                "presigned_url": url,
+            })
+            call_ids.append(call_id)
+        recordings.sort(key=lambda x: x["last_modified"] or "", reverse=True)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Hetzner list failed: {e}")
+
+    # Bulk fetch events for these call_ids
+    entities: dict[str, dict] = {}
+    if call_ids:
+        try:
+            with get_db() as conn:
+                placeholders = ",".join("?" * len(call_ids))
+                rows = conn.execute(
+                    f"SELECT call_id, event_type, detail, assistant, created_at "
+                    f"FROM call_events WHERE call_id IN ({placeholders}) "
+                    f"ORDER BY id ASC",
+                    call_ids,
+                ).fetchall()
+            for r in rows:
+                cid = r["call_id"]
+                e = entities.setdefault(cid, {
+                    "name": None, "phone": None, "business_type": None,
+                    "heat": None, "next_action": None, "assistants": set(),
+                    "event_types": [], "duration_proxy": None,
+                })
+                if r["assistant"]:
+                    e["assistants"].add(r["assistant"])
+                e["event_types"].append(r["event_type"])
+                try:
+                    d = json.loads(r["detail"] or "{}")
+                except Exception:
+                    d = {}
+                if r["event_type"] == "lead-captured":
+                    e["name"] = d.get("name") or e["name"]
+                    e["phone"] = d.get("contact_phone") or d.get("phone") or e["phone"]
+                    e["business_type"] = d.get("business_type") or e["business_type"]
+                if r["event_type"] == "demo-complete":
+                    e["heat"] = (d.get("interest_level") or e["heat"])
+                    e["next_action"] = d.get("next_action") or e["next_action"]
+        except Exception:
+            pass
+
+    # Attach entity to each recording
+    for r in recordings:
+        e = entities.get(r["call_id"], {})
+        if isinstance(e.get("assistants"), set):
+            e["assistants"] = sorted(e["assistants"])
+        r["caller"] = e or None
+
+    return JSONResponse({"recordings": recordings, "count": len(recordings)})
+
+
+@app.get("/admin/api/caller/{call_id}")
+async def admin_caller_timeline(call_id: str, token: str = Query("")):
+    """Gap 16 — full timeline for one call_id (CallRail caller-timeline pattern)."""
+    check_admin(token)
+    try:
+        with get_db() as conn:
+            rows = conn.execute(
+                "SELECT created_at, event_type, assistant, summary, detail "
+                "FROM call_events WHERE call_id = ? ORDER BY id ASC",
+                (call_id,),
+            ).fetchall()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"DB error: {e}")
+    events = []
+    for r in rows:
+        try:
+            d = json.loads(r["detail"] or "{}")
+        except Exception:
+            d = {}
+        events.append({
+            "ts": r["created_at"],
+            "event_type": r["event_type"],
+            "assistant": r["assistant"],
+            "summary": r["summary"],
+            "detail": d,
+        })
+    return JSONResponse({"call_id": call_id, "events": events, "count": len(events)})
+
+
+@app.get("/admin/api/flow-graph")
+async def admin_flow_graph(token: str = Query("")):
+    """Gap 11 — read-only assistant routing graph.
+
+    Returns nodes + edges describing the squad/transfer routing topology so
+    the admin UI renders a static SVG diagram. Sourced live from Vapi (each
+    assistant's transferCall tool destinations + the Claire qualifier squad).
+    """
+    check_admin(token)
+    vk = os.environ.get("VAPI_API_KEY", "").strip()
+    if not vk:
+        raise HTTPException(status_code=500, detail="VAPI_API_KEY missing")
+    async with httpx.AsyncClient(timeout=20) as c:
+        r = await c.get("https://api.vapi.ai/assistant",
+                        headers={"Authorization": f"Bearer {vk}"},
+                        params={"limit": 50})
+    if r.status_code != 200:
+        raise HTTPException(status_code=502, detail=f"Vapi HTTP {r.status_code}")
+    nodes = []
+    edges = []
+    for a in r.json():
+        aid = a.get("id")
+        name = a.get("name") or "?"
+        voice = (a.get("voice") or {}).get("voiceId") or ""
+        model = (a.get("model") or {})
+        nodes.append({
+            "id": aid,
+            "name": name,
+            "voice": voice[:8],
+            "tools_count": len(model.get("tools") or []),
+            "model": model.get("model", ""),
+        })
+        for tool in (model.get("tools") or []):
+            if tool.get("type") == "transferCall":
+                tname = (tool.get("function") or {}).get("name", "?")
+                for dest in (tool.get("destinations") or []):
+                    target = dest.get("number") or dest.get("extension") or dest.get("assistantName") or "?"
+                    edges.append({
+                        "from": aid,
+                        "from_name": name,
+                        "to_target": target,
+                        "to_kind": dest.get("type", "?"),
+                        "tool_name": tname,
+                        "mode": (dest.get("transferPlan") or {}).get("mode", "blind"),
+                    })
+    return JSONResponse({"nodes": nodes, "edges": edges})
+
+
 if __name__ == "__main__":
     import uvicorn
     port = int(os.environ.get("PORT", 8080))
