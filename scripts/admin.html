@@ -130,7 +130,37 @@
 
   <div id="pendingSection" class="section active"></div>
   <div id="clientsSection" class="section"></div>
-  <div id="callsSection" class="section"></div>
+  <div id="callsSection" class="section">
+    <div class="card" style="margin-bottom:12px;background:#0a0e1a;border:1px solid #22d3ee44">
+      <div class="card-header" style="padding-bottom:8px">
+        <strong style="color:#22d3ee">Send setup-link to live caller</strong>
+        <span style="color:#94a3b8;font-size:0.72rem;margin-left:8px">caller picks "lock in today" on demo line → Adam fires this → SMS lands on caller's mobile mid-call</span>
+      </div>
+      <div style="display:grid;grid-template-columns:2fr 1.6fr 1.4fr auto;gap:10px;align-items:end;padding:10px 0">
+        <div>
+          <label style="display:block;font-size:0.72rem;color:#94a3b8;margin-bottom:4px">Phone (E.164)</label>
+          <input id="sslPhone" type="text" placeholder="+353871234567"
+            style="width:100%;background:#0f172a;color:#e2e8f0;border:1px solid #334155;padding:8px;border-radius:4px;font-family:monospace">
+        </div>
+        <div>
+          <label style="display:block;font-size:0.72rem;color:#94a3b8;margin-bottom:4px">Tier</label>
+          <select id="sslTier"
+            style="width:100%;background:#0f172a;color:#e2e8f0;border:1px solid #334155;padding:8px;border-radius:4px">
+            <option value="professional">Professional €249/mo</option>
+            <option value="growth">Growth €397/mo</option>
+          </select>
+        </div>
+        <div>
+          <label style="display:block;font-size:0.72rem;color:#94a3b8;margin-bottom:4px">
+            <input type="checkbox" id="sslSetup" checked style="margin-right:4px"> Bundle €297 setup
+          </label>
+        </div>
+        <button class="btn btn-provision" onclick="sendSetupLink()" style="height:38px">Send</button>
+      </div>
+      <div id="sslResult" style="font-size:0.78rem;color:#94a3b8;min-height:1.2em;padding-top:4px"></div>
+    </div>
+    <div id="callsEventLog"></div>
+  </div>
   <div id="discoverySection" class="section"></div>
   <div id="leadsSection" class="section"></div>
   <div id="adsSection" class="section"></div>
@@ -467,8 +497,23 @@ async function loadEvents() {
     groups[key].push(ev);
   }
 
-  const el = document.getElementById('callsSection');
+  const el = document.getElementById('callsEventLog');
   const ts = new Date().toLocaleTimeString('en-IE', {hour:'2-digit', minute:'2-digit', second:'2-digit'});
+
+  // Auto-prefill setup-link phone from most-recent lead-captured event (only
+  // if Adam hasn't typed something already).
+  const phoneInput = document.getElementById('sslPhone');
+  if (phoneInput && !phoneInput.value.trim()) {
+    const latestLead = events.find(e => e.event_type === 'lead-captured');
+    if (latestLead) {
+      try {
+        const d = JSON.parse(latestLead.detail || '{}');
+        if (d.contact_phone && String(d.contact_phone).startsWith('+')) {
+          phoneInput.value = d.contact_phone;
+        }
+      } catch(e) {}
+    }
+  }
 
   if (!events.length) {
     el.innerHTML = '<div class="empty">No call events yet.<br>Events appear here as soon as a call hits any endpoint.</div>';
@@ -748,6 +793,40 @@ function copyPhone(phone) {
 function copyText(text) {
   navigator.clipboard.writeText(text);
   showToast('Copied!', 'success');
+}
+
+async function sendSetupLink() {
+  const phone = document.getElementById('sslPhone').value.trim();
+  const tier = document.getElementById('sslTier').value;
+  const includeSetup = document.getElementById('sslSetup').checked;
+  const resultEl = document.getElementById('sslResult');
+  if (!phone.startsWith('+') || phone.length < 8) {
+    resultEl.innerHTML = '<span style="color:#ef4444">Phone must be E.164 (start with +, min 8 chars)</span>';
+    return;
+  }
+  resultEl.innerHTML = '<span style="color:#fbbf24">Sending…</span>';
+  try {
+    const res = await fetch(`${BASE}/admin/api/send-setup-link?token=${encodeURIComponent(TOKEN)}`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({phone, tier, include_setup: includeSetup})
+    });
+    const d = await res.json();
+    if (res.ok && d.ok) {
+      const tierLabel = tier === 'professional' ? 'Professional (€249/mo)' : 'Growth (€397/mo)';
+      const setupBit = includeSetup ? ' + €297 setup' : '';
+      resultEl.innerHTML = `<span style="color:#4ade80">✓ Sent to ${esc(phone)} · ${tierLabel}${setupBit} · SMS ${esc(d.sms_status)} · `
+        + `<a href="${esc(d.checkout_url)}" target="_blank" rel="noopener" style="color:#22d3ee">checkout URL</a> · `
+        + `<code style="font-size:0.7rem;color:#64748b">${esc(d.session_id)}</code></span>`;
+      showToast('SMS sent', 'success');
+    } else {
+      resultEl.innerHTML = `<span style="color:#ef4444">FAIL (HTTP ${res.status}): ${esc(d.detail || JSON.stringify(d).slice(0,200))}</span>`;
+      showToast('Send failed', 'error');
+    }
+  } catch (e) {
+    resultEl.innerHTML = `<span style="color:#ef4444">Network error: ${esc(e.message)}</span>`;
+    showToast('Network error', 'error');
+  }
 }
 
 function showToast(msg, type = 'success') {
