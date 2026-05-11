@@ -4876,6 +4876,210 @@ async def admin_send_setup_link(request: Request, token: str = Query("")) -> JSO
     })
 
 
+# ========== Sprint 1 (PRD-ADMIN-DASHBOARD-OWNER-CONTROL-2026-05-11) ==========
+# Gaps 1 + 6 + 7 + 19 + 20 — silent-failure floor + free wins.
+
+COOLIFY_API_TOKEN_ENV = os.environ.get("COOLIFY_API_ROOT_TOKEN", "").strip()
+COOLIFY_API_ROOT_URL = os.environ.get("COOLIFY_URL", "http://178.104.205.255:8000").strip().rstrip("/")
+COOLIFY_APP_UUID_ENV = os.environ.get("COOLIFY_APP_UUID", "xml9wji6109b1kergfz05665").strip()
+
+
+async def _probe_stripe_key() -> dict:
+    if not OWL_STRIPE_API_KEY:
+        return {"name": "Stripe key", "status": "fail", "detail": "STRIPE_API_KEY not set"}
+    try:
+        async with httpx.AsyncClient(timeout=5) as c:
+            r = await c.get("https://api.stripe.com/v1/account",
+                            headers={"Authorization": f"Bearer {OWL_STRIPE_API_KEY}"})
+        if r.status_code == 200:
+            return {"name": "Stripe key", "status": "ok", "detail": r.json().get("id", "?")}
+        return {"name": "Stripe key", "status": "fail", "detail": f"HTTP {r.status_code}"}
+    except Exception as e:
+        return {"name": "Stripe key", "status": "fail", "detail": str(e)[:80]}
+
+
+async def _probe_twilio_from_sms() -> dict:
+    if not TWILIO_SID or not TWILIO_TOKEN or not TWILIO_FROM:
+        return {"name": "Twilio FROM SMS-capable", "status": "fail",
+                "detail": "TWILIO_FROM_NUMBER missing"}
+    try:
+        async with httpx.AsyncClient(timeout=5) as c:
+            r = await c.get(
+                f"https://api.twilio.com/2010-04-01/Accounts/{TWILIO_SID}/IncomingPhoneNumbers.json",
+                params={"PhoneNumber": TWILIO_FROM},
+                auth=(TWILIO_SID, TWILIO_TOKEN))
+        if r.status_code != 200:
+            return {"name": "Twilio FROM SMS-capable", "status": "fail",
+                    "detail": f"HTTP {r.status_code}"}
+        d = r.json().get("incoming_phone_numbers", [])
+        if not d:
+            return {"name": "Twilio FROM SMS-capable", "status": "fail",
+                    "detail": f"{TWILIO_FROM} not in account inventory"}
+        cap = d[0].get("capabilities", {})
+        if cap.get("sms"):
+            return {"name": "Twilio FROM SMS-capable", "status": "ok", "detail": TWILIO_FROM}
+        return {"name": "Twilio FROM SMS-capable", "status": "fail",
+                "detail": f"{TWILIO_FROM} voice-only"}
+    except Exception as e:
+        return {"name": "Twilio FROM SMS-capable", "status": "fail", "detail": str(e)[:80]}
+
+
+async def _probe_vapi_key() -> dict:
+    vk = os.environ.get("VAPI_API_KEY", "").strip()
+    if not vk:
+        return {"name": "Vapi key", "status": "fail", "detail": "VAPI_API_KEY missing"}
+    try:
+        async with httpx.AsyncClient(timeout=5) as c:
+            r = await c.get("https://api.vapi.ai/assistant",
+                            params={"limit": 1},
+                            headers={"Authorization": f"Bearer {vk}"})
+        if r.status_code == 200:
+            return {"name": "Vapi key", "status": "ok", "detail": "200 OK"}
+        return {"name": "Vapi key", "status": "fail", "detail": f"HTTP {r.status_code}"}
+    except Exception as e:
+        return {"name": "Vapi key", "status": "fail", "detail": str(e)[:80]}
+
+
+async def _probe_hetzner_bucket() -> dict:
+    ep = os.environ.get("HETZNER_OBJECT_STORAGE_ENDPOINT", "").strip()
+    ak = os.environ.get("HETZNER_OBJECT_STORAGE_ACCESS_KEY_ID", "").strip()
+    sk = os.environ.get("HETZNER_OBJECT_STORAGE_SECRET_ACCESS_KEY", "").strip()
+    bk = os.environ.get("HETZNER_OBJECT_STORAGE_BUCKET", "").strip()
+    if not all([ep, ak, sk, bk]):
+        return {"name": "Hetzner bucket", "status": "fail", "detail": "creds missing"}
+    try:
+        import boto3
+        from botocore.config import Config
+        s3 = boto3.client("s3", aws_access_key_id=ak, aws_secret_access_key=sk,
+                          endpoint_url=ep, region_name="eu-central",
+                          config=Config(signature_version="s3v4",
+                                        s3={"addressing_style": "path"}))
+        s3.head_bucket(Bucket=bk)
+        return {"name": "Hetzner bucket", "status": "ok", "detail": bk}
+    except Exception as e:
+        return {"name": "Hetzner bucket", "status": "fail", "detail": str(e)[:80]}
+
+
+def _probe_last_call_event() -> dict:
+    try:
+        with get_db() as conn:
+            row = conn.execute(
+                "SELECT event_type, created_at FROM call_events ORDER BY id DESC LIMIT 1"
+            ).fetchone()
+        if row:
+            return {"name": "Last call event", "status": "ok",
+                    "detail": f"{row['event_type']} @ {str(row['created_at'])[:19]}"}
+        return {"name": "Last call event", "status": "warn", "detail": "no events yet"}
+    except Exception as e:
+        return {"name": "Last call event", "status": "fail", "detail": str(e)[:80]}
+
+
+def _probe_receptionist_stripe_envs() -> dict:
+    missing = [
+        k for k in (
+            "STRIPE_RECEPTIONIST_PROFESSIONAL_MONTHLY",
+            "STRIPE_RECEPTIONIST_GROWTH_MONTHLY",
+            "STRIPE_RECEPTIONIST_SETUP_ONCE",
+        ) if not os.environ.get(k, "").strip()
+    ]
+    if missing:
+        return {"name": "Receptionist Stripe envs", "status": "fail",
+                "detail": f"missing: {','.join(m.replace('STRIPE_RECEPTIONIST_','') for m in missing)}"}
+    return {"name": "Receptionist Stripe envs", "status": "ok", "detail": "all 3 set"}
+
+
+@app.get("/admin/api/health-detail")
+async def admin_health_detail(token: str = Query("")):
+    """Sprint 1 Gap 1 — parallel probes of critical infra. Drives Gap 19 favicon."""
+    check_admin(token)
+    import asyncio
+    async_probes = await asyncio.gather(
+        _probe_stripe_key(),
+        _probe_twilio_from_sms(),
+        _probe_vapi_key(),
+        _probe_hetzner_bucket(),
+    )
+    probes = list(async_probes) + [
+        _probe_last_call_event(),
+        _probe_receptionist_stripe_envs(),
+    ]
+    statuses = [p["status"] for p in probes]
+    overall = "fail" if "fail" in statuses else ("warn" if "warn" in statuses else "ok")
+    return JSONResponse({
+        "overall": overall,
+        "probes": probes,
+        "ts": _time.strftime("%Y-%m-%dT%H:%M:%SZ", _time.gmtime()),
+    })
+
+
+@app.get("/admin/api/twilio-numbers")
+async def admin_twilio_numbers(token: str = Query("")):
+    """Sprint 1 Gap 6 — list Twilio owned numbers + capabilities."""
+    check_admin(token)
+    if not TWILIO_SID or not TWILIO_TOKEN:
+        raise HTTPException(status_code=500, detail="Twilio creds missing")
+    try:
+        async with httpx.AsyncClient(timeout=15) as c:
+            r = await c.get(
+                f"https://api.twilio.com/2010-04-01/Accounts/{TWILIO_SID}/IncomingPhoneNumbers.json",
+                params={"PageSize": 20},
+                auth=(TWILIO_SID, TWILIO_TOKEN))
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Twilio unreachable: {e}")
+    if r.status_code != 200:
+        raise HTTPException(status_code=502, detail=f"Twilio HTTP {r.status_code}")
+    nums = []
+    for n in r.json().get("incoming_phone_numbers", []):
+        nums.append({
+            "phone_number": n.get("phone_number"),
+            "friendly_name": n.get("friendly_name"),
+            "capabilities": n.get("capabilities", {}),
+            "is_from": n.get("phone_number") == TWILIO_FROM,
+        })
+    return JSONResponse({"numbers": nums, "current_from": TWILIO_FROM})
+
+
+@app.post("/admin/api/test-sms")
+async def admin_test_sms(token: str = Query("")):
+    """Sprint 1 Gap 6 — fire test SMS to OWNER_NOTIFICATION_NUMBER."""
+    check_admin(token)
+    if not OWNER_NUMBER:
+        raise HTTPException(status_code=500, detail="OWNER_NOTIFICATION_NUMBER not set")
+    body = f"CallMeIE admin test SMS @ {_time.strftime('%H:%M:%S UTC')}"
+    res = await send_sms(to=OWNER_NUMBER, body=body)
+    return JSONResponse({
+        "ok": bool(res.get("ok")),
+        "to": OWNER_NUMBER,
+        "status": res.get("status", "?"),
+        "http_status": res.get("http_status"),
+        "error": res.get("message") if not res.get("ok") else None,
+    })
+
+
+@app.post("/admin/api/coolify-redeploy")
+async def admin_coolify_redeploy(token: str = Query("")):
+    """Sprint 1 Gap 7 — trigger Coolify redeploy of this service."""
+    check_admin(token)
+    if not COOLIFY_API_TOKEN_ENV:
+        raise HTTPException(status_code=500, detail="COOLIFY_API_ROOT_TOKEN not set")
+    if not COOLIFY_APP_UUID_ENV:
+        raise HTTPException(status_code=500, detail="COOLIFY_APP_UUID not set")
+    try:
+        async with httpx.AsyncClient(timeout=30) as c:
+            r = await c.get(
+                f"{COOLIFY_API_ROOT_URL}/api/v1/deploy",
+                params={"uuid": COOLIFY_APP_UUID_ENV, "force": "true"},
+                headers={"Authorization": f"Bearer {COOLIFY_API_TOKEN_ENV}"})
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Coolify unreachable: {e}")
+    if r.status_code != 200:
+        raise HTTPException(status_code=502, detail=f"Coolify HTTP {r.status_code}: {r.text[:200]}")
+    try:
+        return JSONResponse(r.json())
+    except Exception:
+        return JSONResponse({"ok": True, "raw": r.text[:400]})
+
+
 if __name__ == "__main__":
     import uvicorn
     port = int(os.environ.get("PORT", 8080))
