@@ -4750,6 +4750,132 @@ def owl_stripe_portal(request: Request, token: str = Query("")) -> JSONResponse:
     return JSONResponse({"ok": True, "url": session["url"]})
 
 
+# --- Receptionist signup-link (P2 Phase C, Path B per 2026-05-11 PRD) ----
+#
+# Owner-only endpoint. Called from admin UI mid-call when a caller commits
+# to a tier on the demo line +353 61 788 120. Creates a Stripe Checkout
+# Session bundling the chosen tier (Professional €249/mo or Growth €397/mo)
+# with the one-off setup fee (€297), then SMSes the checkout URL to the
+# caller's mobile so they pay before hanging up.
+#
+# Existing webhook /owl/stripe/webhook handles checkout.session.completed
+# (records the payment); no webhook changes needed.
+
+STRIPE_RECEPTIONIST_PRICES = {
+    "professional": os.environ.get("STRIPE_RECEPTIONIST_PROFESSIONAL_MONTHLY", "").strip(),
+    "growth": os.environ.get("STRIPE_RECEPTIONIST_GROWTH_MONTHLY", "").strip(),
+}
+STRIPE_RECEPTIONIST_SETUP_PRICE = os.environ.get("STRIPE_RECEPTIONIST_SETUP_ONCE", "").strip()
+
+
+@app.post("/admin/api/send-setup-link")
+async def admin_send_setup_link(request: Request, token: str = Query("")) -> JSONResponse:
+    """Owner-only: mint Stripe Checkout Session + SMS link to caller mid-demo.
+
+    Body:
+      phone: str             E.164 mobile (e.g. +353871234567)
+      tier:  str             "professional" | "growth"
+      include_setup: bool    default True (bundle one-off €297 setup fee)
+
+    Auth: ?token=<OWL_OWNER_TOKEN> OR Authorization: Bearer <OWL_OWNER_TOKEN>
+
+    Returns: { ok, checkout_url, session_id, sms_status, sms_ok, phone, tier }
+    """
+    if not _owl_check_owner(token):
+        auth = request.headers.get("authorization", "")
+        if auth.lower().startswith("bearer "):
+            token = auth.split(None, 1)[1].strip()
+        if not _owl_check_owner(token):
+            raise HTTPException(status_code=401, detail="owner token required")
+
+    if not OWL_STRIPE_API_KEY:
+        raise HTTPException(status_code=500, detail="STRIPE_API_KEY not configured")
+
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="invalid JSON")
+
+    phone = str(body.get("phone", "")).strip()
+    tier = str(body.get("tier", "")).strip().lower()
+    include_setup = bool(body.get("include_setup", True))
+
+    if not phone.startswith("+") or len(phone) < 8:
+        raise HTTPException(status_code=400, detail="phone must be E.164 (start with +)")
+    if tier not in STRIPE_RECEPTIONIST_PRICES:
+        raise HTTPException(status_code=400, detail="tier must be 'professional' or 'growth'")
+
+    tier_price_id = STRIPE_RECEPTIONIST_PRICES[tier]
+    if not tier_price_id:
+        raise HTTPException(status_code=500, detail=f"STRIPE_RECEPTIONIST_{tier.upper()}_MONTHLY env var not set on Render")
+
+    if include_setup and not STRIPE_RECEPTIONIST_SETUP_PRICE:
+        raise HTTPException(status_code=500, detail="STRIPE_RECEPTIONIST_SETUP_ONCE env var not set on Render")
+
+    # mode=subscription Checkout supports mixed line_items (recurring + one-off):
+    # the one-off setup fee gets added to the first invoice automatically.
+    data = {
+        "mode": "subscription",
+        "success_url": "https://callmeie.ie/receptionist/?setup=paid&sid={CHECKOUT_SESSION_ID}",
+        "cancel_url": "https://callmeie.ie/receptionist/?setup=cancelled",
+        "metadata[owl_tag]": "callmeie",
+        "metadata[product]": f"receptionist-{tier}",
+        "metadata[phone]": phone,
+        "metadata[via]": "admin-send-setup-link",
+        "phone_number_collection[enabled]": "true",
+        "billing_address_collection": "required",
+        "automatic_tax[enabled]": "true",
+        "tax_id_collection[enabled]": "true",
+        "allow_promotion_codes": "true",
+        "line_items[0][price]": tier_price_id,
+        "line_items[0][quantity]": 1,
+    }
+    if include_setup:
+        data["line_items[1][price]"] = STRIPE_RECEPTIONIST_SETUP_PRICE
+        data["line_items[1][quantity]"] = 1
+
+    try:
+        async with httpx.AsyncClient(timeout=20.0) as client:
+            r = await client.post(
+                "https://api.stripe.com/v1/checkout/sessions",
+                data=data,
+                headers={"Authorization": f"Bearer {OWL_STRIPE_API_KEY}"},
+            )
+        if r.status_code >= 400:
+            raise HTTPException(
+                status_code=502,
+                detail=f"Stripe checkout-session create failed: HTTP {r.status_code} {r.text[:400]}",
+            )
+        session = r.json()
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Stripe API unreachable: {e}")
+
+    checkout_url = session.get("url", "")
+    session_id = session.get("id", "")
+
+    tier_label = "Professional (€249/mo)" if tier == "professional" else "Growth (€397/mo)"
+    setup_label = " + €297 setup" if include_setup else ""
+    sms_body = (
+        f"CallMeIE: tap to complete signup. "
+        f"{tier_label}{setup_label}. {checkout_url}\n"
+        f"Questions: hello@callmeie.ie"
+    )
+    sms_result = await send_sms(to=phone, body=sms_body)
+
+    return JSONResponse({
+        "ok": True,
+        "checkout_url": checkout_url,
+        "session_id": session_id,
+        "sms_status": sms_result.get("status", "?"),
+        "sms_ok": bool(sms_result.get("ok")),
+        "phone": phone,
+        "tier": tier,
+        "include_setup": include_setup,
+    })
+
+
 if __name__ == "__main__":
     import uvicorn
     port = int(os.environ.get("PORT", 8080))
