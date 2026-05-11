@@ -6210,6 +6210,208 @@ async def admin_pwa_icon(size: int):
     return HTMLResponse(content=svg, media_type="image/svg+xml")
 
 
+# ========== Decision-Surface Today (PDR-ADMIN-DECISION-SURFACE-2026-05-12) ==========
+# Codex agent pivot: first screen ranks who/what to act on, not 13 tabs of data.
+
+
+@app.get("/admin/api/today-actions")
+async def admin_today_actions(token: str = Query(""), limit: int = Query(10)):
+    """Ranked list of next-best-actions for Adam.
+
+    Score = heat × recency × revenue-at-risk × state-transition.
+    States: demo_complete_hot / demo_complete_warm / recording_ready_no_demo /
+            submission_pending / stripe_session_open / system_fault /
+            whatsapp_unread.
+    """
+    check_admin(token)
+    import datetime as _dt
+    import time as _t
+    now = _dt.datetime.utcnow()
+    week_cutoff = (now - _dt.timedelta(days=7)).strftime("%Y-%m-%d %H:%M:%S")
+
+    actions: list[dict] = []
+
+    # ---- demo-complete events (hottest signal) ----
+    try:
+        with get_db() as conn:
+            rows = conn.execute(
+                "SELECT call_id, created_at, assistant, summary, detail "
+                "FROM call_events WHERE event_type = 'demo-complete' "
+                "AND created_at >= ? ORDER BY id DESC LIMIT 50",
+                (week_cutoff,),
+            ).fetchall()
+        for r in rows:
+            try:
+                d = json.loads(r["detail"] or "{}")
+            except Exception:
+                d = {}
+            heat = (d.get("interest_level") or "").lower()
+            score = 0
+            state = "demo_complete_browsing"
+            label = "Review recording"
+            if heat == "very_interested":
+                score += 30
+                state = "demo_complete_hot"
+                label = "Send setup link"
+            elif heat == "curious":
+                score += 12
+                state = "demo_complete_warm"
+                label = "Review then call back"
+            else:
+                score += 2
+            # Decay older than 24h
+            try:
+                ts = _dt.datetime.strptime(str(r["created_at"])[:19], "%Y-%m-%d %H:%M:%S")
+            except Exception:
+                try:
+                    ts = _dt.datetime.fromisoformat(str(r["created_at"]).replace("Z", "+00:00").replace(" ", "T")).replace(tzinfo=None)
+                except Exception:
+                    ts = now
+            hours_old = max((now - ts).total_seconds() / 3600, 0)
+            if hours_old > 48:
+                score -= 20
+            # Pull caller identity from a matching lead-captured event
+            caller_name = None
+            caller_phone = None
+            caller_biz = (d.get("business_type") or r["assistant"] or "?")
+            try:
+                with get_db() as conn:
+                    lc = conn.execute(
+                        "SELECT detail FROM call_events "
+                        "WHERE call_id = ? AND event_type = 'lead-captured' "
+                        "ORDER BY id ASC LIMIT 1",
+                        (r["call_id"],),
+                    ).fetchone()
+                if lc:
+                    try:
+                        ld = json.loads(lc["detail"] or "{}")
+                    except Exception:
+                        ld = {}
+                    caller_name = ld.get("name")
+                    caller_phone = ld.get("contact_phone") or ld.get("phone")
+                    if not caller_biz or caller_biz == "?":
+                        caller_biz = ld.get("business_type") or caller_biz
+            except Exception:
+                pass
+            tier_hint = "professional"
+            if "motor" in (caller_biz or "").lower():
+                tier_hint = "growth"
+            actions.append({
+                "rank_score": score,
+                "subject": {
+                    "name": caller_name or "?",
+                    "business": caller_biz,
+                    "phone": caller_phone,
+                },
+                "state": state,
+                "suggested_action": "send_setup_link" if state == "demo_complete_hot" else "review_recording",
+                "suggested_action_label": label,
+                "heat": heat or "unknown",
+                "context": {
+                    "call_id": r["call_id"],
+                    "last_event_at": str(r["created_at"]),
+                    "tier_hint": tier_hint,
+                    "summary": r["summary"],
+                },
+            })
+    except Exception:
+        pass
+
+    # ---- onboarding submissions pending ----
+    try:
+        with get_db() as conn:
+            rows = conn.execute(
+                "SELECT id, created_at, business_name, business_type, "
+                "contact_phone, contact_email "
+                "FROM submissions WHERE status = 'pending' "
+                "ORDER BY id DESC LIMIT 20"
+            ).fetchall()
+        for r in rows:
+            actions.append({
+                "rank_score": 18,
+                "subject": {
+                    "name": r["business_name"] or "?",
+                    "business": r["business_type"] or "?",
+                    "phone": r["contact_phone"],
+                    "email": r["contact_email"],
+                },
+                "state": "submission_pending",
+                "suggested_action": "provision_assistant",
+                "suggested_action_label": "Provision assistant",
+                "heat": "warm",
+                "context": {
+                    "submission_id": r["id"],
+                    "last_event_at": str(r["created_at"]),
+                },
+            })
+    except Exception:
+        pass
+
+    # ---- Stripe sessions open + unpaid (in-flight signups) ----
+    if OWL_STRIPE_API_KEY:
+        try:
+            import time as _ts
+            since = int(_ts.time()) - (7 * 86400)
+            async with httpx.AsyncClient(timeout=10) as c:
+                r = await c.get(
+                    "https://api.stripe.com/v1/checkout/sessions",
+                    headers={"Authorization": f"Bearer {OWL_STRIPE_API_KEY}"},
+                    params={"limit": 20, "created[gte]": since})
+            if r.status_code == 200:
+                for s in r.json().get("data", []):
+                    if s.get("status") != "open":
+                        continue
+                    md = s.get("metadata", {}) or {}
+                    if md.get("owl_tag") != "callmeie":
+                        continue
+                    actions.append({
+                        "rank_score": 25,
+                        "subject": {
+                            "name": (s.get("customer_details") or {}).get("name", "?"),
+                            "business": (md.get("product") or "?").replace("receptionist-", ""),
+                            "phone": md.get("phone"),
+                        },
+                        "state": "stripe_session_open",
+                        "suggested_action": "resend_setup_link",
+                        "suggested_action_label": "Resend payment link",
+                        "heat": "hot",
+                        "context": {
+                            "session_id": s.get("id"),
+                            "amount_total": s.get("amount_total"),
+                            "currency": s.get("currency"),
+                            "checkout_url": s.get("url"),
+                            "tier_hint": (md.get("product") or "").replace("receptionist-", "") or "professional",
+                        },
+                    })
+        except Exception:
+            pass
+
+    # ---- system fault preempt ----
+    try:
+        # Reuse the existing health probes - check one cheap signal: Twilio FROM valid
+        health = await _probe_twilio_from_sms()
+        if health.get("status") == "fail":
+            actions.insert(0, {
+                "rank_score": 100,
+                "subject": {"name": "System fault", "business": "Twilio FROM not SMS-capable"},
+                "state": "system_fault",
+                "suggested_action": "fix_system",
+                "suggested_action_label": f"Fix: {health.get('detail','')[:80]}",
+                "heat": "fault",
+                "context": {"probe": health},
+            })
+    except Exception:
+        pass
+
+    # Sort + limit
+    actions.sort(key=lambda a: a["rank_score"], reverse=True)
+    return JSONResponse({
+        "actions": actions[:limit],
+        "total_seen": len(actions),
+        "ts": _t.strftime("%Y-%m-%dT%H:%M:%SZ", _t.gmtime()),
+    })
+
+
 if __name__ == "__main__":
     import uvicorn
     port = int(os.environ.get("PORT", 8080))
