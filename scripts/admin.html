@@ -105,7 +105,13 @@
 </div>
 
 <div id="main">
-  <h1>CallMeIE Admin</h1>
+  <h1 style="display:flex;align-items:center;justify-content:space-between;margin:0">
+    <span>CallMeIE Admin</span>
+    <button onclick="logout()" title="Clear stored token (use if shared device)"
+      style="font-size:0.7rem;background:transparent;color:#64748b;border:1px solid #334155;padding:4px 10px;border-radius:4px;cursor:pointer">
+      Sign out
+    </button>
+  </h1>
   <div class="subtitle" id="subtitle">Loading...</div>
   <div id="backupStatus" style="font-size:0.8rem;color:#94a3b8;margin-bottom:18px;"></div>
 
@@ -176,18 +182,32 @@ function login() {
   const t = document.getElementById('tokenInput').value.trim();
   if (!t) return;
   TOKEN = t;
-  sessionStorage.setItem('admin_token', t);
+  localStorage.setItem('admin_token', t);
   document.getElementById('tokenScreen').style.display = 'none';
   document.getElementById('main').style.display = 'block';
   loadAll();
 }
 
-// Check sessionStorage or URL param on load
+function logout() {
+  localStorage.removeItem('admin_token');
+  sessionStorage.removeItem('admin_token');
+  TOKEN = '';
+  location.href = '/admin';
+}
+
+// Check URL param (highest priority — fresh bookmark) → localStorage (persistent) → sessionStorage (legacy fallback)
 window.onload = () => {
   const params = new URLSearchParams(window.location.search);
-  const t = params.get('token') || sessionStorage.getItem('admin_token');
+  const urlToken = params.get('token');
+  const t = urlToken || localStorage.getItem('admin_token') || sessionStorage.getItem('admin_token');
   if (t) {
     TOKEN = t;
+    // Persist if came via URL (first visit / bookmark)
+    if (urlToken) {
+      localStorage.setItem('admin_token', urlToken);
+      // Strip token from URL so it doesn't sit in browser history / shoulder-surf risk
+      history.replaceState({}, document.title, window.location.pathname);
+    }
     document.getElementById('tokenScreen').style.display = 'none';
     document.getElementById('main').style.display = 'block';
     loadAll();
