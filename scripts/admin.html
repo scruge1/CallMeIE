@@ -101,6 +101,73 @@
   kbd { background: #1e293b; color: #22d3ee; padding: 2px 6px; border-radius: 3px;
         font-size: 0.78rem; border: 1px solid #334155; }
 
+  /* ===== Aesthetic polish (impeccable: bolder + polish + layout patterns) ===== */
+  :root {
+    --bg-base: #050810;
+    --bg-card: #0a0e1a;
+    --bg-elev: #0f172a;
+    --border: #1e293b;
+    --border-strong: #334155;
+    --text: #e2e8f0;
+    --muted: #94a3b8;
+    --dim: #64748b;
+    --faint: #475569;
+    --accent: #22d3ee;
+    --accent-glow: rgba(34,211,238,0.18);
+    --ok: #4ade80;
+    --warn: #fbbf24;
+    --fail: #ef4444;
+    --shadow-sm: 0 1px 2px rgba(0,0,0,0.4);
+    --shadow-md: 0 4px 12px rgba(0,0,0,0.5);
+    --shadow-lg: 0 10px 30px rgba(0,0,0,0.55);
+    --transition: 180ms cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  body { background: var(--bg-base); }
+  .card {
+    background: linear-gradient(180deg, var(--bg-card) 0%, #080c14 100%);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    box-shadow: var(--shadow-sm);
+    transition: border-color var(--transition), box-shadow var(--transition), transform var(--transition);
+  }
+  .card:hover {
+    border-color: var(--border-strong);
+    box-shadow: var(--shadow-md);
+  }
+  /* Subtle pulse glow on health-status changes (notification feel) */
+  @keyframes pulse-glow {
+    0% { box-shadow: 0 0 0 0 var(--accent-glow); }
+    70% { box-shadow: 0 0 0 8px transparent; }
+    100% { box-shadow: 0 0 0 0 transparent; }
+  }
+  #healthDot { animation: pulse-glow 2.5s ease-out infinite; }
+  /* Tab transition fade */
+  .section { opacity: 0; pointer-events: none; transition: opacity 200ms ease-out; }
+  .section.active { opacity: 1; pointer-events: auto; }
+  /* Buttons: depth + active feedback */
+  .btn, button:not(#bottomNav button):not(#moreSheet button) {
+    transition: transform 120ms ease-out, background var(--transition), border-color var(--transition);
+  }
+  .btn:active, button:active { transform: scale(0.96); }
+  /* Tab buttons: clear active glow */
+  .tab.active { box-shadow: 0 0 0 1px var(--accent), 0 0 14px rgba(34,211,238,0.25); }
+  /* Cards inside grids get staggered fade-in */
+  @keyframes fadeup {
+    from { opacity: 0; transform: translateY(6px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .section.active .card { animation: fadeup 280ms ease-out backwards; }
+  .section.active .card:nth-child(2) { animation-delay: 30ms; }
+  .section.active .card:nth-child(3) { animation-delay: 60ms; }
+  .section.active .card:nth-child(4) { animation-delay: 90ms; }
+  .section.active .card:nth-child(n+5) { animation-delay: 120ms; }
+  /* Status-badge styling */
+  .status-badge {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 2px 8px; border-radius: 999px;
+    font-size: 0.7rem; font-weight: 600; letter-spacing: 0.02em;
+  }
+
   /* ===== PWA / Native-app feel on mobile (PDR 2026-05-11) ===== */
   /* Skeleton shimmer */
   @keyframes shimmer { 0% { background-position: -400px 0; } 100% { background-position: 400px 0; } }
@@ -680,11 +747,17 @@ async function loadDiscovery() {
 
     // Table rows.
     const fmtDate = s => {
+      // iOS Safari refuses 'YYYY-MM-DD HH:MM:SS' without T separator → Invalid Date.
+      // Postgres-style with microseconds also breaks; trim to seconds + force T.
       try {
-        const d = new Date(s);
+        if (!s) return '?';
+        let norm = String(s).replace(' ', 'T');
+        if (!norm.endsWith('Z') && !norm.match(/[+-]\d{2}:?\d{2}$/)) norm = norm + 'Z';
+        const d = new Date(norm);
+        if (isNaN(d)) return String(s).slice(0, 16);
         return d.toLocaleDateString('en-IE', {month:'short', day:'numeric'}) + ' ' +
                d.toLocaleTimeString('en-IE', {hour:'2-digit', minute:'2-digit'});
-      } catch (_) { return s; }
+      } catch (_) { return String(s).slice(0, 16); }
     };
     const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({
       '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
@@ -742,6 +815,7 @@ const EV_LABELS = {
 };
 
 let showDetail = false;
+let showOrphans = false;  // hide call-ended-only call_ids (hang-ups / spam) by default
 let lastEventId = 0;
 
 async function loadEvents() {
@@ -789,12 +863,29 @@ async function loadEvents() {
     return;
   }
 
+  // Filter: hide call_ids that have ONLY call-ended (= hang-ups / Vapi retries / spam)
+  // unless user toggles "show all". Keep groups that have lead-captured or
+  // demo-complete or any non-call-ended event.
+  let filteredOrder = order;
+  let hiddenCount = 0;
+  if (!showOrphans) {
+    filteredOrder = order.filter(cid => {
+      const types = new Set((groups[cid] || []).map(e => e.event_type));
+      types.delete('call-ended');
+      if (types.size === 0) { hiddenCount++; return false; }
+      return true;
+    });
+  }
+
   el.innerHTML = `
     <div class="log-controls">
       <label><input type="checkbox" onchange="toggleDetail(this.checked)" ${showDetail ? 'checked' : ''}> Show raw detail</label>
+      <label style="margin-left:10px"><input type="checkbox" onchange="toggleOrphans(this.checked)" ${showOrphans ? 'checked' : ''}> Show hang-ups (${hiddenCount} hidden)</label>
       <span class="refresh-indicator">Auto-refresh every 5s · Last: ${ts}</span>
     </div>
-  ` + order.map(callId => {
+  ` + (filteredOrder.length === 0 && hiddenCount > 0
+    ? `<div class="empty">No conversational calls yet · ${hiddenCount} short hang-ups hidden (toggle "Show hang-ups" to see)</div>`
+    : filteredOrder.map(callId => {
     const evs = groups[callId];
     const first = evs[evs.length - 1]; // oldest first
     const last  = evs[0];
@@ -852,11 +943,16 @@ async function loadEvents() {
         </div>
         ${evRows}
       </div>`;
-  }).join('');
+  }).join(''));
 }
 
 function toggleDetail(on) {
   showDetail = on;
+  loadEvents();
+}
+
+function toggleOrphans(on) {
+  showOrphans = on;
   loadEvents();
 }
 
