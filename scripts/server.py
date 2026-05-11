@@ -5784,6 +5784,370 @@ async def admin_flow_graph(token: str = Query("")):
     return JSONResponse({"nodes": nodes, "edges": edges})
 
 
+# ========== Sprint 5 (PRD-ADMIN-DASHBOARD-OWNER-CONTROL-2026-05-11) ==========
+# Gap 23 — Unified vendor-error log (Sentry-style fingerprinting across Stripe/Twilio/Vapi).
+# Gap 22 — Webhook events lister (lite — full replay queue deferred).
+# Gap 17 — Predicted-range overlays deferred (needs ≥7d baseline data first).
+
+
+@app.get("/admin/api/stripe-events")
+async def admin_stripe_events(token: str = Query(""), limit: int = Query(50)):
+    """Gap 22 lite — list recent Stripe events (replay button reserved for v2)."""
+    check_admin(token)
+    if not OWL_STRIPE_API_KEY:
+        raise HTTPException(status_code=500, detail="STRIPE_API_KEY missing")
+    async with httpx.AsyncClient(timeout=20) as c:
+        r = await c.get("https://api.stripe.com/v1/events",
+                        headers={"Authorization": f"Bearer {OWL_STRIPE_API_KEY}"},
+                        params={"limit": min(limit, 100)})
+    if r.status_code != 200:
+        raise HTTPException(status_code=502, detail=f"Stripe events HTTP {r.status_code}")
+    out = []
+    for ev in r.json().get("data", []):
+        out.append({
+            "id": ev.get("id"),
+            "type": ev.get("type"),
+            "created": ev.get("created"),
+            "livemode": ev.get("livemode"),
+            "object_id": (ev.get("data", {}).get("object") or {}).get("id"),
+            "request_id": (ev.get("request") or {}).get("id") if isinstance(ev.get("request"), dict) else None,
+        })
+    return JSONResponse({"events": out, "count": len(out)})
+
+
+@app.get("/admin/api/twilio-debugger")
+async def admin_twilio_debugger(token: str = Query(""), limit: int = Query(50)):
+    """Gap 23 — Twilio Debugger / Alerts feed."""
+    check_admin(token)
+    if not TWILIO_SID or not TWILIO_TOKEN:
+        raise HTTPException(status_code=500, detail="Twilio creds missing")
+    async with httpx.AsyncClient(timeout=20) as c:
+        r = await c.get(
+            f"https://monitor.twilio.com/v1/Alerts",
+            params={"PageSize": min(limit, 100)},
+            auth=(TWILIO_SID, TWILIO_TOKEN))
+    if r.status_code != 200:
+        raise HTTPException(status_code=502, detail=f"Twilio alerts HTTP {r.status_code}: {r.text[:200]}")
+    out = []
+    for a in r.json().get("alerts", []):
+        out.append({
+            "sid": a.get("sid"),
+            "error_code": a.get("error_code"),
+            "log_level": a.get("log_level"),
+            "alert_text": (a.get("alert_text") or "")[:300],
+            "more_info": a.get("more_info"),
+            "request_url": a.get("request_url"),
+            "request_method": a.get("request_method"),
+            "date_created": a.get("date_created"),
+            "resource_sid": a.get("resource_sid"),
+            "service_sid": a.get("service_sid"),
+        })
+    return JSONResponse({"alerts": out, "count": len(out)})
+
+
+@app.get("/admin/api/vendor-errors-unified")
+async def admin_vendor_errors_unified(token: str = Query("")):
+    """Gap 23 — Sentry-style unified error feed across Stripe + Twilio + Vapi.
+
+    Each entry has: vendor, fingerprint (vendor:error_code), level, message,
+    last_seen, count_in_window. Frontend groups by fingerprint."""
+    check_admin(token)
+    import asyncio
+    import time as _t
+    now = int(_t.time())
+    twenty_four_h = now - 86400
+
+    async def stripe_errors():
+        if not OWL_STRIPE_API_KEY:
+            return []
+        try:
+            async with httpx.AsyncClient(timeout=10) as c:
+                # Failed payment intents in last 24h
+                r = await c.get("https://api.stripe.com/v1/payment_intents",
+                                headers={"Authorization": f"Bearer {OWL_STRIPE_API_KEY}"},
+                                params={"limit": 100, "created[gte]": twenty_four_h})
+            out = []
+            for p in r.json().get("data", []):
+                if p.get("status") == "requires_payment_method" and p.get("last_payment_error"):
+                    err = p.get("last_payment_error", {})
+                    out.append({
+                        "vendor": "stripe",
+                        "fingerprint": f"stripe:{err.get('code','unknown')}",
+                        "level": "error",
+                        "message": (err.get("message") or "")[:200],
+                        "object_id": p.get("id"),
+                        "ts": p.get("created"),
+                    })
+            return out
+        except Exception:
+            return []
+
+    async def twilio_errors():
+        if not TWILIO_SID or not TWILIO_TOKEN:
+            return []
+        try:
+            async with httpx.AsyncClient(timeout=10) as c:
+                r = await c.get("https://monitor.twilio.com/v1/Alerts",
+                                params={"PageSize": 100},
+                                auth=(TWILIO_SID, TWILIO_TOKEN))
+            out = []
+            for a in r.json().get("alerts", []):
+                # Filter to last 24h
+                ts_str = a.get("date_created", "")
+                try:
+                    import datetime as dt
+                    ts = int(dt.datetime.fromisoformat(ts_str.replace("Z","+00:00")).timestamp())
+                except Exception:
+                    ts = now
+                if ts < twenty_four_h:
+                    continue
+                out.append({
+                    "vendor": "twilio",
+                    "fingerprint": f"twilio:{a.get('error_code','unknown')}",
+                    "level": a.get("log_level") or "error",
+                    "message": (a.get("alert_text") or "")[:200],
+                    "object_id": a.get("sid"),
+                    "ts": ts,
+                })
+            return out
+        except Exception:
+            return []
+
+    async def vapi_errors():
+        vk = os.environ.get("VAPI_API_KEY", "").strip()
+        if not vk:
+            return []
+        try:
+            iso = _time.strftime("%Y-%m-%dT%H:%M:%SZ", _time.gmtime(twenty_four_h))
+            async with httpx.AsyncClient(timeout=10) as c:
+                r = await c.get("https://api.vapi.ai/call",
+                                headers={"Authorization": f"Bearer {vk}"},
+                                params={"limit": 100, "createdAtGt": iso})
+            out = []
+            data = r.json() if isinstance(r.json(), list) else []
+            for call in data:
+                # Vapi marks failed/ended-with-error calls
+                ended_reason = call.get("endedReason") or ""
+                if ended_reason and ended_reason not in ("customer-ended-call", "assistant-ended-call",
+                                                          "silence-timed-out", "voicemail",
+                                                          "customer-did-not-answer"):
+                    out.append({
+                        "vendor": "vapi",
+                        "fingerprint": f"vapi:{ended_reason}",
+                        "level": "warn" if "ended" in ended_reason else "error",
+                        "message": ended_reason,
+                        "object_id": call.get("id"),
+                        "ts": call.get("startedAt"),
+                    })
+            return out
+        except Exception:
+            return []
+
+    s_errs, t_errs, v_errs = await asyncio.gather(stripe_errors(), twilio_errors(), vapi_errors())
+    all_errs = s_errs + t_errs + v_errs
+
+    # Group by fingerprint (Sentry pattern)
+    groups: dict[str, dict] = {}
+    for err in all_errs:
+        fp = err["fingerprint"]
+        g = groups.setdefault(fp, {
+            "vendor": err["vendor"],
+            "fingerprint": fp,
+            "level": err["level"],
+            "message": err["message"],
+            "count": 0,
+            "samples": [],
+            "last_seen": None,
+        })
+        g["count"] += 1
+        if len(g["samples"]) < 3:
+            g["samples"].append({"object_id": err["object_id"], "ts": err["ts"]})
+        ts = err.get("ts")
+        if isinstance(ts, int) and (g["last_seen"] is None or ts > g["last_seen"]):
+            g["last_seen"] = ts
+
+    return JSONResponse({
+        "groups": sorted(groups.values(), key=lambda g: g["count"], reverse=True),
+        "total_errors_24h": len(all_errs),
+        "vendors_with_errors": sorted({g["vendor"] for g in groups.values()}),
+    })
+
+
+# ========== Sprint 6 (PRD-ADMIN-DASHBOARD-OWNER-CONTROL-2026-05-11) ==========
+# Gap 10 — Admin token rotation.
+# Gap 9 — Leads inbox unified (form + WhatsApp from call_events).
+# Gap 18 lite — heat-distribution per assistant (proxy for failure clustering).
+
+
+@app.post("/admin/api/admin-token-rotate")
+async def admin_token_rotate(request: Request, token: str = Query("")):
+    """Gap 10 — generate new ADMIN_TOKEN + push to Coolify + restart container.
+
+    Returns new token ONCE — frontend must store immediately. Old token
+    invalidated as soon as Coolify reloads env."""
+    check_admin(token)
+    if not COOLIFY_API_TOKEN_ENV or not COOLIFY_APP_UUID_ENV:
+        raise HTTPException(status_code=500, detail="Coolify creds missing for self-update")
+
+    # Generate new token
+    new_token = "callmeie-" + _secrets.token_hex(16)
+
+    # 1. Fetch current envs list to find the ADMIN_TOKEN env UUID
+    async with httpx.AsyncClient(timeout=30,
+                                  headers={"Authorization": f"Bearer {COOLIFY_API_TOKEN_ENV}"}) as c:
+        r = await c.get(f"{COOLIFY_API_ROOT_URL}/api/v1/applications/{COOLIFY_APP_UUID_ENV}/envs")
+        if r.status_code != 200:
+            raise HTTPException(status_code=502, detail=f"Coolify envs GET HTTP {r.status_code}")
+        envs = r.json()
+        existing_uuid = None
+        for e in envs:
+            if e.get("key") == "ADMIN_TOKEN":
+                existing_uuid = e.get("uuid")
+                break
+
+        # 2. PATCH (upsert) ADMIN_TOKEN
+        r2 = await c.patch(f"{COOLIFY_API_ROOT_URL}/api/v1/applications/{COOLIFY_APP_UUID_ENV}/envs",
+                           headers={"Content-Type": "application/json"},
+                           json={"key": "ADMIN_TOKEN", "value": new_token,
+                                 "is_preview": False, "is_literal": True})
+        if r2.status_code not in (200, 201):
+            raise HTTPException(status_code=502, detail=f"Coolify PATCH HTTP {r2.status_code}: {r2.text[:200]}")
+
+        # 3. Restart container to load new env
+        r3 = await c.get(f"{COOLIFY_API_ROOT_URL}/api/v1/applications/{COOLIFY_APP_UUID_ENV}/restart")
+
+    return JSONResponse({
+        "ok": True,
+        "new_token": new_token,
+        "warning": "Restart queued. Container takes ~30s. Save the new token NOW — old token works until restart completes.",
+        "restart_response": r3.json() if r3.status_code == 200 else None,
+    })
+
+
+@app.get("/admin/api/leads-unified")
+async def admin_leads_unified(token: str = Query(""), limit: int = Query(50)):
+    """Gap 9 — unified inbox: form submissions + WhatsApp + lead-captured events."""
+    check_admin(token)
+    out = []
+    try:
+        with get_db() as conn:
+            # Form submissions (existing /owl/submit table if present)
+            try:
+                rows = conn.execute(
+                    "SELECT id, created_at, name, phone, email, business_type, source "
+                    "FROM leads ORDER BY id DESC LIMIT ?", (min(limit, 100),)
+                ).fetchall()
+                for r in rows:
+                    out.append({
+                        "ts": r["created_at"],
+                        "channel": "form",
+                        "name": r["name"],
+                        "phone": r["phone"],
+                        "email": r["email"],
+                        "business_type": r["business_type"],
+                        "source": r["source"] or "form",
+                        "raw_id": r["id"],
+                    })
+            except Exception:
+                pass
+
+            # lead-captured events (from receptionist calls)
+            try:
+                rows = conn.execute(
+                    "SELECT id, created_at, call_id, summary, detail "
+                    "FROM call_events WHERE event_type = 'lead-captured' "
+                    "ORDER BY id DESC LIMIT ?", (min(limit, 100),)
+                ).fetchall()
+                for r in rows:
+                    try:
+                        d = json.loads(r["detail"] or "{}")
+                    except Exception:
+                        d = {}
+                    out.append({
+                        "ts": r["created_at"],
+                        "channel": "phone",
+                        "name": d.get("name"),
+                        "phone": d.get("contact_phone") or d.get("phone"),
+                        "email": d.get("email"),
+                        "business_type": d.get("business_type"),
+                        "source": "receptionist:" + (d.get("business_type") or "unknown"),
+                        "call_id": r["call_id"],
+                        "summary": r["summary"],
+                        "raw_id": r["id"],
+                    })
+            except Exception:
+                pass
+
+            # WhatsApp inbound (if stored in events)
+            try:
+                rows = conn.execute(
+                    "SELECT id, created_at, summary, detail FROM call_events "
+                    "WHERE event_type IN ('whatsapp-inbound', 'whatsapp-message') "
+                    "ORDER BY id DESC LIMIT ?", (min(limit, 100),)
+                ).fetchall()
+                for r in rows:
+                    try:
+                        d = json.loads(r["detail"] or "{}")
+                    except Exception:
+                        d = {}
+                    out.append({
+                        "ts": r["created_at"],
+                        "channel": "whatsapp",
+                        "name": d.get("name") or d.get("from_name"),
+                        "phone": d.get("from") or d.get("phone"),
+                        "summary": r["summary"] or d.get("body", "")[:120],
+                        "source": "whatsapp",
+                        "raw_id": r["id"],
+                    })
+            except Exception:
+                pass
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"DB error: {e}")
+
+    # Sort by timestamp desc
+    out.sort(key=lambda x: x.get("ts") or "", reverse=True)
+    return JSONResponse({"leads": out[:limit], "count": len(out[:limit]), "total_seen": len(out)})
+
+
+@app.get("/admin/api/heat-by-assistant")
+async def admin_heat_by_assistant(token: str = Query("")):
+    """Gap 18 lite — heat distribution per assistant (proxy for failure clustering).
+
+    Sentry-style grouping by 'assistant' as fingerprint dimension; surfaces
+    which assistant prompt is converting vs which is browsing-only."""
+    check_admin(token)
+    try:
+        with get_db() as conn:
+            rows = conn.execute(
+                "SELECT assistant, detail FROM call_events "
+                "WHERE event_type = 'demo-complete' "
+                "AND created_at >= datetime('now', '-30 days')"
+            ).fetchall()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"DB error: {e}")
+    groups: dict[str, dict] = {}
+    for r in rows:
+        try:
+            d = json.loads(r["detail"] or "{}")
+        except Exception:
+            d = {}
+        a = r["assistant"] or "unknown"
+        g = groups.setdefault(a, {"assistant": a, "very_interested": 0, "curious": 0,
+                                    "just_browsing": 0, "unknown": 0, "total": 0})
+        lvl = (d.get("interest_level") or "unknown").lower()
+        if lvl in g:
+            g[lvl] += 1
+        else:
+            g["unknown"] += 1
+        g["total"] += 1
+    # Compute conversion rate per assistant
+    out = list(groups.values())
+    for g in out:
+        g["conversion_rate"] = round((g["very_interested"] / g["total"]) if g["total"] else 0, 3)
+    out.sort(key=lambda g: g["total"], reverse=True)
+    return JSONResponse({"assistants": out})
+
+
 if __name__ == "__main__":
     import uvicorn
     port = int(os.environ.get("PORT", 8080))

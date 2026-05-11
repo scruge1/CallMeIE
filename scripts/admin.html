@@ -188,6 +188,9 @@
         <kbd>8</kbd><span>Recordings</span>
         <kbd>9</kbd><span>Revenue</span>
         <kbd>0</kbd><span>Flow</span>
+        <kbd>e</kbd><span>Errors (vendor unified)</span>
+        <kbd>i</kbd><span>Inbox (omnichannel leads)</span>
+        <kbd>s</kbd><span>Settings</span>
         <kbd>j</kbd><span>Next call event</span>
         <kbd>k</kbd><span>Previous call event</span>
         <kbd>r</kbd><span>Reload current tab</span>
@@ -220,6 +223,9 @@
     <button class="tab" onclick="switchTab('recordings')">Recordings</button>
     <button class="tab" onclick="switchTab('revenue')">Revenue</button>
     <button class="tab" onclick="switchTab('flow')">Flow</button>
+    <button class="tab" onclick="switchTab('errors')">Errors</button>
+    <button class="tab" onclick="switchTab('inbox')">Inbox</button>
+    <button class="tab" onclick="switchTab('settings')">Settings</button>
   </div>
 
   <div id="pendingSection" class="section active"></div>
@@ -262,6 +268,9 @@
   <div id="recordingsSection" class="section"></div>
   <div id="revenueSection" class="section"></div>
   <div id="flowSection" class="section"></div>
+  <div id="errorsSection" class="section"></div>
+  <div id="inboxSection" class="section"></div>
+  <div id="settingsSection" class="section"></div>
 </div>
 
 <div id="toast" class="toast" style="display:none"></div>
@@ -320,7 +329,7 @@ window.onload = () => {
 let callsAutoRefresh = null;
 
 function switchTab(tab) {
-  const tabs = ['pending', 'clients', 'calls', 'discovery', 'leads', 'ads', 'assistants', 'recordings', 'revenue', 'flow'];
+  const tabs = ['pending', 'clients', 'calls', 'discovery', 'leads', 'ads', 'assistants', 'recordings', 'revenue', 'flow', 'errors', 'inbox', 'settings'];
   document.querySelectorAll('.tab').forEach((t, i) => {
     t.classList.toggle('active', tabs[i] === tab);
   });
@@ -345,6 +354,9 @@ function switchTab(tab) {
   if (tab === 'recordings') loadRecordings();
   if (tab === 'revenue') loadRevenue();
   if (tab === 'flow') loadFlow();
+  if (tab === 'errors') loadErrors();
+  if (tab === 'inbox') loadInbox();
+  if (tab === 'settings') loadSettings();
 }
 
 async function loadAll() {
@@ -1042,12 +1054,15 @@ document.addEventListener('keydown', (e) => {
   const tag = (e.target && e.target.tagName) || '';
   if (['INPUT', 'TEXTAREA', 'SELECT'].includes(tag) || e.target.isContentEditable) return;
   if (e.ctrlKey || e.metaKey || e.altKey) return;
-  const tabs = ['pending', 'clients', 'calls', 'discovery', 'leads', 'ads', 'assistants', 'recordings', 'revenue', 'flow'];
+  const tabs = ['pending', 'clients', 'calls', 'discovery', 'leads', 'ads', 'assistants', 'recordings', 'revenue', 'flow', 'errors', 'inbox', 'settings'];
   if (e.key === '?') { e.preventDefault(); showKeyboardHelp(); return; }
   if (e.key === 'Escape') { document.getElementById('kbHelp').style.display = 'none'; return; }
   if (e.key === 'h') { toggleHealthDetail(); return; }
   if (e.key === 'r') { if (typeof loadAll === 'function') loadAll(); return; }
   if (e.key === '0') { switchTab('flow'); return; }
+  if (e.key === 'e') { switchTab('errors'); return; }
+  if (e.key === 'i') { switchTab('inbox'); return; }
+  if (e.key === 's') { switchTab('settings'); return; }
   if (e.key >= '1' && e.key <= '9') {
     const idx = parseInt(e.key, 10) - 1;
     if (tabs[idx]) switchTab(tabs[idx]);
@@ -1444,6 +1459,145 @@ async function loadRevenue() {
       </div>
     `;
   } catch (e) { el.innerHTML = `<div class="empty">err: ${esc(e.message)}</div>`; }
+}
+
+// ========== Sprint 5+6 — Errors / Inbox / Settings ==========
+
+async function loadErrors() {
+  const el = document.getElementById('errorsSection');
+  el.innerHTML = '<div class="empty">Probing Stripe + Twilio + Vapi for 24h errors…</div>';
+  try {
+    const res = await fetch(`${BASE}/admin/api/vendor-errors-unified?token=${encodeURIComponent(TOKEN)}`);
+    if (!res.ok) { el.innerHTML = `<div class="empty">HTTP ${res.status}</div>`; return; }
+    const d = await res.json();
+    if (!d.groups.length) {
+      el.innerHTML = '<div class="empty">No errors in last 24h across Stripe / Twilio / Vapi. ✓</div>';
+      return;
+    }
+    const lvlColour = {error: '#ef4444', warn: '#fbbf24', info: '#64748b'};
+    el.innerHTML = `
+      <div style="font-size:0.72rem;color:#94a3b8;margin-bottom:10px">
+        ${d.total_errors_24h} errors / 24h · vendors affected: ${d.vendors_with_errors.join(', ')} · grouped by fingerprint (Sentry pattern)
+      </div>
+      ${d.groups.map(g => `
+        <div class="card" style="padding:10px;margin-bottom:8px;border-left:3px solid ${lvlColour[g.level]||'#64748b'}">
+          <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+            <span style="font-weight:600;color:${lvlColour[g.level]||'#94a3b8'}">${g.count}×</span>
+            <code style="background:#0a0e1a;padding:2px 6px;border-radius:3px;font-size:0.72rem;color:#22d3ee">${esc(g.fingerprint)}</code>
+            <span style="color:#475569;font-size:0.7rem">${g.last_seen ? new Date(g.last_seen*1000).toISOString().slice(11,19) : ''}</span>
+          </div>
+          <div style="color:#94a3b8;font-size:0.78rem;margin-top:6px">${esc(g.message)}</div>
+          ${g.samples.length ? `<div style="font-family:monospace;font-size:0.68rem;color:#475569;margin-top:4px">samples: ${g.samples.map(s=>esc(s.object_id||'')).join(', ')}</div>` : ''}
+        </div>
+      `).join('')}`;
+  } catch (e) { el.innerHTML = `<div class="empty">err: ${esc(e.message)}</div>`; }
+}
+
+async function loadInbox() {
+  const el = document.getElementById('inboxSection');
+  el.innerHTML = '<div class="empty">Loading unified inbox…</div>';
+  try {
+    const res = await fetch(`${BASE}/admin/api/leads-unified?token=${encodeURIComponent(TOKEN)}&limit=80`);
+    if (!res.ok) { el.innerHTML = `<div class="empty">HTTP ${res.status}</div>`; return; }
+    const d = await res.json();
+    if (!d.leads.length) {
+      el.innerHTML = '<div class="empty">No leads yet across form + phone + WhatsApp channels.</div>';
+      return;
+    }
+    const chanIcon = {form:'📝', phone:'📞', whatsapp:'💬', email:'✉'};
+    const chanColour = {form:'#22d3ee', phone:'#4ade80', whatsapp:'#10b981', email:'#fbbf24'};
+    el.innerHTML = `
+      <div style="font-size:0.72rem;color:#94a3b8;margin-bottom:10px">${d.count} lead${d.count===1?'':'s'} across ${[...new Set(d.leads.map(l=>l.channel))].length} channel(s) (Front omnichannel pattern)</div>
+      ${d.leads.map(l => {
+        const c = chanColour[l.channel] || '#64748b';
+        const ts = (l.ts||'').replace('T',' ').slice(0,19);
+        return `<div class="card" style="padding:10px;margin-bottom:8px;border-left:3px solid ${c}">
+          <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+            <span style="font-size:0.85rem">${chanIcon[l.channel]||'•'}</span>
+            <strong style="color:#e2e8f0">${esc(l.name||'?')}</strong>
+            <span style="color:#94a3b8;font-size:0.78rem">${esc(l.business_type||'')}</span>
+            ${l.phone ? `<span style="color:#475569;font-family:monospace;font-size:0.72rem">${esc(l.phone)}</span>` : ''}
+            ${l.email ? `<span style="color:#475569;font-size:0.72rem">${esc(l.email)}</span>` : ''}
+            <span style="color:#475569;font-size:0.7rem;margin-left:auto">${esc(ts)}</span>
+          </div>
+          ${l.summary ? `<div style="color:#94a3b8;font-size:0.74rem;margin-top:4px">${esc(l.summary)}</div>` : ''}
+          <div style="color:#475569;font-size:0.68rem;margin-top:2px">source: ${esc(l.source||'?')}${l.call_id?` · call: ${esc(l.call_id.slice(0,12))}…`:''}</div>
+        </div>`;
+      }).join('')}`;
+  } catch (e) { el.innerHTML = `<div class="empty">err: ${esc(e.message)}</div>`; }
+}
+
+async function loadSettings() {
+  const el = document.getElementById('settingsSection');
+  // Also load heat-by-assistant (Gap 18 lite) inline
+  let heatHtml = '<div class="empty">Loading heat distribution…</div>';
+  try {
+    const res = await fetch(`${BASE}/admin/api/heat-by-assistant?token=${encodeURIComponent(TOKEN)}`);
+    if (res.ok) {
+      const d = await res.json();
+      if (d.assistants.length) {
+        heatHtml = d.assistants.map(a => `
+          <div style="display:flex;gap:10px;align-items:center;padding:6px 0;border-bottom:1px solid #1e293b;font-size:0.78rem">
+            <strong style="color:#e2e8f0;min-width:140px">${esc(a.assistant||'?')}</strong>
+            <span style="color:#ef4444">🔥 ${a.very_interested}</span>
+            <span style="color:#fbbf24">🌡 ${a.curious}</span>
+            <span style="color:#64748b">❄ ${a.just_browsing}</span>
+            <span style="color:#94a3b8;margin-left:auto">conv: ${(a.conversion_rate*100).toFixed(0)}% of ${a.total}</span>
+          </div>`).join('');
+      } else {
+        heatHtml = '<div class="empty">No demo-complete events yet (last 30d).</div>';
+      }
+    }
+  } catch (e) { heatHtml = `err: ${esc(e.message)}`; }
+
+  el.innerHTML = `
+    <div class="card" style="padding:14px;margin-bottom:14px">
+      <h3 style="margin:0 0 10px;color:#22d3ee">Admin token rotation</h3>
+      <p style="font-size:0.78rem;color:#94a3b8;margin:0 0 12px">
+        Rotates ADMIN_TOKEN env on Coolify + restarts container. Old token works ~30s during restart.
+        New token displayed ONCE — copy immediately.
+      </p>
+      <button class="btn btn-reject" onclick="rotateAdminToken()">Rotate ADMIN_TOKEN now</button>
+      <div id="rotateResult" style="margin-top:10px;font-size:0.78rem"></div>
+    </div>
+
+    <div class="card" style="padding:14px;margin-bottom:14px">
+      <h3 style="margin:0 0 10px;color:#22d3ee">Heat distribution per assistant (last 30d)</h3>
+      <p style="font-size:0.72rem;color:#475569;margin:0 0 8px">Sentry-style failure clustering — which prompt is converting vs browsing-only.</p>
+      ${heatHtml}
+    </div>
+
+    <div class="card" style="padding:14px">
+      <h3 style="margin:0 0 10px;color:#22d3ee">Keyboard shortcuts</h3>
+      <p style="font-size:0.78rem;color:#94a3b8;margin:0">Press <kbd>?</kbd> anywhere in admin to see all shortcuts.</p>
+    </div>`;
+}
+
+async function rotateAdminToken() {
+  const out = document.getElementById('rotateResult');
+  if (!confirm('Rotate ADMIN_TOKEN now? Container will restart (~30s downtime). Old token works during restart.')) return;
+  out.innerHTML = '<span style="color:#fbbf24">Rotating…</span>';
+  try {
+    const res = await fetch(`${BASE}/admin/api/admin-token-rotate?token=${encodeURIComponent(TOKEN)}`, { method: 'POST' });
+    const d = await res.json();
+    if (res.ok && d.ok) {
+      // Save new token locally + show once
+      const newToken = d.new_token;
+      localStorage.setItem('admin_token', newToken);
+      TOKEN = newToken;
+      out.innerHTML = `
+        <div style="background:#0a0e1a;border:1px solid #4ade80;padding:10px;border-radius:6px">
+          <div style="color:#4ade80;font-weight:600;margin-bottom:6px">✓ New ADMIN_TOKEN (saved to localStorage):</div>
+          <code style="display:block;color:#22d3ee;font-family:monospace;font-size:0.85rem;word-break:break-all;background:#0f172a;padding:8px;border-radius:4px;margin:6px 0">${esc(newToken)}</code>
+          <div style="color:#94a3b8;font-size:0.72rem">⚠ ${esc(d.warning||'')}</div>
+        </div>`;
+      showToast('Token rotated — saved to localStorage', 'success');
+    } else {
+      out.innerHTML = `<span style="color:#ef4444">FAIL: ${esc(d.detail||JSON.stringify(d).slice(0,120))}</span>`;
+    }
+  } catch (e) {
+    out.innerHTML = `<span style="color:#ef4444">err: ${esc(e.message)}</span>`;
+  }
 }
 
 function copyPhone(phone) {
