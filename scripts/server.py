@@ -2876,8 +2876,9 @@ async def terms():
 
 @app.get("/admin")
 async def admin_portal(token: str = Query("")):
-    if not token or token != ADMIN_TOKEN:
-        raise HTTPException(status_code=401, detail="Unauthorized")
+    # Serve admin.html unconditionally — JS handles token input + localStorage
+    # auth state. All /admin/api/* endpoints enforce token server-side, so
+    # serving the static shell without token is safe (no secrets in the HTML).
     if os.path.exists(ADMIN_HTML_PATH):
         return FileResponse(ADMIN_HTML_PATH)
     return HTMLResponse(ADMIN_HTML_FALLBACK)
