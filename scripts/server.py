@@ -2839,7 +2839,13 @@ async def provision_client(sub: dict) -> str:
 
 
 @app.get("/")
-async def index():
+async def index(request: Request):
+    # Host-based routing: admin.callmeie.ie / is the operator dashboard entry.
+    # api.callmeie.ie / stays as the receptionist root (FileResponse fallback).
+    host = (request.headers.get("host") or "").lower()
+    if host.startswith("admin."):
+        from starlette.responses import RedirectResponse
+        return RedirectResponse(url="/admin", status_code=302)
     if os.path.exists(INDEX_HTML_PATH):
         return FileResponse(INDEX_HTML_PATH)
     return HTMLResponse("<h1>CallMe.ie</h1>")
