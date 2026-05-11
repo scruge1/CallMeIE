@@ -4777,23 +4777,27 @@ STRIPE_RECEPTIONIST_SETUP_PRICE = os.environ.get("STRIPE_RECEPTIONIST_SETUP_ONCE
 
 @app.post("/admin/api/send-setup-link")
 async def admin_send_setup_link(request: Request, token: str = Query("")) -> JSONResponse:
-    """Owner-only: mint Stripe Checkout Session + SMS link to caller mid-demo.
+    """Mint Stripe Checkout Session + SMS link to caller mid-demo.
 
     Body:
       phone: str             E.164 mobile (e.g. +353871234567)
       tier:  str             "professional" | "growth"
       include_setup: bool    default True (bundle one-off €297 setup fee)
 
-    Auth: ?token=<OWL_OWNER_TOKEN> OR Authorization: Bearer <OWL_OWNER_TOKEN>
-
-    Returns: { ok, checkout_url, session_id, sms_status, sms_ok, phone, tier }
+    Auth: ADMIN_TOKEN (admin.html UI) OR OWL_OWNER_TOKEN (legacy curl) via
+    ?token= OR Authorization: Bearer. Accepts either since both are
+    owner-scoped secrets and admin.html sends ADMIN_TOKEN from localStorage.
     """
-    if not _owl_check_owner(token):
-        auth = request.headers.get("authorization", "")
-        if auth.lower().startswith("bearer "):
-            token = auth.split(None, 1)[1].strip()
-        if not _owl_check_owner(token):
-            raise HTTPException(status_code=401, detail="owner token required")
+    # Try Authorization Bearer first for symmetry with other admin endpoints
+    bearer = ""
+    auth_hdr = request.headers.get("authorization", "")
+    if auth_hdr.lower().startswith("bearer "):
+        bearer = auth_hdr.split(None, 1)[1].strip()
+    effective = token or bearer
+    is_admin = bool(ADMIN_TOKEN) and _secrets.compare_digest(effective, ADMIN_TOKEN)
+    is_owner = _owl_check_owner(effective)
+    if not (is_admin or is_owner):
+        raise HTTPException(status_code=401, detail="ADMIN_TOKEN or OWL_OWNER_TOKEN required")
 
     if not OWL_STRIPE_API_KEY:
         raise HTTPException(status_code=500, detail="STRIPE_API_KEY not configured")
