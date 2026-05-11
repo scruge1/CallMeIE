@@ -5080,6 +5080,284 @@ async def admin_coolify_redeploy(token: str = Query("")):
         return JSONResponse({"ok": True, "raw": r.text[:400]})
 
 
+# ========== Sprint 2 (PRD-ADMIN-DASHBOARD-OWNER-CONTROL-2026-05-11) ==========
+# Gaps 21 + 3 + 4 — operator velocity.
+# Gap 21 MUST ship before Gap 3 or we re-create the silent tool-strip bug.
+
+async def _vapi_safe_patch(assistant_id: str, partial: dict) -> dict:
+    """Gap 21 — PATCH wrapper that defends against Gotcha 2 (silent tool-strip).
+
+    Workflow: GET → merge partial into current model → defensive re-attach
+    of tools (Vapi strips model.tools if PATCH omits them) → PATCH →
+    GET-verify tool count not decreased. Raises 502 if Vapi rejects or
+    tool count drops post-PATCH.
+
+    `partial` shape examples:
+      {"model": {"messages": [...]}}                 # prompt edit
+      {"voice": {"stability": 0.5, "style": 0.45}}   # voice edit
+      {"transcriber": {"keyterm": [...]}}            # keyterm edit
+    """
+    vk = os.environ.get("VAPI_API_KEY", "").strip()
+    if not vk:
+        raise HTTPException(status_code=500, detail="VAPI_API_KEY not set")
+
+    async with httpx.AsyncClient(timeout=30) as c:
+        r = await c.get(f"https://api.vapi.ai/assistant/{assistant_id}",
+                        headers={"Authorization": f"Bearer {vk}"})
+    if r.status_code != 200:
+        raise HTTPException(status_code=502, detail=f"Vapi GET HTTP {r.status_code}")
+    cur = r.json()
+    cur_model = cur.get("model") or {}
+    cur_tools = cur_model.get("tools") or []
+    before_count = len(cur_tools)
+
+    payload: dict = {}
+    if "model" in partial:
+        merged_model = {**cur_model, **(partial.get("model") or {})}
+        # Defense: caller may explicitly pass tools; otherwise re-attach existing
+        explicit_tools = (partial.get("model") or {}).get("tools")
+        if explicit_tools is None:
+            merged_model["tools"] = cur_tools
+        payload["model"] = merged_model
+    # voice / transcriber / other top-level fields pass through untouched
+    for k in ("voice", "transcriber", "firstMessage", "endCallPhrases",
+              "maxDurationSeconds", "silenceTimeoutSeconds",
+              "startSpeakingPlan", "stopSpeakingPlan", "voicemailDetection",
+              "backgroundSound", "artifactPlan"):
+        if k in partial:
+            payload[k] = partial[k]
+
+    async with httpx.AsyncClient(timeout=30) as c:
+        r2 = await c.patch(f"https://api.vapi.ai/assistant/{assistant_id}",
+                           headers={"Authorization": f"Bearer {vk}",
+                                    "Content-Type": "application/json"},
+                           json=payload)
+    if r2.status_code not in (200, 201):
+        raise HTTPException(status_code=502,
+                            detail=f"Vapi PATCH HTTP {r2.status_code}: {r2.text[:300]}")
+
+    async with httpx.AsyncClient(timeout=30) as c:
+        chk = await c.get(f"https://api.vapi.ai/assistant/{assistant_id}",
+                          headers={"Authorization": f"Bearer {vk}"})
+    chk_json = chk.json()
+    after_tools = ((chk_json.get("model") or {}).get("tools") or [])
+    after_count = len(after_tools)
+
+    if after_count < before_count:
+        raise HTTPException(status_code=502,
+                            detail=f"Vapi PATCH silently stripped tools: {before_count} -> {after_count}")
+
+    return {
+        "ok": True,
+        "assistant_id": assistant_id,
+        "before_tools_count": before_count,
+        "after_tools_count": after_count,
+        "response": chk_json,
+    }
+
+
+@app.get("/admin/api/vapi/assistants")
+async def admin_vapi_assistants(token: str = Query("")):
+    """Gap 3 — list Vapi assistants."""
+    check_admin(token)
+    vk = os.environ.get("VAPI_API_KEY", "").strip()
+    if not vk:
+        raise HTTPException(status_code=500, detail="VAPI_API_KEY missing")
+    async with httpx.AsyncClient(timeout=20) as c:
+        r = await c.get("https://api.vapi.ai/assistant",
+                        headers={"Authorization": f"Bearer {vk}"},
+                        params={"limit": 50})
+    if r.status_code != 200:
+        raise HTTPException(status_code=502, detail=f"Vapi HTTP {r.status_code}")
+    out = []
+    for a in r.json():
+        model = a.get("model") or {}
+        voice = a.get("voice") or {}
+        out.append({
+            "id": a.get("id"),
+            "name": a.get("name"),
+            "voice_id": voice.get("voiceId"),
+            "voice_provider": voice.get("provider"),
+            "model_name": model.get("model"),
+            "tools_count": len(model.get("tools") or []),
+            "updated_at": a.get("updatedAt"),
+        })
+    return JSONResponse({"assistants": out})
+
+
+@app.get("/admin/api/vapi/assistant/{assistant_id}")
+async def admin_vapi_assistant_detail(assistant_id: str, token: str = Query("")):
+    """Gap 3 — full detail of one assistant (prompt + voice + transcriber)."""
+    check_admin(token)
+    vk = os.environ.get("VAPI_API_KEY", "").strip()
+    if not vk:
+        raise HTTPException(status_code=500, detail="VAPI_API_KEY missing")
+    async with httpx.AsyncClient(timeout=20) as c:
+        r = await c.get(f"https://api.vapi.ai/assistant/{assistant_id}",
+                        headers={"Authorization": f"Bearer {vk}"})
+    if r.status_code != 200:
+        raise HTTPException(status_code=502, detail=f"Vapi HTTP {r.status_code}")
+    a = r.json()
+    model = a.get("model") or {}
+    voice = a.get("voice") or {}
+    transcriber = a.get("transcriber") or {}
+    # Extract just system message content (the editable prompt)
+    sys_msg = next((m.get("content", "") for m in (model.get("messages") or [])
+                    if m.get("role") == "system"), "")
+    return JSONResponse({
+        "id": a.get("id"),
+        "name": a.get("name"),
+        "system_prompt": sys_msg,
+        "first_message": a.get("firstMessage", ""),
+        "voice": {
+            "provider": voice.get("provider"),
+            "voiceId": voice.get("voiceId"),
+            "model": voice.get("model"),
+            "stability": voice.get("stability"),
+            "style": voice.get("style"),
+            "similarityBoost": voice.get("similarityBoost"),
+            "useSpeakerBoost": voice.get("useSpeakerBoost"),
+            "cachingEnabled": voice.get("cachingEnabled"),
+        },
+        "transcriber": {
+            "provider": transcriber.get("provider"),
+            "model": transcriber.get("model"),
+            "keyterm": transcriber.get("keyterm", []),
+            "language": transcriber.get("language"),
+        },
+        "tools_count": len(model.get("tools") or []),
+        "model_name": model.get("model"),
+    })
+
+
+@app.post("/admin/api/vapi/assistant/{assistant_id}/prompt")
+async def admin_vapi_update_prompt(assistant_id: str, request: Request, token: str = Query("")):
+    """Gap 3 — replace system prompt only. Uses Gap 21 safe-PATCH (tools preserved)."""
+    check_admin(token)
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="invalid JSON")
+    new_prompt = body.get("system_prompt", "")
+    if not new_prompt or not isinstance(new_prompt, str):
+        raise HTTPException(status_code=400, detail="system_prompt must be non-empty string")
+    if "—" in new_prompt:
+        raise HTTPException(status_code=400,
+                            detail="em-dash detected in prompt (Gotcha 3 — ElevenLabs vocalises as 'samam'). Replace with - or .")
+
+    # GET current to find non-system messages (preserve them) + reconstruct messages array
+    vk = os.environ.get("VAPI_API_KEY", "").strip()
+    async with httpx.AsyncClient(timeout=20) as c:
+        r = await c.get(f"https://api.vapi.ai/assistant/{assistant_id}",
+                        headers={"Authorization": f"Bearer {vk}"})
+    if r.status_code != 200:
+        raise HTTPException(status_code=502, detail=f"Vapi GET HTTP {r.status_code}")
+    cur_messages = ((r.json().get("model") or {}).get("messages") or [])
+    new_messages = []
+    replaced = False
+    for m in cur_messages:
+        if m.get("role") == "system" and not replaced:
+            new_messages.append({**m, "content": new_prompt})
+            replaced = True
+        else:
+            new_messages.append(m)
+    if not replaced:
+        new_messages.insert(0, {"role": "system", "content": new_prompt})
+
+    result = await _vapi_safe_patch(assistant_id, {"model": {"messages": new_messages}})
+    return JSONResponse({
+        "ok": True,
+        "before_tools_count": result["before_tools_count"],
+        "after_tools_count": result["after_tools_count"],
+        "prompt_size": len(new_prompt),
+    })
+
+
+@app.post("/admin/api/vapi/assistant/{assistant_id}/voice")
+async def admin_vapi_update_voice(assistant_id: str, request: Request, token: str = Query("")):
+    """Gap 3 — update voice settings. Uses Gap 21 safe-PATCH."""
+    check_admin(token)
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="invalid JSON")
+    allowed = {"voiceId", "stability", "style", "similarityBoost",
+               "useSpeakerBoost", "cachingEnabled", "model"}
+    voice_partial = {k: v for k, v in body.items() if k in allowed}
+    if not voice_partial:
+        raise HTTPException(status_code=400, detail=f"voice fields required: {allowed}")
+
+    vk = os.environ.get("VAPI_API_KEY", "").strip()
+    async with httpx.AsyncClient(timeout=20) as c:
+        r = await c.get(f"https://api.vapi.ai/assistant/{assistant_id}",
+                        headers={"Authorization": f"Bearer {vk}"})
+    cur_voice = (r.json().get("voice") or {})
+    new_voice = {**cur_voice, **voice_partial}
+    result = await _vapi_safe_patch(assistant_id, {"voice": new_voice})
+    return JSONResponse({"ok": True, "tools_after": result["after_tools_count"]})
+
+
+@app.post("/admin/api/vapi/assistant/{assistant_id}/keyterms")
+async def admin_vapi_update_keyterms(assistant_id: str, request: Request, token: str = Query("")):
+    """Gap 3 — update Deepgram keyterm list. Uses Gap 21 safe-PATCH."""
+    check_admin(token)
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="invalid JSON")
+    keyterms = body.get("keyterm", [])
+    if not isinstance(keyterms, list):
+        raise HTTPException(status_code=400, detail="keyterm must be list of strings")
+
+    vk = os.environ.get("VAPI_API_KEY", "").strip()
+    async with httpx.AsyncClient(timeout=20) as c:
+        r = await c.get(f"https://api.vapi.ai/assistant/{assistant_id}",
+                        headers={"Authorization": f"Bearer {vk}"})
+    cur_trans = (r.json().get("transcriber") or {})
+    new_trans = {**cur_trans, "keyterm": keyterms}
+    result = await _vapi_safe_patch(assistant_id, {"transcriber": new_trans})
+    return JSONResponse({"ok": True, "tools_after": result["after_tools_count"], "keyterm_count": len(keyterms)})
+
+
+@app.get("/admin/api/recordings")
+async def admin_recordings(token: str = Query(""), limit: int = Query(50)):
+    """Gap 4 — list Hetzner recordings with presigned URLs for inline playback."""
+    check_admin(token)
+    ep = os.environ.get("HETZNER_OBJECT_STORAGE_ENDPOINT", "").strip()
+    ak = os.environ.get("HETZNER_OBJECT_STORAGE_ACCESS_KEY_ID", "").strip()
+    sk = os.environ.get("HETZNER_OBJECT_STORAGE_SECRET_ACCESS_KEY", "").strip()
+    bk = os.environ.get("HETZNER_OBJECT_STORAGE_BUCKET", "").strip()
+    if not all([ep, ak, sk, bk]):
+        raise HTTPException(status_code=500, detail="Hetzner credentials missing")
+    try:
+        import boto3
+        from botocore.config import Config
+        s3 = boto3.client("s3", aws_access_key_id=ak, aws_secret_access_key=sk,
+                          endpoint_url=ep, region_name="eu-central",
+                          config=Config(signature_version="s3v4",
+                                        s3={"addressing_style": "path"}))
+        resp = s3.list_objects_v2(Bucket=bk, Prefix="recordings/", MaxKeys=min(limit, 500))
+        out = []
+        for obj in resp.get("Contents", []):
+            url = s3.generate_presigned_url(
+                "get_object",
+                Params={"Bucket": bk, "Key": obj["Key"]},
+                ExpiresIn=3600,
+            )
+            out.append({
+                "key": obj["Key"],
+                "call_id": obj["Key"].replace("recordings/", "").rsplit(".", 1)[0],
+                "size": obj["Size"],
+                "last_modified": obj["LastModified"].isoformat() if obj.get("LastModified") else None,
+                "presigned_url": url,
+            })
+        # Sort newest first
+        out.sort(key=lambda x: x["last_modified"] or "", reverse=True)
+        return JSONResponse({"recordings": out, "count": len(out)})
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Hetzner list failed: {e}")
+
+
 if __name__ == "__main__":
     import uvicorn
     port = int(os.environ.get("PORT", 8080))
