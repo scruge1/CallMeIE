@@ -5358,6 +5358,258 @@ async def admin_recordings(token: str = Query(""), limit: int = Query(50)):
         raise HTTPException(status_code=502, detail=f"Hetzner list failed: {e}")
 
 
+# ========== Sprint 3 (PRD-ADMIN-DASHBOARD-OWNER-CONTROL-2026-05-11) ==========
+# Gaps 5 + 8 + 14 + CAC — revenue + cost + drama-scoring + correlation.
+
+# Conservative public-rate-card prices. Used for estimate only; actual Stripe
+# fees come from settled payments (per Air.ai negative-signal lesson).
+VAPI_RATE_PER_MIN_EUR = 0.05
+TWILIO_SMS_INTL_RATE_EUR = 0.075  # +353 international rate
+TWILIO_VOICE_PER_MIN_EUR = 0.02
+
+
+async def _stripe_get(path: str, params: dict = None) -> dict:
+    if not OWL_STRIPE_API_KEY:
+        raise HTTPException(status_code=500, detail="STRIPE_API_KEY missing")
+    async with httpx.AsyncClient(timeout=20) as c:
+        r = await c.get(f"https://api.stripe.com/v1{path}",
+                        headers={"Authorization": f"Bearer {OWL_STRIPE_API_KEY}"},
+                        params=params or {})
+    if r.status_code != 200:
+        raise HTTPException(status_code=502, detail=f"Stripe {path} HTTP {r.status_code}")
+    return r.json()
+
+
+@app.get("/admin/api/stripe-recent")
+async def admin_stripe_recent(token: str = Query("")):
+    """Gap 5 — last 30d Checkout Sessions + Payments + active subs."""
+    check_admin(token)
+    import time
+    now = int(time.time())
+    thirty_days = now - (30 * 86400)
+    sessions = await _stripe_get("/checkout/sessions",
+                                  {"limit": 50, "created[gte]": thirty_days})
+    payments = await _stripe_get("/payment_intents",
+                                  {"limit": 30, "created[gte]": thirty_days})
+    subs = await _stripe_get("/subscriptions", {"limit": 100, "status": "active"})
+
+    def slim_session(s):
+        return {
+            "id": s.get("id"),
+            "status": s.get("status"),
+            "amount_total": s.get("amount_total"),
+            "currency": s.get("currency"),
+            "customer_email": s.get("customer_details", {}).get("email") if s.get("customer_details") else None,
+            "metadata": s.get("metadata", {}),
+            "created": s.get("created"),
+        }
+
+    def slim_payment(p):
+        ch = p.get("latest_charge") or ""
+        return {
+            "id": p.get("id"),
+            "status": p.get("status"),
+            "amount": p.get("amount"),
+            "currency": p.get("currency"),
+            "created": p.get("created"),
+            "description": p.get("description"),
+        }
+
+    def slim_sub(s):
+        items = (s.get("items") or {}).get("data") or []
+        prices = []
+        amt = 0
+        for it in items:
+            pr = it.get("price") or {}
+            prices.append(pr.get("lookup_key") or pr.get("id"))
+            amt += pr.get("unit_amount") or 0
+        return {
+            "id": s.get("id"),
+            "status": s.get("status"),
+            "customer": s.get("customer"),
+            "monthly_amount": amt,
+            "currency": s.get("currency"),
+            "prices": prices,
+            "created": s.get("created"),
+        }
+
+    sub_list = [slim_sub(s) for s in subs.get("data", [])]
+    mrr_minor = sum(s["monthly_amount"] for s in sub_list)
+
+    return JSONResponse({
+        "sessions": [slim_session(s) for s in sessions.get("data", [])],
+        "payments": [slim_payment(p) for p in payments.get("data", [])],
+        "subscriptions": sub_list,
+        "mrr_minor": mrr_minor,
+        "active_subs": len(sub_list),
+        "window_days": 30,
+    })
+
+
+async def _vapi_calls_window(start_unix: int) -> list:
+    vk = os.environ.get("VAPI_API_KEY", "").strip()
+    if not vk:
+        return []
+    iso = _time.strftime("%Y-%m-%dT%H:%M:%SZ", _time.gmtime(start_unix))
+    async with httpx.AsyncClient(timeout=20) as c:
+        r = await c.get("https://api.vapi.ai/call",
+                        headers={"Authorization": f"Bearer {vk}"},
+                        params={"limit": 100, "createdAtGt": iso})
+    if r.status_code != 200:
+        return []
+    return r.json() if isinstance(r.json(), list) else []
+
+
+@app.get("/admin/api/operations-summary")
+async def admin_operations_summary(token: str = Query("")):
+    """Gaps 8 + 14 + CAC — today's revenue, cost, net, conversion."""
+    check_admin(token)
+    import time
+    now = int(time.time())
+    day_start = now - (now % 86400)
+    week_start = now - (7 * 86400)
+
+    # Revenue today + 7d (from Stripe payments)
+    pi_7d = await _stripe_get("/payment_intents",
+                              {"limit": 100, "created[gte]": week_start})
+    rev_today_minor = 0
+    rev_7d_minor = 0
+    fees_today_minor = 0
+    payments_today = 0
+    payments_7d = 0
+    for p in pi_7d.get("data", []):
+        if p.get("status") != "succeeded":
+            continue
+        amt = p.get("amount", 0) or 0
+        rev_7d_minor += amt
+        payments_7d += 1
+        if (p.get("created") or 0) >= day_start:
+            rev_today_minor += amt
+            payments_today += 1
+            # Estimate Stripe fee 1.4% + €0.25 for EU cards
+            fees_today_minor += int(amt * 0.014 + 25)
+
+    # Vapi calls today (Adam asked for current-day cost view)
+    vapi_calls = await _vapi_calls_window(day_start)
+    vapi_mins_today = 0.0
+    call_count_today = 0
+    for c in vapi_calls:
+        sa = c.get("startedAt")
+        ea = c.get("endedAt")
+        if sa and ea:
+            try:
+                import datetime as dt
+                s = dt.datetime.fromisoformat(sa.replace("Z","+00:00")).timestamp()
+                e = dt.datetime.fromisoformat(ea.replace("Z","+00:00")).timestamp()
+                vapi_mins_today += (e - s) / 60.0
+                call_count_today += 1
+            except Exception:
+                pass
+
+    vapi_cost_today = vapi_mins_today * VAPI_RATE_PER_MIN_EUR
+
+    # Demo-complete + heat distribution last 7d
+    heat = {"very_interested": 0, "curious": 0, "just_browsing": 0, "unknown": 0}
+    converted_count = 0
+    callback_count = 0
+    try:
+        with get_db() as conn:
+            rows = conn.execute(
+                "SELECT detail, created_at FROM call_events "
+                "WHERE event_type = 'demo-complete' "
+                "AND created_at >= datetime('now', '-7 days') "
+                "ORDER BY id DESC"
+            ).fetchall()
+        for r in rows:
+            try:
+                d = json.loads(r["detail"] or "{}")
+            except Exception:
+                d = {}
+            lvl = (d.get("interest_level") or "unknown").lower()
+            heat[lvl] = heat.get(lvl, 0) + 1
+            na = (d.get("next_action") or "").lower()
+            if "transfer" in na or "signup" in na or "live" in na:
+                converted_count += 1
+            elif "callback" in na:
+                callback_count += 1
+    except Exception:
+        pass
+
+    total_demos_7d = sum(heat.values())
+    conv_rate = (converted_count / total_demos_7d) if total_demos_7d else 0
+    # CAC = cost-this-week / converted-this-week (settled fees, not estimate)
+    cac_minor = int((rev_7d_minor and (vapi_cost_today * 100 / max(converted_count, 1))) or 0)
+
+    return JSONResponse({
+        "today": {
+            "revenue_minor": rev_today_minor,
+            "settled_fees_minor": fees_today_minor,
+            "net_minor": rev_today_minor - fees_today_minor,
+            "payments_count": payments_today,
+            "vapi_minutes": round(vapi_mins_today, 2),
+            "vapi_cost_minor": int(vapi_cost_today * 100),
+            "calls_count": call_count_today,
+        },
+        "last_7_days": {
+            "revenue_minor": rev_7d_minor,
+            "payments_count": payments_7d,
+            "demos_count": total_demos_7d,
+            "converted_count": converted_count,
+            "callback_count": callback_count,
+            "conversion_rate": round(conv_rate, 3),
+            "heat_distribution": heat,
+            "cost_per_acquisition_minor": cac_minor,
+        },
+        "currency": "eur",
+        "rate_card_used": {
+            "vapi_per_min_eur": VAPI_RATE_PER_MIN_EUR,
+            "twilio_sms_intl_eur": TWILIO_SMS_INTL_RATE_EUR,
+            "stripe_fee_pct": 1.4,
+            "stripe_fee_fixed_cent": 25,
+            "note": "Stripe fees are estimated (1.4% + €0.25). Vapi/Twilio rates are public card. Replace with live API once available.",
+        },
+    })
+
+
+@app.get("/admin/api/call-scoring")
+async def admin_call_scoring(token: str = Query(""), limit: int = Query(50)):
+    """Gap 14 — recent demo-complete events with heat + per-call estimated cost."""
+    check_admin(token)
+    try:
+        with get_db() as conn:
+            rows = conn.execute(
+                "SELECT call_id, created_at, assistant, summary, detail "
+                "FROM call_events WHERE event_type = 'demo-complete' "
+                "ORDER BY id DESC LIMIT ?",
+                (min(limit, 200),),
+            ).fetchall()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"DB error: {e}")
+    out = []
+    for r in rows:
+        try:
+            d = json.loads(r["detail"] or "{}")
+        except Exception:
+            d = {}
+        heat = (d.get("interest_level") or "unknown").lower()
+        score_map = {"very_interested": 3, "curious": 2, "just_browsing": 1, "unknown": 0}
+        out.append({
+            "call_id": r["call_id"],
+            "created_at": r["created_at"],
+            "assistant": r["assistant"],
+            "summary": r["summary"],
+            "heat": heat,
+            "heat_score": score_map.get(heat, 0),
+            "business_type": d.get("business_type"),
+            "pain_point": d.get("pain_point"),
+            "estimated_missed_calls_per_week": d.get("estimated_missed_calls_per_week"),
+            "callback_requested": d.get("callback_requested"),
+            "next_action": d.get("next_action"),
+            "topics_discussed": d.get("topics_discussed"),
+        })
+    return JSONResponse({"events": out, "count": len(out)})
+
+
 if __name__ == "__main__":
     import uvicorn
     port = int(os.environ.get("PORT", 8080))

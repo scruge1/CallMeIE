@@ -146,6 +146,32 @@
     </div>
   </div>
 
+  <!-- Sprint 3 Gap 8 — today's revenue / cost / net strip -->
+  <div id="costStrip" style="margin:0 0 12px;padding:8px 12px;background:#0a0e1a;border:1px solid #1e293b;border-radius:6px;font-size:0.78rem;display:none">
+    <div style="display:flex;gap:18px;flex-wrap:wrap;align-items:center">
+      <div><span style="color:#475569;font-size:0.68rem">TODAY</span>
+        <span style="color:#4ade80;font-weight:600;margin-left:4px" id="csRev">€0.00</span>
+        <span style="color:#94a3b8;font-size:0.7rem;margin-left:2px">rev</span>
+        <span style="color:#ef4444;margin-left:8px" id="csCost">€0.00</span>
+        <span style="color:#94a3b8;font-size:0.7rem;margin-left:2px">cost</span>
+        <span style="color:#22d3ee;margin-left:8px;font-weight:600" id="csNet">€0.00</span>
+        <span style="color:#94a3b8;font-size:0.7rem;margin-left:2px">net</span>
+      </div>
+      <div style="border-left:1px solid #1e293b;padding-left:18px">
+        <span style="color:#475569;font-size:0.68rem">7d</span>
+        <span style="color:#e2e8f0;margin-left:4px" id="csDemos">0</span><span style="color:#94a3b8;font-size:0.7rem"> demos</span>
+        <span style="color:#e2e8f0;margin-left:8px" id="csConv">0</span><span style="color:#94a3b8;font-size:0.7rem"> conv</span>
+        <span style="color:#fbbf24;margin-left:8px" id="csCAC">€-</span><span style="color:#94a3b8;font-size:0.7rem"> CAC est</span>
+      </div>
+      <div style="border-left:1px solid #1e293b;padding-left:18px">
+        <span style="color:#475569;font-size:0.68rem">MRR</span>
+        <span style="color:#22d3ee;font-weight:600;margin-left:4px" id="csMRR">€0.00</span>
+        <span style="color:#94a3b8;font-size:0.7rem;margin-left:2px" id="csActiveSubs">0 active</span>
+      </div>
+      <div style="margin-left:auto;color:#475569;font-size:0.68rem" id="csTs">—</div>
+    </div>
+  </div>
+
   <!-- Sprint 1 Gap 20 — keyboard nav help overlay (hidden by default) -->
   <div id="kbHelp" onclick="this.style.display='none'"
     style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:9999;align-items:center;justify-content:center;cursor:pointer">
@@ -160,6 +186,7 @@
         <kbd>6</kbd><span>Ads</span>
         <kbd>7</kbd><span>Assistants</span>
         <kbd>8</kbd><span>Recordings</span>
+        <kbd>9</kbd><span>Revenue</span>
         <kbd>j</kbd><span>Next call event</span>
         <kbd>k</kbd><span>Previous call event</span>
         <kbd>r</kbd><span>Reload current tab</span>
@@ -190,6 +217,7 @@
     </button>
     <button class="tab" onclick="switchTab('assistants')">Assistants</button>
     <button class="tab" onclick="switchTab('recordings')">Recordings</button>
+    <button class="tab" onclick="switchTab('revenue')">Revenue</button>
   </div>
 
   <div id="pendingSection" class="section active"></div>
@@ -230,6 +258,7 @@
   <div id="adsSection" class="section"></div>
   <div id="assistantsSection" class="section"></div>
   <div id="recordingsSection" class="section"></div>
+  <div id="revenueSection" class="section"></div>
 </div>
 
 <div id="toast" class="toast" style="display:none"></div>
@@ -276,6 +305,9 @@ window.onload = () => {
     // Sprint 1 — start health polling + first immediate probe
     loadHealth();
     healthPollTimer = setInterval(loadHealth, 30000);
+    // Sprint 3 — cost strip every 60s
+    loadOperationsSummary();
+    setInterval(loadOperationsSummary, 60000);
   }
   document.getElementById('tokenInput').addEventListener('keydown', e => {
     if (e.key === 'Enter') login();
@@ -285,7 +317,7 @@ window.onload = () => {
 let callsAutoRefresh = null;
 
 function switchTab(tab) {
-  const tabs = ['pending', 'clients', 'calls', 'discovery', 'leads', 'ads', 'assistants', 'recordings'];
+  const tabs = ['pending', 'clients', 'calls', 'discovery', 'leads', 'ads', 'assistants', 'recordings', 'revenue'];
   document.querySelectorAll('.tab').forEach((t, i) => {
     t.classList.toggle('active', tabs[i] === tab);
   });
@@ -308,6 +340,7 @@ function switchTab(tab) {
   if (tab === 'ads') loadAds();
   if (tab === 'assistants') loadAssistants();
   if (tab === 'recordings') loadRecordings();
+  if (tab === 'revenue') loadRevenue();
 }
 
 async function loadAll() {
@@ -1005,12 +1038,12 @@ document.addEventListener('keydown', (e) => {
   const tag = (e.target && e.target.tagName) || '';
   if (['INPUT', 'TEXTAREA', 'SELECT'].includes(tag) || e.target.isContentEditable) return;
   if (e.ctrlKey || e.metaKey || e.altKey) return;
-  const tabs = ['pending', 'clients', 'calls', 'discovery', 'leads', 'ads', 'assistants', 'recordings'];
+  const tabs = ['pending', 'clients', 'calls', 'discovery', 'leads', 'ads', 'assistants', 'recordings', 'revenue'];
   if (e.key === '?') { e.preventDefault(); showKeyboardHelp(); return; }
   if (e.key === 'Escape') { document.getElementById('kbHelp').style.display = 'none'; return; }
   if (e.key === 'h') { toggleHealthDetail(); return; }
   if (e.key === 'r') { if (typeof loadAll === 'function') loadAll(); return; }
-  if (e.key >= '1' && e.key <= '8') {
+  if (e.key >= '1' && e.key <= '9') {
     const idx = parseInt(e.key, 10) - 1;
     if (tabs[idx]) switchTab(tabs[idx]);
     return;
@@ -1199,6 +1232,96 @@ async function loadRecordings() {
           </div>
         </div>`;
       }).join('')}`;
+  } catch (e) { el.innerHTML = `<div class="empty">err: ${esc(e.message)}</div>`; }
+}
+
+// ========== Sprint 3 — Revenue + Cost strip + Call scoring ==========
+
+function eur(minor) {
+  if (minor == null) return '€-';
+  return '€' + (minor / 100).toFixed(2);
+}
+
+async function loadOperationsSummary() {
+  try {
+    const res = await fetch(`${BASE}/admin/api/operations-summary?token=${encodeURIComponent(TOKEN)}`);
+    if (!res.ok) return;
+    const d = await res.json();
+    document.getElementById('costStrip').style.display = 'block';
+    document.getElementById('csRev').textContent = eur(d.today.revenue_minor);
+    document.getElementById('csCost').textContent = eur(d.today.settled_fees_minor + d.today.vapi_cost_minor);
+    document.getElementById('csNet').textContent = eur(d.today.net_minor - d.today.vapi_cost_minor);
+    document.getElementById('csDemos').textContent = d.last_7_days.demos_count;
+    document.getElementById('csConv').textContent = `${d.last_7_days.converted_count}` +
+      (d.last_7_days.demos_count ? ` (${(d.last_7_days.conversion_rate*100).toFixed(0)}%)` : '');
+    document.getElementById('csCAC').textContent =
+      d.last_7_days.cost_per_acquisition_minor > 0 ? eur(d.last_7_days.cost_per_acquisition_minor) : '€-';
+    document.getElementById('csTs').textContent =
+      `Vapi ${d.today.vapi_minutes}min · ${d.today.calls_count} calls · ${d.today.payments_count} pay today`;
+    // MRR loaded separately on Revenue tab
+  } catch (e) { /* silent — strip just stays hidden */ }
+}
+
+async function loadRevenue() {
+  const el = document.getElementById('revenueSection');
+  el.innerHTML = '<div class="empty">Loading Stripe…</div>';
+  try {
+    const res = await fetch(`${BASE}/admin/api/stripe-recent?token=${encodeURIComponent(TOKEN)}`);
+    if (!res.ok) { el.innerHTML = `<div class="empty">HTTP ${res.status}</div>`; return; }
+    const d = await res.json();
+
+    // Update MRR in cost strip too
+    document.getElementById('csMRR').textContent = eur(d.mrr_minor);
+    document.getElementById('csActiveSubs').textContent = `${d.active_subs} active`;
+
+    const fmtTs = (u) => u ? new Date(u*1000).toISOString().replace('T',' ').slice(0,16) : '?';
+
+    el.innerHTML = `
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
+        <div class="card" style="padding:12px">
+          <div style="font-size:0.7rem;color:#94a3b8">MRR (active subs)</div>
+          <div style="font-size:1.6rem;color:#22d3ee;font-weight:600;margin-top:4px">${eur(d.mrr_minor)}</div>
+          <div style="font-size:0.7rem;color:#475569">${d.active_subs} subscription${d.active_subs===1?'':'s'}</div>
+        </div>
+        <div class="card" style="padding:12px">
+          <div style="font-size:0.7rem;color:#94a3b8">30d Checkout sessions</div>
+          <div style="font-size:1.6rem;color:#e2e8f0;font-weight:600;margin-top:4px">${d.sessions.length}</div>
+          <div style="font-size:0.7rem;color:#475569">${d.sessions.filter(s=>s.status==='complete').length} complete · ${d.sessions.filter(s=>s.status==='open').length} open · ${d.sessions.filter(s=>s.status==='expired').length} expired</div>
+        </div>
+      </div>
+
+      <h3 style="margin:14px 0 6px;color:#e2e8f0;font-size:0.95rem">Recent Checkout Sessions</h3>
+      <div style="display:grid;gap:6px">
+        ${d.sessions.slice(0,15).map(s => {
+          const colour = s.status === 'complete' ? '#4ade80' :
+                         s.status === 'open' ? '#fbbf24' : '#64748b';
+          const tier = (s.metadata && s.metadata.product) || '?';
+          return `<div class="card" style="padding:8px;border-left:3px solid ${colour}">
+            <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+              <span style="color:${colour};font-size:0.7rem;font-weight:600">${esc(s.status)}</span>
+              <span style="color:#e2e8f0">${eur(s.amount_total)}</span>
+              <span style="color:#94a3b8;font-size:0.72rem">${esc(tier)}</span>
+              <span style="color:#475569;font-size:0.7rem">${esc(s.customer_email || s.metadata?.phone || '')}</span>
+              <span style="color:#475569;font-size:0.68rem;margin-left:auto">${fmtTs(s.created)}</span>
+              <a href="https://dashboard.stripe.com/payments/${esc(s.id)}" target="_blank" style="color:#22d3ee;font-size:0.7rem">→ Stripe</a>
+            </div>
+          </div>`;
+        }).join('')}
+      </div>
+
+      <h3 style="margin:18px 0 6px;color:#e2e8f0;font-size:0.95rem">Active Subscriptions</h3>
+      <div style="display:grid;gap:6px">
+        ${d.subscriptions.length ? d.subscriptions.map(s => `
+          <div class="card" style="padding:8px">
+            <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+              <span style="color:#22d3ee">${eur(s.monthly_amount)}/mo</span>
+              <span style="color:#94a3b8;font-size:0.72rem">${esc((s.prices||[]).join(', '))}</span>
+              <span style="color:#475569;font-size:0.7rem;margin-left:auto">${fmtTs(s.created)}</span>
+              <a href="https://dashboard.stripe.com/subscriptions/${esc(s.id)}" target="_blank" style="color:#22d3ee;font-size:0.7rem">→ Stripe</a>
+            </div>
+          </div>`).join('') : '<div class="empty">No active subscriptions yet — first paying customer pending.</div>'}
+      </div>
+    `;
   } catch (e) { el.innerHTML = `<div class="empty">err: ${esc(e.message)}</div>`; }
 }
 
