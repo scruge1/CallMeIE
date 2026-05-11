@@ -750,6 +750,113 @@ def log_event(call_id: str, event_type: str, assistant: str, summary: str, detai
         print(f"[LOG] {e}")
 
 
+# --------------------------------------------------------------------------
+# P2 (2026-05-11) — Vapi recording mirror to Hetzner Object Storage.
+#
+# WHY: privacy.html §sec-12 + dpa.html §3 promise 90-day call-recording
+# retention with EU residency. Vapi PAYG only stores 14 days natively
+# (per docs.vapi.ai/assistants/call-recording). To honour the legal
+# commitment we mirror every recording from Vapi's transient working copy
+# to Hetzner Object Storage (already-disclosed sub-processor, Nuremberg DE).
+# The Hetzner bucket carries an S3 lifecycle rule that auto-expires objects
+# at day 90, so the durable archive deletes itself on schedule.
+#
+# Cost: ~€0.005/GB/month at Hetzner Object Storage rates. Typical voice call
+# 1 MB/min → 60 MB/hour → trivial.
+#
+# Failure mode: mirror failures DO NOT break the webhook. The handler returns
+# 200 even if Hetzner is unreachable; a 'recording-archive-failed' event is
+# logged so Adam can manually pull from Vapi before the 14-day window closes.
+# --------------------------------------------------------------------------
+_HETZNER_S3_CLIENT = None
+
+
+def _hetzner_s3():
+    """Return a boto3 S3 client pointed at Hetzner Object Storage. Memoised."""
+    global _HETZNER_S3_CLIENT
+    if _HETZNER_S3_CLIENT is not None:
+        return _HETZNER_S3_CLIENT
+    try:
+        import boto3
+        from botocore.config import Config
+    except ImportError:
+        print("[Mirror] boto3 not installed — recording archive disabled")
+        return None
+    endpoint = os.environ.get("HETZNER_OBJECT_STORAGE_ENDPOINT", "")
+    key_id = os.environ.get("HETZNER_OBJECT_STORAGE_ACCESS_KEY_ID", "")
+    secret = os.environ.get("HETZNER_OBJECT_STORAGE_SECRET_ACCESS_KEY", "")
+    if not (endpoint and key_id and secret):
+        print("[Mirror] Hetzner credentials missing — recording archive disabled")
+        return None
+    if not endpoint.startswith("http"):
+        endpoint = "https://" + endpoint
+    _HETZNER_S3_CLIENT = boto3.client(
+        "s3",
+        endpoint_url=endpoint,
+        aws_access_key_id=key_id,
+        aws_secret_access_key=secret,
+        region_name="eu-central-1",
+        config=Config(signature_version="s3v4", s3={"addressing_style": "path"}),
+    )
+    return _HETZNER_S3_CLIENT
+
+
+def _mirror_recording_to_hetzner(call_id: str, assistant_id: str,
+                                  recording_url: str = "", stereo_url: str = ""):
+    """Download Vapi recording → upload to Hetzner under recordings/{call_id}.{wav|stereo.wav}.
+    Logs event 'recording-archived' on success, 'recording-archive-failed' on error.
+    NEVER raises — webhook caller assumes best-effort."""
+    if not call_id or not (recording_url or stereo_url):
+        return
+    s3 = _hetzner_s3()
+    if s3 is None:
+        log_event(call_id, "recording-archive-failed", assistant_id,
+                  "hetzner S3 client unavailable",
+                  {"reason": "client_init_failed"})
+        return
+    bucket = os.environ.get("HETZNER_OBJECT_STORAGE_BUCKET", "")
+    if not bucket:
+        log_event(call_id, "recording-archive-failed", assistant_id,
+                  "HETZNER_OBJECT_STORAGE_BUCKET env missing", {})
+        return
+    import requests as _rq
+    archived = {}
+    for label, url in [("mono", recording_url), ("stereo", stereo_url)]:
+        if not url:
+            continue
+        try:
+            resp = _rq.get(url, timeout=60, stream=True)
+            resp.raise_for_status()
+            ext = ".wav"
+            ctype = resp.headers.get("content-type", "audio/wav")
+            if "mp3" in ctype.lower():
+                ext = ".mp3"
+            key = f"recordings/{call_id}{'' if label == 'mono' else '.stereo'}{ext}"
+            s3.put_object(
+                Bucket=bucket,
+                Key=key,
+                Body=resp.content,
+                ContentType=ctype,
+                Metadata={
+                    "vapi-call-id": call_id,
+                    "vapi-assistant-id": assistant_id,
+                    "channel": label,
+                    "mirrored-at": datetime.utcnow().isoformat() + "Z",
+                },
+            )
+            archived[label] = f"s3://{bucket}/{key}"
+        except Exception as e:
+            log_event(call_id, "recording-archive-failed", assistant_id,
+                      f"{label} fetch/upload failed: {str(e)[:120]}",
+                      {"label": label, "error": str(e)[:200]})
+            return
+    if archived:
+        log_event(call_id, "recording-archived", assistant_id,
+                  f"mirrored {len(archived)} channel(s) to Hetzner",
+                  archived)
+        print(f"[Mirror] {call_id} → {archived}")
+
+
 def score_anomaly(status: str, duration: int, is_demo: bool) -> float:
     """
     Score how anomalous a call-ended event is (0.0â1.0).
@@ -1016,6 +1123,19 @@ async def call_ended(request: Request, background_tasks: BackgroundTasks):
     log_event(call_id, "call-ended", assistant_id,
               f"{status} | {duration}s | caller:{caller}",
               {"status": status, "duration": duration, "caller": caller})
+
+    # P2 — mirror Vapi recording to durable Hetzner archive (90d retention promise).
+    # Vapi includes recordingUrl + stereoRecordingUrl on the call object once
+    # the recording is available; schedule a background task so the webhook
+    # returns 200 immediately. Skip if no recording (e.g. silent failed call).
+    artifact = call.get("artifact") or {}
+    recording_url = artifact.get("recordingUrl") or call.get("recordingUrl") or ""
+    stereo_url = artifact.get("stereoRecordingUrl") or call.get("stereoRecordingUrl") or ""
+    if call_id and (recording_url or stereo_url):
+        background_tasks.add_task(
+            _mirror_recording_to_hetzner,
+            call_id, assistant_id, recording_url, stereo_url,
+        )
 
     is_demo = assistant_id in DEMO_ASSISTANT_IDS
 
