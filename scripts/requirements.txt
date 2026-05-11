@@ -15,3 +15,9 @@ stripe>=10.0.0
 # P5b — Doc Ops live extractor (PDF text-layer ingest, ephemeral)
 pypdf==4.3.1
 python-multipart==0.0.9
+# P2 (2026-05-11) — call-recording mirror from Vapi to Hetzner Object Storage
+# (S3-compatible). Vapi PAYG keeps the file 14d; we mirror to durable EU
+# archive within that window so privacy.html §sec-12 + dpa.html promise of
+# 90-day retention is honoured. Lifecycle policy on bucket auto-expires at d90.
+boto3==1.35.0
+botocore==1.35.0
