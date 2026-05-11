@@ -225,6 +225,35 @@ deposit Payment Links:
 
 **Provisioner:** `C:/Users/a33_s/Desktop/callmeie-fix/scripts/provision-stripe.py` — idempotent, re-run safe.
 
+### 4.3 Receptionist products (provisioned 2026-05-11, `owl_tag: callmeie`)
+
+Path B per `RESUME-PRD-2026-05-11-VAPI-RECEPTIONIST-FUNNEL.md` — parallel surface to legacy `tier-*` 4-tier ladder (which has 0 subscribers and stays untouched, `owl_tag: ai-agency`). New products power the demo-line signup-on-call flow.
+
+| Stripe product ID | Owl key | Price lookup_key | Price ID | Amount |
+|---|---|---|---|---|
+| `prod_UUxsSqZN7xj7Xz` | `receptionist-professional` | `receptionist-professional-monthly` | `price_1TVxwgCEqG2AuI1zPZzlP7q3` | €249/mo |
+| `prod_UUxsiM0MV4y8v3` | `receptionist-growth` | `receptionist-growth-monthly` | `price_1TVxwgCEqG2AuI1zzsCH9YG1` | €397/mo |
+| `prod_UUxswYBiVAW1rU` | `receptionist-setup` | `receptionist-setup-once` | `price_1TVxwgCEqG2AuI1zkxlRvISY` | €297 one-off |
+
+**Static Payment Link (setup only):** `https://buy.stripe.com/14A9AS6in6CGenO0zraIM0j` — Adam can SMS this directly when bundling not needed.
+
+**Vault keys** (in `~/.claude/routes/.env`):
+```
+STRIPE_RECEPTIONIST_PROFESSIONAL_MONTHLY=price_1TVxwgCEqG2AuI1zPZzlP7q3
+STRIPE_RECEPTIONIST_GROWTH_MONTHLY=price_1TVxwgCEqG2AuI1zzsCH9YG1
+STRIPE_RECEPTIONIST_SETUP_ONCE=price_1TVxwgCEqG2AuI1zkxlRvISY
+STRIPE_RECEPTIONIST_LINK_SETUP_ONCE=https://buy.stripe.com/14A9AS6in6CGenO0zraIM0j
+```
+
+**Render env vars** (must mirror vault — endpoint returns 500 without):
+- `STRIPE_RECEPTIONIST_PROFESSIONAL_MONTHLY`
+- `STRIPE_RECEPTIONIST_GROWTH_MONTHLY`
+- `STRIPE_RECEPTIONIST_SETUP_ONCE`
+
+**Endpoint:** `POST /admin/api/send-setup-link?token=$OWL_OWNER_TOKEN` in `callmeie-fix/scripts/server.py` (commit `521bfb7`). Body `{phone, tier, include_setup}` → Stripe Checkout Session (mode=subscription, mixed line_items: recurring tier + one-off setup on first invoice) → SMS URL to caller via Twilio. Webhook `/owl/stripe/webhook` handles `checkout.session.completed` (no changes).
+
+**Provisioner:** `callmeie-fix/scripts/provision-stripe-receptionist.py` — idempotent, re-run safe.
+
 ---
 
 ## 5 · Porkbun (DNS)
