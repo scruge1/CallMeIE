@@ -18,7 +18,7 @@ If INFRA.md lacks detail you need, add it there BEFORE continuing so the next se
 ## Architecture in 30 Seconds
 
 ```
-Prospect rings +1 (661) 764-3212
+Prospect rings +353 61 788 120
   → Claire (Vapi squad qualifier)
       → collects name + phone → calls /capture-lead
       → transfers to dental / motor_factors / salon / solicitor (or catch-all)
@@ -46,7 +46,7 @@ Real client calls → their assistant → /check-availability / /book-appointmen
 | Motor demo | `8a533a56-2ca4-486f-b328-69183b59fa41` |
 | Salon demo | `db4ab378-cd8a-40f5-b3f9-8fcaaba408b0` |
 | Solicitor demo | `7774b535-95fe-4e75-b571-dde098e2f8fb` |
-| Demo phone | +1 (661) 764-3212 |
+| Demo phone | +353 61 788 120 |
 | Owner SMS | +353 85 786 3564 |
 
 Vapi API key + Twilio creds: see `SYSTEM.md` Section 2 and 5c.
@@ -143,7 +143,7 @@ The GM peer (`callmeie-ops`) handles scheduled aggregate health checks. The webh
 ## Known Issues / Gotchas
 
 - **Render free tier:** SQLite at `/tmp/callmeie.db` is wiped on redeploy. Submissions/leads are ephemeral. SMS fires immediately so leads aren't lost, just the DB record.
-- **Twilio:** Currently US number (+16617643212). Irish +353 pending regulatory approval. SMS to Irish numbers may be blocked until upgraded.
+- **Twilio:** Live IE Local +353 61 788 120 (Limerick, Newcastle West) since 2026-05-11. RC bundle approved 2026-04-03. Voice live + working. SMS pending Twilio support ticket to enable on this PN — interim outbound via Alphanumeric SenderId "CALLMEIE" being filed.
 - **HTTPS on callmeie.ie:** Blocked until IEDR grants DNS control (Irish citizenship verification pending).
 - **Vapi `assistantName` routing:** Must match the `name` field on the Vapi assistant exactly. Demo assistants are named `dental`, `motor_factors`, `salon`, `solicitor` (simple slugs, not display names).
 - **Squad transfers:** Use `assistantId` in squad member `assistantDestinations`, but `assistantName` in transferCall tool `destinations`.

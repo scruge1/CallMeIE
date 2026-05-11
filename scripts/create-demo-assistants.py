@@ -439,7 +439,7 @@ def main():
     print(f"Demo Squad ID:               {squad_id}")
     print()
     print("NEXT STEPS:")
-    print(f"1. In Vapi dashboard → Phone Numbers → assign {claire_id} to +1 (661) 764-3212")
+    print(f"1. In Vapi dashboard → Phone Numbers → assign {claire_id} to +353 61 788 120")
     print(f"   Set Squad (not assistant) on the phone number")
     print()
     print("2. Add to Render CLIENTS_JSON env var:")
@@ -447,31 +447,31 @@ def main():
         "0b37deb5-2fc2-4e7b-81b1-e61e97103506": {
             "name": "Bright Smile Dental",
             "owner": "+353857863564",
-            "from": "+16617643212",
+            "from": "+35361788120",
             "calendar_id": "primary"
         },
         "9d91033c-cbcc-4e30-8a57-13bef92aecd3": {
             "name": "Bright Smile Dental",
             "owner": "+353857863564",
-            "from": "+16617643212",
+            "from": "+35361788120",
             "calendar_id": "primary"
         },
         claire_id: {
             "name": "CallMe.ie Demo",
             "owner": "+353857863564",
-            "from": "+16617643212"
+            "from": "+35361788120"
         },
         motor_id: {
             "name": "Murphy's Motor Factors",
             "owner": "+353857863564",
-            "from": "+16617643212"
+            "from": "+35361788120"
         },
     }
     print(json.dumps(clients_json, indent=2))
     print()
     print("3. Update SYSTEM.md with the new assistant IDs above")
     print()
-    print("4. Test: ring +1 (661) 764-3212 — Claire should answer")
+    print("4. Test: ring +353 61 788 120 — Claire should answer")
     print("   Say 'I run a dental practice' → should transfer to Sarah")
     print("   Say 'I'm in motor factors' → should transfer to Murphy's")
 
