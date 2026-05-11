@@ -19,7 +19,7 @@
 |---|---|
 | Product | AI phone receptionist for Irish SMBs |
 | Stack | Vapi + Twilio + Google Calendar + FastAPI on Render |
-| Demo line | +1 (661) 764-3212 |
+| Demo line | +353 61 788 120 |
 | Pricing | Starter €149/mo +€297 setup · Professional €249/mo +€297 · Growth €347/mo +€497 · Enterprise quoted |
 | Verticals | Dental · Motor factors · Hair salons · Solicitors · catch-all |
 | Competitors | VoiceFleet €99-199/mo · Trillet €299/mo (white-label we avoid) |
@@ -50,9 +50,9 @@ Rules between sections are 3-4px solid ink. Accent bar = 2px burgundy.
 
 ## Page sections (in order)
 
-1. **Topbar** — small wordmark left; `call +1 (661) 764-3212` mono button right
+1. **Topbar** — small wordmark left; `call +353 61 788 120` mono button right
 2. **Hero** — the phone number IS the display treatment. Giant JetBrains Mono. Above it, Archivo Black headline. Beneath: 1-sentence Fraunces sub. Two CTAs: "Ring the demo" (mono, burgundy accent rule below) and "See it onboard a business" (secondary, text-only)
-3. **Ring the demo live** — a dedicated second-hero strip. Instructions: "Pick a vertical. Claire qualifies the call. You're transferred to that vertical's receptionist. Wrap-up SMS follows." Link: `tel:+16617643212`. No icons, just measured text + mono number.
+3. **Ring the demo live** — a dedicated second-hero strip. Instructions: "Pick a vertical. Claire qualifies the call. You're transferred to that vertical's receptionist. Wrap-up SMS follows." Link: `tel:+35361788120`. No icons, just measured text + mono number.
 4. **Sample call excerpts** — 3 editorial pull-quotes styled like a call log:
    - `[14:32] Caller · "Looking for a filling, is there anything tomorrow?"`
    - `[14:33] Claire · "I'll put you through to Bright Smile Dental."`
@@ -65,7 +65,7 @@ Rules between sections are 3-4px solid ink. Accent bar = 2px burgundy.
 9. **Irish-specifics** — mono list: Medical card · PRSI Treatment Benefit · Irish insurance providers (VHI, Laya, Irish Life, Aviva) · Bank holidays · Irish accents tested
 10. **Founder statement** — short paragraph signed by the owner, about why this exists and how it's operated
 11. **FAQ** — 6 questions in `<details>` editorial list
-12. **Final CTA** — large "Ring +1 (661) 764-3212" mono button + "Or submit the onboarding form →" secondary
+12. **Final CTA** — large "Ring +353 61 788 120" mono button + "Or submit the onboarding form →" secondary
 13. **Footer** — Limerick, Ireland · email · privacy/terms · admin portal link (for owner) · company number once registered
 
 ## Anti-patterns (hard bans)
@@ -82,7 +82,7 @@ Rules between sections are 3-4px solid ink. Accent bar = 2px burgundy.
 
 ## Acceptance criteria
 
-- [ ] Phone number +1 (661) 764-3212 rendered at clamp(56px, 9vw, 128px) JetBrains Mono, weight 600+
+- [ ] Phone number +353 61 788 120 rendered at clamp(56px, 9vw, 128px) JetBrains Mono, weight 600+
 - [ ] Pricing shown all-in (setup fee + monthly clear), 3 tiers + quoted Enterprise
 - [ ] At least 3 sample call excerpts with mono timestamps and named speaker
 - [ ] Four vertical blocks (Dental, Motor Factors, Salon, Solicitor) with real content
@@ -91,7 +91,7 @@ Rules between sections are 3-4px solid ink. Accent bar = 2px burgundy.
 - [ ] Self-contained single HTML file, Google Fonts only external dep
 - [ ] Safety-net responsive block at the end of `<style>` (same pattern as `samples/industries/*`)
 - [ ] Renders cleanly at 375px mobile and 1440px desktop
-- [ ] All CTAs resolve: `tel:+16617643212`, `mailto:callmeie@proton.me`, `/onboard.html`, `/admin?token=…` (owner-only)
+- [ ] All CTAs resolve: `tel:+35361788120`, `mailto:callmeie@proton.me`, `/onboard.html`, `/admin?token=…` (owner-only)
 - [ ] Footer includes privacy/terms links + Limerick address + email
 
 ## Out of scope (handled in pass 2, after homepage review)

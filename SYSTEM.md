@@ -37,7 +37,7 @@ An Irish AI phone receptionist agency. We build and operate AI voice assistants 
 
 | Assistant | ID | Phone Number | Purpose |
 |-----------|----|-------------|---------|
-| **Claire** (qualifier) | `adee3d89-99d8-4f58-9dc3-78c38b9f2a7c` | +1 (661) 764-3212 (main demo line) | Greets prospects, qualifies business type, warm-transfers to niche demo |
+| **Claire** (qualifier) | `adee3d89-99d8-4f58-9dc3-78c38b9f2a7c` | +353 61 788 120 (main demo line) | Greets prospects, qualifies business type, warm-transfers to niche demo |
 | **Bright Smile Dental** | `0b37deb5-2fc2-4e7b-81b1-e61e97103506` | (via squad) | Demo: Irish dental practice (booking, PRSI, medical card, emergency) |
 | **Murphy's Motor Factors** | `8a533a56-2ca4-486f-b328-69183b59fa41` | (via squad) | Demo: Irish motor factors (stock queries, pricing, delivery, hours) |
 | **City Salon (Aoife)** | `db4ab378-cd8a-40f5-b3f9-8fcaaba408b0` | (via squad) | Demo: Hair salon (booking, services, hours) |
@@ -45,7 +45,7 @@ An Irish AI phone receptionist agency. We build and operate AI voice assistants 
 | **General Business Discovery** | `3e2f8e1c-e4eb-46ab-b8be-d7f97cbe6080` | (via squad) | Dynamic fallback demo for every business type outside the 4 specialist verticals |
 
 **Demo Squad ID:** `ff47df7a-41b8-4379-b6ab-8cad448acefd` (Vapi Squad — no extra phone numbers needed)
-**Demo number (hand to prospects):** +1 (661) 764-3212 ← Claire answers, squad routes
+**Demo number (hand to prospects):** +353 61 788 120 ← Claire answers, squad routes
 _(Swap to Irish +353 number once Twilio verified)_
 
 ### 3b. Client Assistants
@@ -116,7 +116,7 @@ All tools now live in Vapi tool library. Attached inline (no toolId) to assistan
 |----------|-------|-------|
 | `TWILIO_ACCOUNT_SID` | (set in Render — never commit) | Twilio SID |
 | `TWILIO_AUTH_TOKEN` | (set in Render) | Twilio auth |
-| `TWILIO_FROM_NUMBER` | +16617643212 | Current US number |
+| `TWILIO_FROM_NUMBER` | +35361788120 | Limerick Co. line — live since 2026-05-11 |
 | `OWNER_NOTIFICATION_NUMBER` | +353857863564 | Owner SMS alerts |
 | `GOOGLE_SERVICE_ACCOUNT_JSON` | (JSON blob) | Calendar API auth |
 | `CLIENTS_JSON` | (JSON blob — see below) | Per-assistant routing |
@@ -128,37 +128,37 @@ All tools now live in Vapi tool library. Attached inline (no toolId) to assistan
   "adee3d89-99d8-4f58-9dc3-78c38b9f2a7c": {
     "name": "CallMe.ie Demo",
     "owner": "+353857863564",
-    "from": "+16617643212",
+    "from": "+35361788120",
     "calendar_id": "primary"
   },
   "0b37deb5-2fc2-4e7b-81b1-e61e97103506": {
     "name": "Bright Smile Dental",
     "owner": "+353857863564",
-    "from": "+16617643212",
+    "from": "+35361788120",
     "calendar_id": "primary"
   },
   "8a533a56-2ca4-486f-b328-69183b59fa41": {
     "name": "Murphy's Motor Factors",
     "owner": "+353857863564",
-    "from": "+16617643212",
+    "from": "+35361788120",
     "calendar_id": "primary"
   },
   "db4ab378-cd8a-40f5-b3f9-8fcaaba408b0": {
     "name": "City Salon",
     "owner": "+353857863564",
-    "from": "+16617643212",
+    "from": "+35361788120",
     "calendar_id": "primary"
   },
   "7774b535-95fe-4e75-b571-dde098e2f8fb": {
     "name": "O'Brien Solicitors",
     "owner": "+353857863564",
-    "from": "+16617643212",
+    "from": "+35361788120",
     "calendar_id": "primary"
   },
   "3e2f8e1c-e4eb-46ab-b8be-d7f97cbe6080": {
     "name": "General Business Discovery",
     "owner": "+353857863564",
-    "from": "+16617643212",
+    "from": "+35361788120",
     "calendar_id": "primary"
   }
 }
@@ -167,7 +167,7 @@ _(Example shape only. Keep live assistant ids and routing in sync with the curre
 
 ### 5d. Twilio
 
-- **Current number:** +1 (661) 764-3212 (US, trial)
+- **Current number:** +353 61 788 120 (US, trial)
 - **Next step:** Upgrade to Pay-as-you-go → submit Ireland Regulatory Compliance bundle → buy +353 number
 - **Estimated cost:** €1-2/mo per Irish number + €0.07/min calls
 
@@ -205,7 +205,7 @@ _(Example shape only. Keep live assistant ids and routing in sync with the curre
 **Prospect rings the CallMe.ie demo number.**
 
 ```
-+1 (661) 764-3212  →  Claire (qualifier)
++353 61 788 120  →  Claire (qualifier)
     ↓
 "Hi, I'm Claire from CallMe.ie. What type of business do you run?"
     ↓
@@ -302,7 +302,7 @@ SMS lead alert to owner: "[CallMe.ie Lead] John Murphy, dental practice Cork —
 | Claire as qualifier not IVR | Natural conversation feels premium vs "press 1 for dental" |
 | Render for hosting | Free tier, auto-deploy from GitHub |
 | Per-assistant CLIENTS_JSON routing | One server handles all clients — scales to 50+ without code changes |
-| Irish +353 number as priority | Prospects won't ring a US number; builds local trust |
+| Limerick line live since 2026-05-11 | Local trust achieved — Limerick 061 line answers all inbound |
 
 ---
 
@@ -312,7 +312,7 @@ SMS lead alert to owner: "[CallMe.ie Lead] John Murphy, dental practice Cork —
 - [x] Create Murphy's Motor Factors assistant — `8a533a56-2ca4-486f-b328-69183b59fa41`
 - [x] Add PRSI / medical card handling to Bright Smile Dental
 - [x] Create Demo Squad — `ff47df7a-41b8-4379-b6ab-8cad448acefd`
-- [x] Assign squad to +1 (661) 764-3212
+- [x] Assign squad to +353 61 788 120
 - [ ] Upgrade Twilio → buy +353 Irish number
 - [ ] Move Claire to +353 number
 - [ ] Run lead-scraper for motor factors in Limerick
@@ -328,7 +328,7 @@ SMS lead alert to owner: "[CallMe.ie Lead] John Murphy, dental practice Cork —
 |------|--------|
 | 2026-03-30 | Project initialised. 48 files built. Dental assistant live. Calendar integration working. |
 | 2026-03-31 | CLIENTS_JSON updated with both Vapi org IDs. toolCallId bug fixed. Calendar shared with service account. |
-| 2026-03-31 | SYSTEM.md created. Claire + Murphy's Motor Factors built. Dental updated with PRSI/medical card. Demo Squad created. +1 (661) 764-3212 now routes through squad — Claire answers, transfers to dental or motor demo. |
+| 2026-03-31 | SYSTEM.md created. Claire + Murphy's Motor Factors built. Dental updated with PRSI/medical card. Demo Squad created. +353 61 788 120 now routes through squad — Claire answers, transfers to dental or motor demo. |
 | 2026-03-31 | Lead capture added to Claire (captureLead tool → /capture-lead endpoint). Onboarding form built (onboard.html → /submit-onboarding). Two new server endpoints live on next Render deploy. |
 | 2026-03-31 | Admin portal built (admin.html + SQLite queue + one-click provisioning). Scripts directory cleaned up (21→13 files). |
 | 2026-03-31 | Two new demo assistants: City Salon (Aoife, db4ab378) + O'Brien Solicitors (Ciara, 7774b535). Both in squad. Claire now routes to all 4 demos. Demo assistants renamed to simple routing names (dental/motor_factors/salon/solicitor). |
