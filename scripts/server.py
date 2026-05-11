@@ -6163,6 +6163,49 @@ async def admin_heat_by_assistant(token: str = Query("")):
     return JSONResponse({"assistants": out})
 
 
+# ========== PWA shell for admin (PDR-ADMIN-MOBILE-NATIVE-2026-05-11) ==========
+
+@app.get("/admin/manifest.json")
+async def admin_pwa_manifest():
+    """PWA manifest — installable to iOS/Android home screen."""
+    return JSONResponse({
+        "name": "CallMeIE Admin",
+        "short_name": "CMIE",
+        "description": "Operator dashboard for the CallMeIE receptionist + Doc Ops business",
+        "start_url": "/admin",
+        "scope": "/admin",
+        "display": "standalone",
+        "orientation": "portrait",
+        "background_color": "#0a0e1a",
+        "theme_color": "#0a0e1a",
+        "icons": [
+            {"src": "/admin/icon-192.svg", "sizes": "192x192", "type": "image/svg+xml", "purpose": "any maskable"},
+            {"src": "/admin/icon-512.svg", "sizes": "512x512", "type": "image/svg+xml", "purpose": "any maskable"},
+        ],
+    })
+
+
+@app.get("/admin/icon-{size}.svg")
+async def admin_pwa_icon(size: int):
+    """Inline SVG icon — cyan disc with monogram for install-to-homescreen."""
+    if size not in (180, 192, 512):
+        raise HTTPException(status_code=404, detail="size unsupported")
+    # Subtle gradient + monogram. Safe-area padded for iOS maskable.
+    svg = f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <radialGradient id="g" cx="50%" cy="40%" r="60%">
+      <stop offset="0%" stop-color="#22d3ee"/>
+      <stop offset="100%" stop-color="#0e7490"/>
+    </radialGradient>
+  </defs>
+  <rect width="512" height="512" fill="#0a0e1a"/>
+  <circle cx="256" cy="256" r="192" fill="url(#g)"/>
+  <text x="256" y="320" font-family="-apple-system,Inter,sans-serif" font-size="220" font-weight="700"
+        text-anchor="middle" fill="#0a0e1a">C</text>
+</svg>"""
+    return HTMLResponse(content=svg, media_type="image/svg+xml")
+
+
 if __name__ == "__main__":
     import uvicorn
     port = int(os.environ.get("PORT", 8080))

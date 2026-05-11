@@ -2,12 +2,15 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#0a0e1a">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="CallMeIE">
 <title>CallMeIE Admin</title>
-<link rel="icon" type="image/png" sizes="512x512" href="/favicon.png">
-<link rel="icon" type="image/svg+xml" href="/favicon.svg">
-<link rel="apple-touch-icon" href="/favicon.png">
-<link rel="alternate icon" href="/favicon.ico">
+<link rel="manifest" href="/admin/manifest.json">
+<link rel="icon" type="image/svg+xml" href="/admin/icon-192.svg">
+<link rel="apple-touch-icon" href="/admin/icon-192.svg">
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
@@ -97,6 +100,110 @@
   .call-event.kb-focus { outline: 2px solid #22d3ee; outline-offset: -2px; background: #0a3a4a; }
   kbd { background: #1e293b; color: #22d3ee; padding: 2px 6px; border-radius: 3px;
         font-size: 0.78rem; border: 1px solid #334155; }
+
+  /* ===== PWA / Native-app feel on mobile (PDR 2026-05-11) ===== */
+  /* Skeleton shimmer */
+  @keyframes shimmer { 0% { background-position: -400px 0; } 100% { background-position: 400px 0; } }
+  .skeleton { background: linear-gradient(90deg, #0a0e1a 0%, #1e293b 50%, #0a0e1a 100%);
+              background-size: 800px 100px; animation: shimmer 1.4s linear infinite;
+              border-radius: 6px; height: 60px; margin-bottom: 8px; }
+
+  /* Bottom-tab nav — hidden on desktop, visible on phone */
+  #bottomNav { display: none; }
+  #moreSheet { display: none; }
+
+  @media (max-width: 720px) {
+    body { padding-bottom: calc(72px + env(safe-area-inset-bottom)) !important; }
+    h1 { font-size: 1.05rem !important; }
+    .subtitle { font-size: 0.72rem !important; }
+
+    /* Hide desktop top-tab row on phone — bottom-nav owns navigation */
+    .tabs { display: none !important; }
+
+    /* Sticky condensed health pill */
+    #healthStrip { position: sticky; top: 0; z-index: 100; margin: 0 -16px 8px !important;
+                   border-radius: 0 !important; border-left: 0 !important; border-right: 0 !important;
+                   padding: 8px 14px !important;
+                   background: rgba(10,14,26,0.94); backdrop-filter: blur(6px); }
+    #healthOverall strong { font-size: 0.78rem; }
+    #healthTs { display: none; }
+    #redeployBtn { padding: 3px 8px !important; }
+
+    /* Cost strip condensed */
+    #costStrip { padding: 6px 12px !important; }
+    #costStrip > div > div:nth-child(2),
+    #costStrip > div > div:nth-child(3) { display: none !important; }
+
+    /* Full-width cards, generous tap targets */
+    .card { border-radius: 12px !important; padding: 12px !important; }
+    .btn, button { min-height: 44px; padding: 10px 14px !important;
+                   font-size: 0.85rem; border-radius: 8px !important; }
+    .btn-sms, .btn-reject, .btn-provision { min-height: 36px; padding: 6px 12px !important; }
+
+    /* Bottom-tab navigation (iOS/Android pattern) */
+    #bottomNav {
+      display: flex; position: fixed; bottom: 0; left: 0; right: 0;
+      background: rgba(10,14,26,0.96); backdrop-filter: blur(12px);
+      border-top: 1px solid #1e293b;
+      padding: 6px 4px calc(6px + env(safe-area-inset-bottom));
+      z-index: 1000;
+      justify-content: space-around;
+    }
+    #bottomNav button {
+      flex: 1; min-height: 56px; background: transparent; border: 0; color: #64748b;
+      font-size: 0.66rem; display: flex; flex-direction: column; align-items: center;
+      gap: 2px; padding: 4px 2px !important; cursor: pointer; border-radius: 6px;
+    }
+    #bottomNav button.active { color: #22d3ee; }
+    #bottomNav button .bn-icon { font-size: 1.35rem; line-height: 1; }
+    #bottomNav button .badge { position: absolute; top: 6px; right: calc(50% - 16px);
+      background: #ef4444; color: #fff; font-size: 0.6rem;
+      padding: 1px 5px; border-radius: 10px; font-weight: 600; min-width: 16px; }
+
+    /* "More" bottom-sheet */
+    #moreSheet {
+      display: none; position: fixed; bottom: 0; left: 0; right: 0;
+      background: #0f172a; border-top: 1px solid #1e293b;
+      border-radius: 16px 16px 0 0;
+      padding: 16px 16px calc(20px + env(safe-area-inset-bottom));
+      max-height: 75vh; overflow-y: auto;
+      z-index: 1100;
+      transform: translateY(100%); transition: transform 0.22s ease-out;
+    }
+    #moreSheet.open { display: block; transform: translateY(0); }
+    #moreSheetBackdrop {
+      display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5);
+      z-index: 1050;
+    }
+    #moreSheetBackdrop.open { display: block; }
+    #moreSheet .more-handle {
+      width: 36px; height: 4px; background: #334155; border-radius: 2px;
+      margin: 0 auto 14px;
+    }
+    #moreSheet button {
+      width: 100%; text-align: left; background: transparent; border: 0; color: #e2e8f0;
+      padding: 14px 0 !important; font-size: 0.95rem; border-bottom: 1px solid #1e293b;
+      display: flex; align-items: center; gap: 14px; min-height: 48px;
+    }
+    #moreSheet button:last-child { border-bottom: 0; }
+    #moreSheet .ms-icon { font-size: 1.2rem; width: 28px; text-align: center; }
+
+    /* Modals become bottom-sheets on phone */
+    #timelineModal > div, #kbHelp > div {
+      max-width: 100vw !important; width: 100% !important;
+      border-radius: 16px 16px 0 0 !important;
+      position: fixed; bottom: 0; left: 0; right: 0;
+      max-height: 85vh !important;
+    }
+    #timelineModal { align-items: flex-end !important; padding: 0 !important; }
+    #kbHelp { align-items: flex-end !important; padding: 0 !important; }
+
+    /* Tab content padding */
+    .section { padding: 0 !important; }
+
+    /* Grid columns collapse */
+    [style*="grid-template-columns"] { grid-template-columns: 1fr !important; }
+  }
 </style>
 </head>
 <body>
@@ -274,6 +381,40 @@
 </div>
 
 <div id="toast" class="toast" style="display:none"></div>
+
+<!-- Mobile bottom-tab nav (hidden on desktop via @media query) -->
+<nav id="bottomNav">
+  <button data-tab="calls" onclick="mobileTab('calls')">
+    <span class="bn-icon">📞</span><span>Calls</span>
+  </button>
+  <button data-tab="recordings" onclick="mobileTab('recordings')">
+    <span class="bn-icon">🎙</span><span>Recordings</span>
+  </button>
+  <button data-tab="revenue" onclick="mobileTab('revenue')">
+    <span class="bn-icon">💶</span><span>Revenue</span>
+  </button>
+  <button data-tab="errors" onclick="mobileTab('errors')">
+    <span class="bn-icon">⚠</span><span>Errors</span>
+  </button>
+  <button onclick="openMoreSheet()">
+    <span class="bn-icon">⋯</span><span>More</span>
+  </button>
+</nav>
+
+<div id="moreSheetBackdrop" onclick="closeMoreSheet()"></div>
+<div id="moreSheet">
+  <div class="more-handle"></div>
+  <button onclick="mobileTab('pending');closeMoreSheet()"><span class="ms-icon">📋</span>Queue</button>
+  <button onclick="mobileTab('clients');closeMoreSheet()"><span class="ms-icon">👥</span>Active Clients</button>
+  <button onclick="mobileTab('discovery');closeMoreSheet()"><span class="ms-icon">🔍</span>Discovery</button>
+  <button onclick="mobileTab('leads');closeMoreSheet()"><span class="ms-icon">🌱</span>Leads</button>
+  <button onclick="mobileTab('ads');closeMoreSheet()"><span class="ms-icon">📣</span>Ads</button>
+  <button onclick="mobileTab('assistants');closeMoreSheet()"><span class="ms-icon">🤖</span>Assistants</button>
+  <button onclick="mobileTab('flow');closeMoreSheet()"><span class="ms-icon">🕸</span>Flow</button>
+  <button onclick="mobileTab('inbox');closeMoreSheet()"><span class="ms-icon">📨</span>Inbox</button>
+  <button onclick="mobileTab('settings');closeMoreSheet()"><span class="ms-icon">⚙</span>Settings</button>
+  <button onclick="logout();closeMoreSheet()" style="color:#ef4444"><span class="ms-icon">🚪</span>Sign out</button>
+</div>
 
 <script>
 let TOKEN = '';
@@ -1598,6 +1739,25 @@ async function rotateAdminToken() {
   } catch (e) {
     out.innerHTML = `<span style="color:#ef4444">err: ${esc(e.message)}</span>`;
   }
+}
+
+// ===== Mobile bottom-tab navigation =====
+function mobileTab(tab) {
+  switchTab(tab);
+  // Highlight bottom-nav active
+  document.querySelectorAll('#bottomNav button[data-tab]').forEach(b => {
+    b.classList.toggle('active', b.getAttribute('data-tab') === tab);
+  });
+}
+
+function openMoreSheet() {
+  document.getElementById('moreSheet').classList.add('open');
+  document.getElementById('moreSheetBackdrop').classList.add('open');
+}
+
+function closeMoreSheet() {
+  document.getElementById('moreSheet').classList.remove('open');
+  document.getElementById('moreSheetBackdrop').classList.remove('open');
 }
 
 function copyPhone(phone) {
