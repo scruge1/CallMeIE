@@ -5512,13 +5512,16 @@ async def admin_operations_summary(token: str = Query("")):
     heat = {"very_interested": 0, "curious": 0, "just_browsing": 0, "unknown": 0}
     converted_count = 0
     callback_count = 0
+    import datetime as _dt
+    _week_cutoff = (_dt.datetime.utcnow() - _dt.timedelta(days=7)).strftime("%Y-%m-%d %H:%M:%S")
     try:
         with get_db() as conn:
             rows = conn.execute(
                 "SELECT detail, created_at FROM call_events "
                 "WHERE event_type = 'demo-complete' "
-                "AND created_at >= datetime('now', '-7 days') "
-                "ORDER BY id DESC"
+                "AND created_at >= ? "
+                "ORDER BY id DESC",
+                (_week_cutoff,),
             ).fetchall()
         for r in rows:
             try:
@@ -6116,12 +6119,17 @@ async def admin_heat_by_assistant(token: str = Query("")):
     Sentry-style grouping by 'assistant' as fingerprint dimension; surfaces
     which assistant prompt is converting vs which is browsing-only."""
     check_admin(token)
+    # Use SQLAlchemy-style portable datetime: Postgres + SQLite both accept
+    # ISO timestamp comparison. Compute cutoff in Python to dodge dialect mismatch.
+    import datetime as _dt
+    cutoff = (_dt.datetime.utcnow() - _dt.timedelta(days=30)).strftime("%Y-%m-%d %H:%M:%S")
     try:
         with get_db() as conn:
             rows = conn.execute(
                 "SELECT assistant, detail FROM call_events "
                 "WHERE event_type = 'demo-complete' "
-                "AND created_at >= datetime('now', '-30 days')"
+                "AND created_at >= ?",
+                (cutoff,),
             ).fetchall()
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"DB error: {e}")
