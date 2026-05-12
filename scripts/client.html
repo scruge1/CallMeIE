@@ -1,0 +1,807 @@
+<!DOCTYPE html>
+<html lang="en-IE">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#ffffff">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="CallMeIE">
+<title>CallMeIE — your dashboard</title>
+<link rel="manifest" href="/client/manifest.json">
+<link rel="icon" type="image/svg+xml" href="/admin/icon-192.svg">
+<link rel="apple-touch-icon" href="/admin/icon-192.svg">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/driver.js@1.3.1/dist/driver.css">
+<style>
+  :root {
+    color-scheme: light;
+    --bg: #f7f8fa;
+    --bg-soft: #fbfbfc;
+    --surface: #ffffff;
+    --surface-soft: #f9fafb;
+    --surface-muted: #f1f3f5;
+    --border: #e8eaef;
+    --border-strong: #d7dbe2;
+    --text: #1a1d24;
+    --text-soft: #374151;
+    --muted: #6b7280;
+    --dim: #9aa1ad;
+    --accent: #0891b2;            /* WCAG AA cyan on white */
+    --accent-soft: #e0f2fe;
+    --ok: #16a34a;
+    --ok-soft: #dcfce7;
+    --warn: #ca8a04;
+    --warn-soft: #fef9c3;
+    --fail: #dc2626;
+    --fail-soft: #fee2e2;
+    --radius-xs: 6px;
+    --radius-sm: 8px;
+    --radius-md: 12px;
+    --radius-lg: 16px;
+    --space-1: 4px;
+    --space-2: 8px;
+    --space-3: 12px;
+    --space-4: 16px;
+    --space-5: 20px;
+    --space-6: 24px;
+    --shadow-1: 0 1px 2px rgba(15, 23, 42, .04), 0 1px 3px rgba(15, 23, 42, .03);
+    --shadow-2: 0 4px 6px -1px rgba(15, 23, 42, .06), 0 2px 4px -2px rgba(15, 23, 42, .05);
+  }
+  :root.theme-dark {
+    color-scheme: dark;
+    --bg: #0a0e1a;
+    --bg-soft: #0f172a;
+    --surface: #131927;
+    --surface-soft: #1a2236;
+    --surface-muted: #1e293b;
+    --border: #1e293b;
+    --border-strong: #334155;
+    --text: #e2e8f0;
+    --text-soft: #cbd5e1;
+    --muted: #94a3b8;
+    --dim: #64748b;
+    --accent: #22d3ee;
+    --accent-soft: rgba(34, 211, 238, .12);
+    --ok: #4ade80;
+    --ok-soft: rgba(74, 222, 128, .12);
+    --warn: #fbbf24;
+    --warn-soft: rgba(251, 191, 36, .12);
+    --fail: #ef4444;
+    --fail-soft: rgba(239, 68, 68, .12);
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; min-height: 100vh; background: var(--bg); color: var(--text); }
+  body { font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size: 14px; line-height: 1.5; }
+
+  .topbar {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    align-items: center;
+    gap: var(--space-4);
+    padding: var(--space-4) var(--space-5);
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+  }
+  .wordmark { font-family: "Fraunces", Inter, serif; font-size: 22px; font-weight: 700; letter-spacing: -0.02em; color: var(--text); }
+  .wordmark span { color: var(--accent); }
+  .tenant-name { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .topbar-right { display: flex; gap: var(--space-2); align-items: center; }
+
+  .tabs {
+    display: flex;
+    gap: 0;
+    padding: 0 var(--space-5);
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    overflow-x: auto;
+  }
+  .tab {
+    padding: var(--space-3) var(--space-4);
+    border: 0;
+    background: transparent;
+    color: var(--muted);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    white-space: nowrap;
+  }
+  .tab[aria-selected="true"] { color: var(--accent); border-bottom-color: var(--accent); }
+  .tab:hover { color: var(--text); }
+
+  .main { padding: var(--space-5); max-width: 1280px; margin: 0 auto; }
+  .view { display: none; }
+  .view[aria-current="true"] { display: block; }
+
+  .panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-1);
+    overflow: hidden;
+    margin-bottom: var(--space-5);
+  }
+  .panel-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-4) var(--space-5);
+    border-bottom: 1px solid var(--border);
+  }
+  .panel-title { margin: 0; font-size: 15px; font-weight: 700; }
+  .panel-subtitle { margin: 2px 0 0; font-size: 12px; color: var(--muted); }
+  .panel-body { padding: var(--space-4) var(--space-5); }
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 14px;
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-sm);
+    background: var(--surface);
+    color: var(--text);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    text-decoration: none;
+    line-height: 1.2;
+    transition: background 120ms ease, border-color 120ms ease;
+  }
+  .btn:hover { background: var(--surface-muted); }
+  .btn.primary { background: var(--accent); color: white; border-color: var(--accent); }
+  .btn.primary:hover { background: var(--accent); opacity: .9; }
+  .btn.ghost { border-color: transparent; background: transparent; color: var(--muted); }
+  .btn.ghost:hover { background: var(--surface-muted); color: var(--text); }
+
+  .input, .select, .textarea {
+    width: 100%;
+    padding: 8px 12px;
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-sm);
+    background: var(--surface);
+    color: var(--text);
+    font: inherit;
+  }
+  .mono { font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace; font-variant-numeric: tabular-nums; }
+
+  .empty {
+    padding: var(--space-5);
+    text-align: center;
+    color: var(--muted);
+    font-size: 13px;
+  }
+
+  .login-shell {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    padding: var(--space-5);
+  }
+  .login-card {
+    width: 100%;
+    max-width: 420px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: var(--space-6);
+    box-shadow: var(--shadow-2);
+  }
+  .login-card h1 { font-family: "Fraunces", Inter, serif; margin: 0 0 var(--space-2); }
+  .login-card .muted { color: var(--muted); font-size: 13px; margin-bottom: var(--space-4); }
+  .login-card .form-label { display: block; font-size: 12px; font-weight: 600; color: var(--muted); margin-bottom: 6px; }
+
+  .footer {
+    text-align: center;
+    padding: var(--space-5);
+    color: var(--dim);
+    font-size: 12px;
+  }
+  .footer a { color: var(--muted); text-decoration: none; }
+  .footer a:hover { color: var(--accent); }
+
+  /* Drawer */
+  .drawer-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(15, 23, 42, .42);
+    display: none;
+    z-index: 50;
+  }
+  .drawer-backdrop.open { display: block; }
+  .drawer {
+    position: fixed;
+    right: 0; top: 0; bottom: 0;
+    width: min(560px, 100%);
+    background: var(--surface);
+    border-left: 1px solid var(--border);
+    box-shadow: var(--shadow-2);
+    overflow-y: auto;
+    padding: var(--space-5);
+  }
+  @media (max-width: 640px) {
+    .drawer { width: 100%; }
+  }
+
+  /* Theme toggle */
+  .theme-toggle {
+    display: inline-flex;
+    gap: 0;
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+  }
+  .theme-toggle button {
+    border: 0;
+    background: transparent;
+    color: var(--muted);
+    padding: 6px 10px;
+    font-size: 12px;
+    cursor: pointer;
+  }
+  .theme-toggle button[aria-pressed="true"] {
+    background: var(--accent-soft);
+    color: var(--accent);
+  }
+
+  /* Tour overrides — match our muted palette */
+  .driver-popover { border-radius: var(--radius-md); }
+  .driver-popover-title { font-family: Inter, sans-serif; font-weight: 700; }
+  .driver-popover-next-btn { background: var(--accent) !important; color: white !important; }
+</style>
+</head>
+<body>
+
+<!-- LOGIN SCREEN (shown until token is present) -->
+<section id="loginShell" class="login-shell">
+  <div class="login-card">
+    <h1>CallMeIE</h1>
+    <p class="muted">Paste the magic link Adam sent you, or paste just the token below to sign in.</p>
+    <form onsubmit="return login(event)">
+      <label class="form-label" for="tokenInput">Client token</label>
+      <input id="tokenInput" class="input mono" type="password" autocomplete="current-password" placeholder="ct_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" required>
+      <div style="margin-top: 16px; display: flex; justify-content: flex-end;">
+        <button type="submit" class="btn primary">Sign in</button>
+      </div>
+    </form>
+    <p class="muted" style="margin-top: 20px; font-size: 12px;">
+      No token? Email <a href="mailto:hello@callmeie.ie?subject=Client%20dashboard%20access" style="color: var(--accent);">hello@callmeie.ie</a> and Adam will send one over.
+    </p>
+  </div>
+</section>
+
+<!-- MAIN APP (hidden until token is set) -->
+<div id="appShell" hidden>
+  <header class="topbar">
+    <div>
+      <div class="wordmark">CallMeIE<span>.</span></div>
+      <div id="tenantName" class="tenant-name">Loading…</div>
+    </div>
+    <div class="topbar-right">
+      <div class="theme-toggle" role="group" aria-label="Theme">
+        <button type="button" data-theme="auto" aria-pressed="true" onclick="setTheme('auto')">Auto</button>
+        <button type="button" data-theme="light" aria-pressed="false" onclick="setTheme('light')">Light</button>
+        <button type="button" data-theme="dark" aria-pressed="false" onclick="setTheme('dark')">Dark</button>
+      </div>
+      <button class="btn ghost" type="button" onclick="logout()" aria-label="Sign out">Sign out</button>
+    </div>
+  </header>
+
+  <nav class="tabs" id="tabs" aria-label="Sections">
+    <button class="tab" data-tab="calls" aria-selected="true" onclick="navigate('calls')">Calls</button>
+    <button class="tab" data-tab="inbox" aria-selected="false" onclick="navigate('inbox')">Inbox</button>
+    <button class="tab" data-tab="insights" aria-selected="false" onclick="navigate('insights')">Insights</button>
+    <button class="tab" data-tab="settings" aria-selected="false" onclick="navigate('settings')">Settings</button>
+  </nav>
+
+  <main class="main">
+
+    <!-- Calls view -->
+    <section id="callsView" class="view" aria-current="true">
+      <div class="panel">
+        <div class="panel-header">
+          <div>
+            <h2 class="panel-title">Your call log</h2>
+            <p class="panel-subtitle">Every call your AI receptionist handles, newest first.</p>
+          </div>
+          <div style="display:flex; gap:8px;">
+            <input id="callSearch" class="input" placeholder="Search transcripts…" style="width: 240px;" onkeyup="searchCalls(event)">
+            <button class="btn" type="button" onclick="loadCalls()">Refresh</button>
+            <button class="btn" type="button" id="exportCsvBtn" onclick="exportCsv()">Export CSV</button>
+          </div>
+        </div>
+        <div class="panel-body" id="callsList">
+          <div class="empty">Loading…</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Inbox view -->
+    <section id="inboxView" class="view">
+      <div class="panel">
+        <div class="panel-header">
+          <div>
+            <h2 class="panel-title">Outstanding messages</h2>
+            <p class="panel-subtitle">When the AI takes a message, it lands here. Tick them off as you action each one.</p>
+          </div>
+          <button class="btn" type="button" onclick="loadInbox()">Refresh</button>
+        </div>
+        <div class="panel-body" id="inboxList">
+          <div class="empty">Loading…</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Insights view -->
+    <section id="insightsView" class="view">
+      <div class="panel">
+        <div class="panel-header">
+          <div>
+            <h2 class="panel-title">Weekly insights</h2>
+            <p class="panel-subtitle">How calls flowed in the last 7 days.</p>
+          </div>
+          <select class="select" id="insightsRange" onchange="loadInsights()" style="width: 120px;">
+            <option value="7">Last 7d</option>
+            <option value="14">Last 14d</option>
+            <option value="30">Last 30d</option>
+          </select>
+        </div>
+        <div class="panel-body" id="insightsBody">
+          <div class="empty">Loading…</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Settings view -->
+    <section id="settingsView" class="view">
+      <div class="panel">
+        <div class="panel-header">
+          <div>
+            <h2 class="panel-title">Settings</h2>
+            <p class="panel-subtitle">Read-only summary. Anything you want changed, just ask.</p>
+          </div>
+        </div>
+        <div class="panel-body" id="settingsBody">
+          <div class="empty">Loading…</div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-header">
+          <div>
+            <h2 class="panel-title">Request a change</h2>
+            <p class="panel-subtitle">Goes straight to Adam — typically same-day response.</p>
+          </div>
+        </div>
+        <div class="panel-body">
+          <form onsubmit="return submitRequest(event)">
+            <label class="form-label" for="reqTopic">Topic</label>
+            <select id="reqTopic" class="select" required>
+              <option value="">Choose…</option>
+              <option value="script">Change the call script / greeting</option>
+              <option value="routing">Change POD routing or destinations</option>
+              <option value="recording">Toggle recording on/off</option>
+              <option value="hours">Change overflow / after-hours behaviour</option>
+              <option value="voice">Change the assistant voice</option>
+              <option value="other">Something else</option>
+            </select>
+            <label class="form-label" for="reqDetails" style="margin-top: 12px;">Details</label>
+            <textarea id="reqDetails" class="textarea" rows="4" placeholder="What you'd like changed, plus any context that helps." required></textarea>
+            <div style="margin-top: 12px; display: flex; gap: 8px; align-items: center;">
+              <button class="btn primary" type="submit">Send to Adam</button>
+              <span id="reqResult" class="muted" style="font-size: 12px;"></span>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-header">
+          <div>
+            <h2 class="panel-title">Help</h2>
+            <p class="panel-subtitle">Walkthrough, downloads, sign-out.</p>
+          </div>
+        </div>
+        <div class="panel-body" style="display: flex; gap: 8px; flex-wrap: wrap;">
+          <button class="btn" type="button" onclick="replayTour()">Replay the tour</button>
+          <a class="btn" href="mailto:hello@callmeie.ie?subject=DPA%20request">Request DPA PDF</a>
+          <button class="btn" type="button" onclick="logout()">Sign out of this device</button>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <div id="drawerBackdrop" class="drawer-backdrop" onclick="closeDrawer()">
+    <aside id="drawer" class="drawer" onclick="event.stopPropagation()">
+      <div id="drawerContent">
+        <div class="empty">Loading call…</div>
+      </div>
+    </aside>
+  </div>
+
+  <footer class="footer">
+    Powered by <a href="https://callmeie.ie" target="_blank" rel="noopener">CallMeIE</a> · DPA at <a href="https://callmeie.ie/legal/dpa.html" target="_blank" rel="noopener">callmeie.ie/legal/dpa.html</a>
+  </footer>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/driver.js@1.3.1/dist/driver.js.iife.js"></script>
+<script>
+"use strict";
+
+const STORAGE_TOKEN = "client_token";
+const STORAGE_THEME = "client_theme";
+const STORAGE_TOUR  = "client_tour_completed";
+
+const state = { token: "", tenant: null, currentTab: "calls", calls: [], inbox: [], insights: null, settings: null };
+
+const qs = (s, root = document) => root.querySelector(s);
+const qsa = (s, root = document) => Array.from(root.querySelectorAll(s));
+
+function esc(s) {
+  return String(s == null ? "" : s)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;");
+}
+
+function endpoint(path, params) {
+  const url = new URL(path, window.location.origin);
+  url.searchParams.set("token", state.token);
+  if (params) for (const [k, v] of Object.entries(params)) if (v != null && v !== "") url.searchParams.set(k, v);
+  return url.toString();
+}
+
+async function api(path, opts = {}) {
+  const url = endpoint(path, opts.params);
+  const init = { method: opts.method || "GET", headers: opts.headers || {} };
+  if (opts.body) init.body = opts.body;
+  const r = await fetch(url, init);
+  if (!r.ok) {
+    if (r.status === 401) { logout(); return; }
+    let detail = "";
+    try { detail = JSON.stringify(await r.json()); } catch (_) { detail = await r.text(); }
+    throw new Error(`HTTP ${r.status}: ${detail}`);
+  }
+  const ct = r.headers.get("Content-Type") || "";
+  if (ct.includes("application/json")) return r.json();
+  return r;
+}
+
+// --- Theme ---
+function setTheme(mode) {
+  localStorage.setItem(STORAGE_THEME, mode);
+  applyTheme(mode);
+  qsa(".theme-toggle button").forEach((b) => b.setAttribute("aria-pressed", b.dataset.theme === mode ? "true" : "false"));
+}
+function applyTheme(mode) {
+  const root = document.documentElement;
+  if (mode === "dark") { root.classList.add("theme-dark"); return; }
+  if (mode === "light") { root.classList.remove("theme-dark"); return; }
+  // auto
+  const dark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+  root.classList.toggle("theme-dark", dark);
+}
+function initTheme() {
+  const saved = localStorage.getItem(STORAGE_THEME) || "auto";
+  setTheme(saved);
+}
+
+// --- Auth ---
+function login(event) {
+  if (event) event.preventDefault();
+  const t = qs("#tokenInput").value.trim();
+  if (!t) return false;
+  state.token = t;
+  localStorage.setItem(STORAGE_TOKEN, t);
+  startApp();
+  return false;
+}
+function logout() {
+  localStorage.removeItem(STORAGE_TOKEN);
+  state.token = "";
+  state.tenant = null;
+  qs("#loginShell").hidden = false;
+  qs("#appShell").hidden = true;
+}
+
+// --- Navigation ---
+function navigate(tab) {
+  state.currentTab = tab;
+  qsa(".tab").forEach((b) => b.setAttribute("aria-selected", b.dataset.tab === tab ? "true" : "false"));
+  qsa(".view").forEach((v) => v.setAttribute("aria-current", "false"));
+  qs(`#${tab}View`).setAttribute("aria-current", "true");
+  if (tab === "calls" && !state.calls.length) loadCalls();
+  if (tab === "inbox") loadInbox();
+  if (tab === "insights") loadInsights();
+  if (tab === "settings") loadSettings();
+}
+
+// --- Boot ---
+async function startApp() {
+  qs("#loginShell").hidden = true;
+  qs("#appShell").hidden = false;
+  try {
+    const me = await api("/client/api/me");
+    state.tenant = me;
+    qs("#tenantName").textContent = me.tenant_display_name || me.tenant_slug || "Your dashboard";
+    await loadCalls();
+    if (!localStorage.getItem(STORAGE_TOUR)) {
+      // Defer tour to next paint so target elements exist
+      setTimeout(() => startTour(), 200);
+    }
+  } catch (err) {
+    qs("#tenantName").textContent = "Unable to load your account";
+    qs("#callsList").innerHTML = `<div class="empty">Sign-in failed — token may be expired. ${esc(err.message)}</div>`;
+  }
+}
+
+// --- Data loads (stubs — backend lands in step 2 of build) ---
+async function loadCalls() {
+  qs("#callsList").innerHTML = '<div class="empty">Loading…</div>';
+  try {
+    const data = await api("/client/api/calls", { params: { days: 14, limit: 50 } });
+    state.calls = (data && data.calls) || [];
+    if (!state.calls.length) { qs("#callsList").innerHTML = '<div class="empty">No calls yet. When the first one comes in, it appears here.</div>'; return; }
+    qs("#callsList").innerHTML = state.calls.map(renderCallRow).join("");
+  } catch (err) {
+    qs("#callsList").innerHTML = `<div class="empty">Could not load calls. ${esc(err.message)}</div>`;
+  }
+}
+function renderCallRow(c) {
+  return `
+    <div class="call-row" onclick="openDrawer('${esc(c.call_id)}')" style="display:grid; grid-template-columns: 70px 1fr 90px; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--border); cursor: pointer;">
+      <span class="mono" style="color: var(--muted); font-size: 12px;">${esc(c.ts || "")}</span>
+      <span><strong>${esc(c.caller_name || c.caller_phone || "Unknown")}</strong><br><span style="color: var(--muted); font-size: 12px;">${esc(c.summary || "")}</span></span>
+      <span style="text-align: right; color: var(--muted); font-size: 12px;">${esc(c.outcome || "")}</span>
+    </div>`;
+}
+
+async function loadInbox() {
+  qs("#inboxList").innerHTML = '<div class="empty">Loading…</div>';
+  try {
+    const data = await api("/client/api/inbox", { params: { status: "unactioned" } });
+    state.inbox = data.messages || [];
+    if (!state.inbox.length) { qs("#inboxList").innerHTML = '<div class="empty">No outstanding messages. Inbox zero.</div>'; return; }
+    qs("#inboxList").innerHTML = state.inbox.map((m) => `
+      <div class="call-row" style="padding: 12px 0; border-bottom: 1px solid var(--border);">
+        <strong>${esc(m.caller_name || "Unknown")}</strong> · ${esc(m.callback_number || "")}<br>
+        <span style="color: var(--muted); font-size: 12px;">${esc(m.reason || "")}</span>
+        <div style="margin-top: 8px;">
+          <button class="btn" type="button" onclick="markActioned('${esc(m.call_id)}')">Mark actioned</button>
+        </div>
+      </div>`).join("");
+  } catch (err) {
+    qs("#inboxList").innerHTML = `<div class="empty">Could not load inbox. ${esc(err.message)}</div>`;
+  }
+}
+
+async function loadInsights() {
+  qs("#insightsBody").innerHTML = '<div class="empty">Loading…</div>';
+  try {
+    const days = qs("#insightsRange").value;
+    const data = await api("/client/api/insights", { params: { days } });
+    state.insights = data;
+    qs("#insightsBody").innerHTML = `
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 16px;">
+        <div><div style="font-size: 24px; font-weight: 700;">${esc(data.total_calls || 0)}</div><div class="muted" style="font-size:12px;">Total calls</div></div>
+        <div><div style="font-size: 24px; font-weight: 700;">${esc(data.messages_taken || 0)}</div><div class="muted" style="font-size:12px;">Messages taken</div></div>
+        <div><div style="font-size: 24px; font-weight: 700;">${esc(data.transferred || 0)}</div><div class="muted" style="font-size:12px;">Transferred</div></div>
+        <div><div style="font-size: 24px; font-weight: 700;">${esc(data.dropped || 0)}</div><div class="muted" style="font-size:12px;">Dropped</div></div>
+      </div>`;
+  } catch (err) {
+    qs("#insightsBody").innerHTML = `<div class="empty">Could not load insights. ${esc(err.message)}</div>`;
+  }
+}
+
+async function loadSettings() {
+  qs("#settingsBody").innerHTML = '<div class="empty">Loading…</div>';
+  try {
+    const data = await api("/client/api/settings");
+    state.settings = data;
+    qs("#settingsBody").innerHTML = `
+      <dl style="display: grid; grid-template-columns: 160px 1fr; gap: 8px 16px; margin: 0;">
+        <dt class="muted">Assistant voice</dt><dd>${esc(data.voice || "—")}</dd>
+        <dt class="muted">Greeting</dt><dd>${esc(data.greeting || "—")}</dd>
+        <dt class="muted">Recording</dt><dd>${esc(data.recording_on ? "On" : "Off")}</dd>
+        <dt class="muted">Retention</dt><dd>${esc(data.retention || "30 days audio / 90 days transcripts")}</dd>
+        <dt class="muted">Sub-processors</dt><dd>Twilio · Vapi · ElevenLabs · Deepgram · Hetzner (full chain in <a href="https://callmeie.ie/legal/dpa.html" target="_blank" rel="noopener">DPA</a>)</dd>
+      </dl>`;
+  } catch (err) {
+    qs("#settingsBody").innerHTML = `<div class="empty">Could not load settings. ${esc(err.message)}</div>`;
+  }
+}
+
+async function submitRequest(event) {
+  event.preventDefault();
+  const topic = qs("#reqTopic").value;
+  const details = qs("#reqDetails").value;
+  qs("#reqResult").textContent = "Sending…";
+  try {
+    await api("/client/api/settings/request-change", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ topic, details }),
+    });
+    qs("#reqResult").textContent = "Sent. Adam will follow up by email.";
+    qs("#reqTopic").value = "";
+    qs("#reqDetails").value = "";
+  } catch (err) {
+    qs("#reqResult").textContent = `Failed: ${err.message}`;
+  }
+  return false;
+}
+
+async function markActioned(callId) {
+  try {
+    await api(`/client/api/inbox/${encodeURIComponent(callId)}/actioned`, { method: "POST" });
+    loadInbox();
+  } catch (err) { alert("Mark failed: " + err.message); }
+}
+
+function exportCsv() {
+  const days = 30;
+  window.open(endpoint("/client/api/export.csv", { days }), "_blank");
+}
+
+function searchCalls(event) {
+  if (event.key !== "Enter") return;
+  const q = event.target.value.trim();
+  api("/client/api/calls", { params: { q, days: 30, limit: 100 } })
+    .then((data) => {
+      state.calls = data.calls || [];
+      qs("#callsList").innerHTML = state.calls.length
+        ? state.calls.map(renderCallRow).join("")
+        : '<div class="empty">No calls match that search.</div>';
+    })
+    .catch((err) => { qs("#callsList").innerHTML = `<div class="empty">${esc(err.message)}</div>`; });
+}
+
+// --- Drawer ---
+async function openDrawer(callId) {
+  qs("#drawerBackdrop").classList.add("open");
+  qs("#drawerContent").innerHTML = '<div class="empty">Loading call…</div>';
+  try {
+    const data = await api(`/client/api/calls/${encodeURIComponent(callId)}`);
+    qs("#drawerContent").innerHTML = `
+      <div style="display:flex; justify-content: space-between; align-items: flex-start; margin-bottom: 16px;">
+        <div>
+          <h3 style="margin: 0;">${esc(data.caller_name || data.caller_phone || "Unknown caller")}</h3>
+          <div class="muted" style="font-size: 12px;">${esc(data.business || "")} · ${esc(data.caller_phone || "")}</div>
+        </div>
+        <button class="btn ghost" type="button" onclick="closeDrawer()">Close</button>
+      </div>
+      <h4 style="margin: 0 0 8px;">Timeline</h4>
+      <ol style="margin: 0 0 16px 18px; padding: 0; font-size: 13px;">
+        ${(data.events || []).map((e) => `<li><span class="mono" style="color: var(--muted);">${esc(e.ts || "")}</span> · ${esc(e.event_type || "")} ${esc(e.summary ? "— " + e.summary : "")}</li>`).join("")}
+      </ol>
+      ${data.recording_url ? `<h4 style="margin: 0 0 8px;">Recording</h4><audio controls src="${esc(data.recording_url)}" style="width: 100%; margin-bottom: 16px;"></audio>` : ""}
+      ${data.transcript ? `<h4 style="margin: 0 0 8px;">Transcript</h4><div style="white-space: pre-wrap; font-size: 13px; color: var(--text-soft); margin-bottom: 16px;">${esc(data.transcript)}</div>` : ""}
+      <h4 style="margin: 0 0 8px;">Internal note</h4>
+      <textarea id="drawerNote" class="textarea" rows="3" placeholder="Add a note (saved to this call only)…"></textarea>
+      <button class="btn primary" type="button" onclick="saveNote('${esc(callId)}')" style="margin-top: 8px;">Save note</button>`;
+  } catch (err) {
+    qs("#drawerContent").innerHTML = `<div class="empty">Could not load call. ${esc(err.message)}</div>`;
+  }
+}
+function closeDrawer() {
+  qs("#drawerBackdrop").classList.remove("open");
+}
+async function saveNote(callId) {
+  const note = qs("#drawerNote").value.trim();
+  if (!note) return;
+  try {
+    await api(`/client/api/calls/${encodeURIComponent(callId)}/note`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ note }),
+    });
+    qs("#drawerNote").value = "";
+  } catch (err) { alert("Save failed: " + err.message); }
+}
+
+// --- Driver.js tour ---
+function startTour() {
+  if (!window.driver || typeof window.driver.js === "undefined") {
+    console.warn("Driver.js not loaded yet");
+    return;
+  }
+  const driver = window.driver.js.driver({
+    showProgress: true,
+    nextBtnText: "Next →",
+    prevBtnText: "← Previous",
+    doneBtnText: "Got it — done!",
+    onCloseClick: () => {
+      localStorage.setItem(STORAGE_TOUR, "true");
+      driver.destroy();
+    },
+    onDestroyed: () => {
+      localStorage.setItem(STORAGE_TOUR, "true");
+    },
+    steps: [
+      { element: ".topbar",
+        popover: { title: "Welcome to your CallMeIE dashboard",
+                   description: "This is where every call your AI receptionist handles lands. We'll walk you through what's where — takes 60 seconds. Hit 'Next' to start, or 'Skip' if you'd rather poke around yourself." } },
+      { element: '[data-tab="calls"]',
+        popover: { title: "Your call log lives here",
+                   description: "Every call rings into your dashboard within seconds of hanging up. Click any row to hear the recording, read the transcript, and see how the AI routed the caller." } },
+      { element: "#callSearch",
+        popover: { title: "Find a specific call fast",
+                   description: "Search transcripts by what the caller said — 'invoice', 'audit', 'overdue', anything. Filter by date range or outcome. Type-it-and-go." } },
+      { element: "#callsList",
+        popover: { title: "Drill into one call",
+                   description: "Clicking a row opens a side panel: caller identity, what they said, what the AI did, recording playback, and a place for you to add internal notes." } },
+      { element: '[data-tab="inbox"]',
+        popover: { title: "Outstanding messages live here",
+                   description: "When the AI takes a message because nobody was available, it lands in your Inbox. Tick them off as you action each one. Nothing gets forgotten." },
+        onHighlightStarted: () => navigate("inbox") },
+      { element: '[data-tab="insights"]',
+        popover: { title: "Weekly view at a glance",
+                   description: "How many calls came in this week. Which POD took the most. When your phones are busiest. CSV export for your accountant if you ever need it." },
+        onHighlightStarted: () => navigate("insights") },
+      { element: '[data-tab="settings"]',
+        popover: { title: "Anything you want adjusted, just ask",
+                   description: "Want a different greeting? New POD? Recording off? Hit 'Request a change' in Settings — it goes straight to Adam and lands the same day. You're never locked into the original setup." },
+        onHighlightStarted: () => navigate("settings") },
+    ],
+  });
+  driver.drive();
+}
+function replayTour() {
+  localStorage.removeItem(STORAGE_TOUR);
+  navigate("calls");
+  setTimeout(() => startTour(), 250);
+}
+
+// --- Init ---
+function init() {
+  initTheme();
+  // Token URL → localStorage → strip (same pattern as admin.html:1939)
+  const params = new URLSearchParams(window.location.search);
+  const urlToken = params.get("token");
+  if (urlToken) {
+    localStorage.setItem(STORAGE_TOKEN, urlToken);
+    history.replaceState({}, document.title, window.location.pathname);
+  }
+  const saved = localStorage.getItem(STORAGE_TOKEN) || "";
+  if (saved) {
+    state.token = saved;
+    startApp();
+  }
+  qs("#tokenInput").addEventListener("keydown", (e) => { if (e.key === "Enter") login(e); });
+  if (window.matchMedia) {
+    window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {
+      const mode = localStorage.getItem(STORAGE_THEME) || "auto";
+      if (mode === "auto") applyTheme("auto");
+    });
+  }
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") closeDrawer();
+  });
+}
+window.addEventListener("DOMContentLoaded", init);
+
+// Public globals (for inline onclick)
+window.login = login;
+window.logout = logout;
+window.navigate = navigate;
+window.setTheme = setTheme;
+window.loadCalls = loadCalls;
+window.loadInbox = loadInbox;
+window.loadInsights = loadInsights;
+window.loadSettings = loadSettings;
+window.openDrawer = openDrawer;
+window.closeDrawer = closeDrawer;
+window.saveNote = saveNote;
+window.markActioned = markActioned;
+window.exportCsv = exportCsv;
+window.searchCalls = searchCalls;
+window.submitRequest = submitRequest;
+window.replayTour = replayTour;
+</script>
+</body>
+</html>
