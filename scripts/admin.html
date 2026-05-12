@@ -947,14 +947,26 @@
     border-color: color-mix(in srgb, var(--accent) 22%, var(--border));
   }
 
+  /* Global no-horizontal-scroll guard. Tables wider than viewport must
+     live inside .table-wrap which scrolls horizontally locally. Page
+     itself never horizontal-scrolls — long words wrap, images shrink. */
+  html, body { overflow-x: hidden; max-width: 100%; }
+  img, video, canvas { max-width: 100%; height: auto; }
+  pre, code { max-width: 100%; overflow-wrap: anywhere; }
+
   .table-wrap {
-    overflow: auto;
+    overflow-x: auto;
+    overflow-y: visible;
+    -webkit-overflow-scrolling: touch;
+    max-width: 100%;
   }
 
   table {
     width: 100%;
     border-collapse: collapse;
-    min-width: 720px;
+    /* Tables can still demand 720px MIN inside .table-wrap so columns
+       stay legible — the wrap clips horizontally without breaking page. */
+    min-width: 640px;
   }
 
   th, td {
