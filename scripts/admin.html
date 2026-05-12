@@ -2463,6 +2463,24 @@
 
   function renderSystemPanel(health) {
     const probes = (health && health.probes) || [];
+    // No fake-green fallback. If health-detail returned no probes, surface that
+    // as "Status unknown" — Adam knows to click Errors to investigate rather
+    // than seeing four ✓s during an actual outage.
+    if (!probes.length) {
+      return `
+        <section class="panel">
+          <div class="panel-header">
+            <div>
+              <h2 class="panel-title">System pulse</h2>
+              <p class="panel-subtitle">Status unknown</p>
+            </div>
+            <span class="badge warn">?</span>
+          </div>
+          <div class="panel-body">
+            <div class="soft-note warn-text">Health check did not return. Open the Errors view for the vendor feed, or hit Redeploy if the API is unreachable.</div>
+          </div>
+        </section>`;
+    }
     const bad = probes.filter((p) => normalStatus(p.status) !== "ok");
     return `
       <section class="panel">
@@ -2474,12 +2492,7 @@
           <span class="badge ${bad.length ? "warn" : "ok"}">${bad.length ? `${bad.length} issue` : "OK"}</span>
         </div>
         <div class="panel-body">
-          ${(probes.length ? probes.slice(0, 5) : [
-            { name: "Stripe", status: "ok", detail: "Ready" },
-            { name: "Twilio", status: "ok", detail: "Ready" },
-            { name: "Vapi", status: "ok", detail: "Ready" },
-            { name: "Hetzner", status: "ok", detail: "Ready" },
-          ]).map((p) => `
+          ${probes.slice(0, 5).map((p) => `
             <div class="pulse-row">
               <span><span class="status-dot ${normalStatus(p.status)}"></span> ${esc(p.name)}</span>
               <span class="${normalStatus(p.status)}-text">${normalStatus(p.status).toUpperCase()}</span>
@@ -2658,15 +2671,27 @@
           <span class="badge">${leads.length}</span>
         </div>
         <div class="panel-body">
-          ${leads.length ? leads.map((lead) => `
+          ${leads.length ? leads.map((lead) => {
+            // Every lead row gets quick-classify buttons. Resolution order:
+            //  1. lead.call_id        → real call event, flag via /admin/api/call-flag
+            //  2. lead.id             → unified_leads row, use PATCH /admin/api/leads/{id}
+            //  3. lead.raw_id + chan  → form/WhatsApp lead — synthetic call_id for call-flag log
+            const channel = String(lead.channel || lead.primary_channel || "lead").toLowerCase();
+            const flagId = lead.call_id || (lead.raw_id ? `${channel}:${lead.raw_id}` : null);
+            const buttons = lead.call_id
+              ? renderFlagButtons(lead.call_id, { compact: true })
+              : (lead.id
+                ? renderLeadStatusButtons(lead.id, lead.status)
+                : (flagId ? renderFlagButtons(flagId, { compact: true }) : ""));
+            return `
             <div class="mini-row" role="button" tabindex="0" onclick='openDrawer(${jsonAttr(leadContext(lead))})'>
               <span class="icon-pill">${icon(channelIcon(lead.channel || lead.primary_channel), "icon")}</span>
               <span class="time">${esc(fmtTime(lead.ts || lead.created_at || lead.last_touch_at))}</span>
               <span class="truncate"><strong>${esc(lead.name || lead.contact_name || lead.business_name || "?")}</strong><br><span class="muted">${esc(lead.business_type || lead.source || lead.primary_channel || "")}</span></span>
               <span class="badge ${heatClass(lead.heat || lead.priority)}">${esc(lead.status || lead.channel || lead.primary_channel || "lead")}</span>
-              ${lead.call_id ? renderFlagButtons(lead.call_id, { compact: true }) : (lead.id ? renderLeadStatusButtons(lead.id, lead.status) : "")}
-            </div>
-          `).join("") : '<div class="empty">No unified leads returned.</div>'}
+              ${buttons}
+            </div>`;
+          }).join("") : '<div class="empty">No unified leads returned.</div>'}
         </div>
       </section>`;
   }

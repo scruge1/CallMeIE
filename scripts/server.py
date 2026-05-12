@@ -6356,6 +6356,30 @@ async def admin_leads_unified(token: str = Query(""), limit: int = Query(50)):
 
     # Sort by timestamp desc
     out.sort(key=lambda x: x.get("ts") or "", reverse=True)
+
+    # Filter out leads flagged as test/spam/discard via /admin/api/call-flag.
+    # Phone leads use their real call_id. Form/WhatsApp leads use synthetic
+    # IDs of shape "{channel}:{raw_id}" — matches the frontend's flagId.
+    try:
+        synth_ids = []
+        for r in out:
+            if r.get("call_id"):
+                synth_ids.append(r["call_id"])
+            elif r.get("raw_id"):
+                synth_ids.append(f"{r.get('channel','lead')}:{r['raw_id']}")
+        with get_db() as conn:
+            flags = _get_call_classifications(conn, synth_ids) if synth_ids else {}
+        if flags:
+            kept = []
+            for r in out:
+                cid = r.get("call_id") or (f"{r.get('channel','lead')}:{r['raw_id']}" if r.get("raw_id") else None)
+                if cid and flags.get(cid, "real") != "real":
+                    continue  # flagged as test/spam/discard — hide from unified inbox
+                kept.append(r)
+            out = kept
+    except Exception as e:
+        print(f"[leads-unified] flag filter skipped: {e}", file=sys.stderr)
+
     return JSONResponse({"leads": out[:limit], "count": len(out[:limit]), "total_seen": len(out)})
 
 
