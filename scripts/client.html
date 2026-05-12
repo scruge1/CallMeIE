@@ -127,8 +127,27 @@
     justify-content: space-between;
     align-items: center;
     gap: var(--space-3);
+    flex-wrap: wrap;
     padding: var(--space-4) var(--space-5);
     border-bottom: 1px solid var(--border);
+  }
+  .panel-header > * { min-width: 0; }
+  .panel-controls {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    flex-wrap: wrap;
+    flex-shrink: 0;
+  }
+  .panel-controls .input {
+    width: 240px;
+    flex: 0 1 240px;
+    min-width: 140px;
+  }
+  @media (max-width: 720px) {
+    .panel-header { align-items: stretch; }
+    .panel-controls { width: 100%; }
+    .panel-controls .input { flex: 1 1 auto; }
   }
   .panel-title { margin: 0; font-size: 15px; font-weight: 700; }
   .panel-subtitle { margin: 2px 0 0; font-size: 12px; color: var(--muted); }
@@ -307,8 +326,8 @@
             <h2 class="panel-title">Your call log</h2>
             <p class="panel-subtitle">Every call your AI receptionist handles, newest first.</p>
           </div>
-          <div style="display:flex; gap:8px;">
-            <input id="callSearch" class="input" placeholder="Search transcripts…" style="width: 240px;" onkeyup="searchCalls(event)">
+          <div class="panel-controls">
+            <input id="callSearch" class="input" placeholder="Search transcripts…" onkeyup="searchCalls(event)">
             <button class="btn" type="button" onclick="loadCalls()">Refresh</button>
             <button class="btn" type="button" id="exportCsvBtn" onclick="exportCsv()">Export CSV</button>
           </div>
