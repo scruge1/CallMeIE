@@ -6777,6 +6777,108 @@ async def client_portal():
     return HTMLResponse("<h1>Client dashboard pending build</h1>")
 
 
+# --- Admin endpoints for managing client_tokens (operator-only) ---
+
+@app.post("/admin/api/clients/issue-token")
+async def admin_issue_client_token(request: Request, token: str = Query("")):
+    """Issue a client_tokens row for a tenant. Operator-only.
+    Body: {slug, display_name, assistant_ids: [...]}.
+    Idempotent on slug — if an active token already exists, returns it
+    rather than creating a duplicate."""
+    check_admin(token)
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="invalid_json")
+    slug = (body.get("slug") or "").strip()
+    display_name = (body.get("display_name") or "").strip()
+    assistant_ids = body.get("assistant_ids") or []
+    if not slug or not display_name or not assistant_ids:
+        raise HTTPException(status_code=422, detail="slug+display_name+assistant_ids required")
+    if not isinstance(assistant_ids, list):
+        raise HTTPException(status_code=422, detail="assistant_ids must be a list")
+
+    import secrets as _sec
+    import string as _str
+    alphabet = _str.ascii_lowercase + _str.digits
+    rnd = "".join(_sec.choice(alphabet) for _ in range(24))
+    slug_safe = "".join(c if c.isalnum() else "_" for c in slug).lower()[:16]
+    new_token = f"ct_{slug_safe}_{rnd}"
+
+    # Postgres expects TEXT[]; SQLite stores comma-separated.
+    if _USE_PG:
+        assistant_ids_param = list(assistant_ids)
+    else:
+        assistant_ids_param = ",".join(assistant_ids)
+
+    try:
+        with get_db() as conn:
+            existing = conn.execute(
+                "SELECT token FROM client_tokens "
+                "WHERE tenant_slug = ? AND revoked_at IS NULL "
+                "ORDER BY created_at DESC LIMIT 1",
+                (slug,),
+            ).fetchone()
+            if existing:
+                return {
+                    "idempotent": True,
+                    "token": existing["token"],
+                    "magic_url": f"https://client.callmeie.ie/?token={existing['token']}",
+                }
+            conn.execute(
+                "INSERT INTO client_tokens (token, tenant_slug, tenant_display_name, assistant_ids, created_by) "
+                "VALUES (?, ?, ?, ?, 'adam')",
+                (new_token, slug, display_name, assistant_ids_param),
+            )
+            conn.commit()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"issue_failed: {e}")
+    return {
+        "token": new_token,
+        "magic_url": f"https://client.callmeie.ie/?token={new_token}",
+        "slug": slug,
+        "display_name": display_name,
+        "assistant_ids": assistant_ids,
+    }
+
+
+@app.get("/admin/api/clients/tokens")
+async def admin_list_client_tokens(token: str = Query("")):
+    """List all client tokens issued (operator view). Used by admin.html
+    'Clients' panel to see who has what access. Path is /clients/tokens
+    not /clients to avoid collision with the existing deprecated alias
+    that points at /admin/api/assistants."""
+    check_admin(token)
+    try:
+        with get_db() as conn:
+            rows = conn.execute(
+                "SELECT token, tenant_slug, tenant_display_name, assistant_ids, "
+                "       created_at, last_used_at, revoked_at "
+                "FROM client_tokens ORDER BY created_at DESC"
+            ).fetchall()
+    except Exception as e:
+        # Table may not exist yet
+        return {"clients": [], "error": str(e)[:200]}
+    return {"clients": [dict(r) for r in rows]}
+
+
+@app.post("/admin/api/clients/{token_val}/revoke")
+async def admin_revoke_client_token(token_val: str, token: str = Query("")):
+    """Revoke a client token. Operator-only."""
+    check_admin(token)
+    now_expr = "NOW()" if _USE_PG else "datetime('now')"
+    try:
+        with get_db() as conn:
+            conn.execute(
+                f"UPDATE client_tokens SET revoked_at = {now_expr} WHERE token = ?",
+                (token_val,),
+            )
+            conn.commit()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"revoke_failed: {e}")
+    return {"revoked": True}
+
+
 async def _fetch_client_assistant(assistant_id: str) -> dict:
     """Fetch one assistant from Vapi. Returns {} on failure (never raises)."""
     vk = os.environ.get("VAPI_API_KEY", "").strip()
