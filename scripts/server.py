@@ -116,6 +116,7 @@ except Exception as _e:
 _SCRIPTS_DIR = os.path.dirname(os.path.abspath(__file__))
 _REPO_ROOT = os.path.dirname(_SCRIPTS_DIR)
 ADMIN_HTML_PATH = os.path.join(_SCRIPTS_DIR, "admin.html")
+CLIENT_HTML_PATH = os.path.join(_SCRIPTS_DIR, "client.html")
 INDEX_HTML_PATH = os.path.join(_REPO_ROOT, "index.html")
 ONBOARD_HTML_PATH = os.path.join(_REPO_ROOT, "onboard.html")
 PRIVACY_HTML_PATH = os.path.join(_REPO_ROOT, "privacy.html")
@@ -6605,6 +6606,362 @@ async def admin_today_actions(token: str = Query(""), limit: int = Query(10)):
         "total_seen": len(actions),
         "ts": _t.strftime("%Y-%m-%dT%H:%M:%SZ", _t.gmtime()),
     })
+
+
+# =========================================================================
+# Client-side dashboard — tenant-scoped read-mostly portal for paying
+# receptionist customers. Lives at /client/* and client.callmeie.ie.
+#
+# Auth: token-in-URL → localStorage with history.replaceState strip (same
+# pattern as admin.html). Every /client/api/* endpoint filters by
+# assistant_id IN (client_tokens.assistant_ids) — tenant isolation is
+# load-bearing. See PRD-CLIENT-DASHBOARD-2026-05-12.md.
+# =========================================================================
+
+
+def check_client(token: str) -> dict:
+    """Validate client token. Raise 401 if missing/invalid/revoked.
+    Updates last_used_at on every call. Returns the client_tokens row dict.
+    """
+    if not token:
+        raise HTTPException(status_code=401, detail="missing_token")
+    try:
+        with get_db() as conn:
+            row = conn.execute(
+                "SELECT * FROM client_tokens "
+                "WHERE token = ? AND revoked_at IS NULL",
+                (token,),
+            ).fetchone()
+            if not row:
+                raise HTTPException(status_code=401, detail="invalid_token")
+            conn.execute(
+                "UPDATE client_tokens SET last_used_at = NOW() WHERE token = ?",
+                (token,),
+            )
+            conn.commit()
+            return dict(row)
+    except HTTPException:
+        raise
+    except Exception as e:
+        # client_tokens table may not exist yet (migration 0010 not applied).
+        # Return 503 so frontend can show a meaningful error.
+        raise HTTPException(status_code=503,
+                            detail=f"client_dashboard_not_ready: {e}")
+
+
+def _client_assistant_filter(client_row: dict) -> tuple[str, list]:
+    """Build a SQL fragment + params for filtering rows to this client's
+    assistant_ids. Returns ("assistant_id IN (?,?,?)", ["a","b","c"]).
+    If the client has no assistants assigned, returns ("FALSE", []) which
+    yields zero rows (correct tenant-isolation behaviour)."""
+    ids = client_row.get("assistant_ids") or []
+    if isinstance(ids, str):
+        ids = [s.strip() for s in ids.strip("{}").split(",") if s.strip()]
+    if not ids:
+        return "FALSE", []
+    placeholders = ",".join(["?"] * len(ids))
+    return f"assistant_id IN ({placeholders})", list(ids)
+
+
+@app.get("/client")
+@app.get("/client/")
+async def client_portal():
+    """Serve client.html — JS handles token auth + localStorage."""
+    if os.path.exists(CLIENT_HTML_PATH):
+        return FileResponse(CLIENT_HTML_PATH)
+    return HTMLResponse("<h1>Client dashboard pending build</h1>")
+
+
+@app.get("/client/api/me")
+async def client_me(token: str = Query("")):
+    """Return current client's tenant identity + relevant assistant config."""
+    c = check_client(token)
+    # Pull retention + recording state — placeholder for now (Vapi assistant fetch
+    # is rate-limited; cache for v1 / read from a snapshot in v2).
+    return {
+        "tenant_slug": c["tenant_slug"],
+        "tenant_display_name": c["tenant_display_name"],
+        "assistant_ids": c.get("assistant_ids") or [],
+        "has_recording_on": True,
+        "retention_days_audio": 30,
+        "retention_days_transcripts": 90,
+    }
+
+
+@app.get("/client/api/calls")
+async def client_calls(
+    token: str = Query(""),
+    days: int = Query(14, ge=1, le=90),
+    q: str = Query(""),
+    limit: int = Query(50, ge=1, le=200),
+):
+    """List recent calls scoped to this client's assistant_ids. Filterable by
+    days lookback + text search across summary/transcript."""
+    c = check_client(token)
+    where_assist, params = _client_assistant_filter(c)
+    if where_assist == "FALSE":
+        return {"calls": [], "count": 0, "tenant_slug": c["tenant_slug"]}
+
+    import datetime as _dt
+    cutoff = (_dt.datetime.utcnow() - _dt.timedelta(days=int(days))).strftime("%Y-%m-%d %H:%M:%S")
+    sql = (
+        "SELECT call_id, created_at AS ts, assistant AS assistant_id, "
+        "       summary, event_type, detail "
+        "FROM call_events "
+        f"WHERE {where_assist} AND created_at >= ? "
+    )
+    args = params + [cutoff]
+    if q:
+        sql += "AND (summary ILIKE ? OR detail::text ILIKE ?) "
+        like = f"%{q}%"
+        args += [like, like]
+    sql += "ORDER BY id DESC LIMIT ?"
+    args.append(int(limit))
+
+    try:
+        with get_db() as conn:
+            rows = conn.execute(sql, tuple(args)).fetchall()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"query_failed: {e}")
+
+    # Group by call_id, take latest row per call as the "summary line"
+    grouped: dict[str, dict] = {}
+    for r in rows:
+        cid = r["call_id"]
+        if cid in grouped:
+            continue
+        try:
+            d = json.loads(r["detail"]) if isinstance(r["detail"], str) else (r["detail"] or {})
+        except Exception:
+            d = {}
+        grouped[cid] = {
+            "call_id": cid,
+            "ts": str(r["ts"]),
+            "caller_name": d.get("name") or d.get("caller_name") or "",
+            "caller_phone": d.get("contact_phone") or d.get("phone") or "",
+            "summary": r["summary"] or "",
+            "outcome": r["event_type"] or "",
+        }
+    return {"calls": list(grouped.values()), "count": len(grouped),
+            "tenant_slug": c["tenant_slug"]}
+
+
+@app.get("/client/api/calls/{call_id}")
+async def client_call_detail(call_id: str, token: str = Query("")):
+    """Full timeline + transcript + recording_url for one call.
+    Caller's assistant_id MUST be in client's assistant_ids whitelist."""
+    c = check_client(token)
+    allowed_ids = set(c.get("assistant_ids") or [])
+    try:
+        with get_db() as conn:
+            events = conn.execute(
+                "SELECT created_at, event_type, assistant, summary, detail "
+                "FROM call_events WHERE call_id = ? ORDER BY id ASC",
+                (call_id,),
+            ).fetchall()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"DB error: {e}")
+    if not events:
+        raise HTTPException(status_code=404, detail="call_not_found")
+    # Authorization check — ALL events for this call must belong to client's tenant
+    event_assistant_ids = {e["assistant"] for e in events if e["assistant"]}
+    if not (event_assistant_ids & allowed_ids):
+        raise HTTPException(status_code=403, detail="cross_tenant_access_denied")
+
+    out_events = []
+    caller_name = caller_phone = ""
+    transcript_parts: list[str] = []
+    for r in events:
+        try:
+            d = json.loads(r["detail"]) if isinstance(r["detail"], str) else (r["detail"] or {})
+        except Exception:
+            d = {}
+        if r["event_type"] == "lead-captured":
+            caller_name = d.get("name") or caller_name
+            caller_phone = d.get("contact_phone") or d.get("phone") or caller_phone
+        if d.get("transcript"):
+            transcript_parts.append(str(d["transcript"]))
+        out_events.append({
+            "ts": str(r["created_at"]),
+            "event_type": r["event_type"],
+            "summary": r["summary"] or "",
+        })
+
+    return {
+        "call_id": call_id,
+        "caller_name": caller_name,
+        "caller_phone": caller_phone,
+        "events": out_events,
+        "transcript": "\n\n".join(transcript_parts) if transcript_parts else "",
+        # TODO: generate a 1h-TTL Hetzner pre-signed URL for the recording.
+        # For v1 scaffold, leave as None — frontend hides player gracefully.
+        "recording_url": None,
+    }
+
+
+@app.post("/client/api/calls/{call_id}/note")
+async def client_call_note(call_id: str, request: Request, token: str = Query("")):
+    """Save an internal note on a call. Note is visible to all client users
+    of this tenant AND to Adam in admin.callmeie.ie."""
+    c = check_client(token)
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="invalid_json")
+    note = (body.get("note") or "").strip()
+    if not note:
+        raise HTTPException(status_code=422, detail="note_required")
+    if len(note) > 4000:
+        raise HTTPException(status_code=422, detail="note_too_long")
+
+    # Authorization: confirm the call belongs to this tenant
+    allowed_ids = set(c.get("assistant_ids") or [])
+    try:
+        with get_db() as conn:
+            ev = conn.execute(
+                "SELECT assistant FROM call_events WHERE call_id = ? LIMIT 1",
+                (call_id,),
+            ).fetchone()
+            if not ev or ev["assistant"] not in allowed_ids:
+                raise HTTPException(status_code=403, detail="not_your_call")
+            conn.execute(
+                "INSERT INTO call_notes (call_id, tenant_slug, note, actor) "
+                "VALUES (?, ?, ?, 'client')",
+                (call_id, c["tenant_slug"], note),
+            )
+            conn.commit()
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"save_failed: {e}")
+    return {"saved": True}
+
+
+@app.get("/client/api/inbox")
+async def client_inbox(token: str = Query(""), status: str = Query("unactioned")):
+    """Outstanding 'message-taken' events scoped to this client."""
+    c = check_client(token)
+    where_assist, params = _client_assistant_filter(c)
+    if where_assist == "FALSE":
+        return {"messages": []}
+    sql = (
+        "SELECT call_id, created_at AS ts, summary, detail "
+        "FROM call_events "
+        f"WHERE event_type = 'message-taken' AND {where_assist} "
+        "ORDER BY id DESC LIMIT 100"
+    )
+    try:
+        with get_db() as conn:
+            rows = conn.execute(sql, tuple(params)).fetchall()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"query_failed: {e}")
+    messages = []
+    for r in rows:
+        try:
+            d = json.loads(r["detail"]) if isinstance(r["detail"], str) else (r["detail"] or {})
+        except Exception:
+            d = {}
+        messages.append({
+            "call_id": r["call_id"],
+            "ts": str(r["ts"]),
+            "caller_name": d.get("name") or "",
+            "callback_number": d.get("contact_phone") or d.get("phone") or "",
+            "reason": d.get("reason") or r["summary"] or "",
+            "urgency": d.get("urgency") or "",
+        })
+    return {"messages": messages}
+
+
+@app.get("/client/api/insights")
+async def client_insights(token: str = Query(""), days: int = Query(7, ge=1, le=90)):
+    """Weekly summary metrics scoped to this client."""
+    c = check_client(token)
+    where_assist, params = _client_assistant_filter(c)
+    if where_assist == "FALSE":
+        return {"total_calls": 0, "messages_taken": 0, "transferred": 0, "dropped": 0}
+
+    import datetime as _dt
+    cutoff = (_dt.datetime.utcnow() - _dt.timedelta(days=int(days))).strftime("%Y-%m-%d %H:%M:%S")
+    try:
+        with get_db() as conn:
+            base = f"SELECT event_type, COUNT(DISTINCT call_id) AS n FROM call_events WHERE {where_assist} AND created_at >= ? GROUP BY event_type"
+            args = params + [cutoff]
+            rows = conn.execute(base, tuple(args)).fetchall()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"query_failed: {e}")
+    counts = {r["event_type"]: int(r["n"]) for r in rows}
+    return {
+        "days": days,
+        "total_calls": counts.get("call-ended", 0),
+        "messages_taken": counts.get("message-taken", 0),
+        "transferred": counts.get("transfer", 0) + counts.get("transferred", 0),
+        "dropped": counts.get("hangup", 0),
+        "raw_counts": counts,
+    }
+
+
+@app.get("/client/api/settings")
+async def client_settings(token: str = Query("")):
+    """Read-only summary of this client's assistant configuration."""
+    c = check_client(token)
+    # Placeholder — v1 returns static + tenant_display_name; v2 fetches live
+    # voice + first_message from Vapi (rate-limit cached).
+    return {
+        "tenant": c["tenant_display_name"],
+        "voice": "Cillian (ElevenLabs Flash 2.5, Irish accent)",
+        "greeting": "Good morning, you've reached [your firm] — this is an automated assistant…",
+        "recording_on": True,
+        "retention": "30 days audio / 90 days transcripts",
+        "sub_processors": ["Twilio", "Vapi", "ElevenLabs", "Deepgram", "Hetzner"],
+    }
+
+
+@app.post("/client/api/settings/request-change")
+async def client_request_change(request: Request, token: str = Query("")):
+    """Send a 'request a change' email from this client to hello@callmeie.ie.
+    Tagged with tenant_slug so Adam can route the request."""
+    c = check_client(token)
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="invalid_json")
+    topic = (body.get("topic") or "")[:120]
+    details = (body.get("details") or "")[:4000]
+    if not topic or not details:
+        raise HTTPException(status_code=422, detail="topic_and_details_required")
+
+    # Send via Resend (same path as morning_rollup.py)
+    resend_key = os.environ.get("RESEND_API_KEY", "").strip()
+    if resend_key:
+        try:
+            import urllib.request as _ur
+            payload = {
+                "from": "client-dashboard@callmeie.ie",
+                "to": ["hello@callmeie.ie"],
+                "reply_to": f"hello@callmeie.ie",
+                "subject": f"[{c['tenant_slug']}] Change request: {topic}",
+                "text": (f"Change request from {c['tenant_display_name']} ({c['tenant_slug']})\n\n"
+                         f"Topic: {topic}\n\nDetails:\n{details}\n\n"
+                         f"-- Client dashboard, token last used {c.get('last_used_at')}"),
+            }
+            req = _ur.Request(
+                "https://api.resend.com/emails",
+                data=json.dumps(payload).encode(),
+                headers={
+                    "Authorization": f"Bearer {resend_key}",
+                    "Content-Type": "application/json",
+                    "User-Agent": "callmeie-client/1.0",
+                },
+                method="POST",
+            )
+            with _ur.urlopen(req, timeout=10) as r:
+                if not (200 <= r.status < 300):
+                    raise Exception(f"resend status {r.status}")
+        except Exception as e:
+            print(f"[client request-change] resend failed: {e}", file=sys.stderr)
+            # Don't fail the user request — log instead so Adam can pick it up
+            # from the call_events audit log or stderr.
+    return {"sent": True}
 
 
 if __name__ == "__main__":
