@@ -1159,7 +1159,8 @@
     top: var(--space-3);
     right: var(--space-3);
     bottom: var(--space-3);
-    width: min(430px, calc(100vw - var(--space-6)));
+    width: min(480px, calc(100vw - 2 * var(--space-3)));
+    max-height: calc(100vh - 2 * var(--space-3));
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: var(--radius);
@@ -1203,9 +1204,21 @@
 
   .drawer-body {
     padding: var(--space-4);
-    overflow: auto;
+    overflow-y: auto;
+    overflow-x: hidden;
     display: grid;
     gap: var(--space-4);
+    /* min-height: 0 is the classic flex-column scroll fix — without it the
+       grid would extend past the flex container and bottom rows would clip. */
+    min-height: 0;
+    flex: 1 1 auto;
+    word-break: break-word;
+    overflow-wrap: anywhere;
+  }
+  .drawer-body * { max-width: 100%; }
+  .drawer-body pre, .drawer-body code {
+    white-space: pre-wrap;
+    word-break: break-word;
   }
 
   .drawer-section {
@@ -2348,6 +2361,13 @@
     const ctx = actionContext(action);
     const cls = heatClass(ctx.heat, ctx.state);
     const [stateTitle, stateSub] = stateCopy(ctx.state);
+    // Every action row gets the quick-classify buttons. Fallback to a
+    // synthetic flag ID so submission / stripe / system-fault / whatsapp
+    // rows (no call_id) still classify cleanly into call-flagged log.
+    const flagId = ctx.call_id
+                || (ctx.submission_id ? `submission:${ctx.submission_id}` : null)
+                || (ctx.session_id    ? `stripe:${ctx.session_id}`        : null)
+                || (ctx.state         ? `state:${ctx.state}:${ctx.name || "?"}:${ctx.last_event_at || ""}` : null);
     return `
       <article class="action-row" role="button" tabindex="0" onclick='openDrawer(${jsonAttr(ctx)})' onkeydown='rowKeyOpen(event, ${jsonAttr(ctx)})'>
         <div class="rank ${cls}">${index + 1}</div>
@@ -2359,7 +2379,7 @@
         <div class="metric-cell"><span>Est. value</span><strong>${eur(ctx.estimated_value_minor)}</strong><span>+ setup</span></div>
         <div class="metric-cell"><span>${esc(relativeTime(ctx.last_event_at))}</span><strong>${esc(ctx.call_id ? "Last event" : "Submitted")}</strong></div>
         <div class="row-actions">
-          ${ctx.call_id ? renderFlagButtons(ctx.call_id, { compact: true }) : ""}
+          ${flagId ? renderFlagButtons(flagId, { compact: true }) : ""}
           <button class="btn primary" type="button" onclick='event.stopPropagation(); openDrawer(${jsonAttr(ctx)})'>${icon(ctx.state === "submission_pending" ? "leads" : "send")} ${esc(ctx.label)}</button>
         </div>
       </article>`;
