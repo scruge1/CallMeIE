@@ -6670,6 +6670,37 @@ async def admin_today_actions(token: str = Query(""), limit: int = Query(10)):
 
     # Sort + limit
     actions.sort(key=lambda a: a["rank_score"], reverse=True)
+
+    # Filter out actions flagged as test/spam/discard. Phone actions use real
+    # call_ids; submission/stripe/whatsapp actions use synthetic IDs that
+    # match the frontend's flagId fallback (submission:{id}, stripe:{id},
+    # state:{...}). _get_call_classifications resolves all of them from the
+    # call-flagged event log.
+    try:
+        flag_ids = []
+        for a in actions:
+            ctx = a.get("context") or {}
+            fid = (ctx.get("call_id")
+                   or (f"submission:{ctx['submission_id']}" if ctx.get("submission_id") else None)
+                   or (f"stripe:{ctx['session_id']}" if ctx.get("session_id") else None))
+            if fid:
+                flag_ids.append(fid)
+        with get_db() as conn:
+            flags = _get_call_classifications(conn, flag_ids) if flag_ids else {}
+        if flags:
+            kept = []
+            for a in actions:
+                ctx = a.get("context") or {}
+                fid = (ctx.get("call_id")
+                       or (f"submission:{ctx['submission_id']}" if ctx.get("submission_id") else None)
+                       or (f"stripe:{ctx['session_id']}" if ctx.get("session_id") else None))
+                if fid and flags.get(fid, "real") != "real":
+                    continue  # flagged as test/spam/discard — drop from ranking
+                kept.append(a)
+            actions = kept
+    except Exception as e:
+        print(f"[today-actions] flag filter skipped: {e}", file=sys.stderr)
+
     return JSONResponse({
         "actions": actions[:limit],
         "total_seen": len(actions),
