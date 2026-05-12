@@ -547,6 +547,52 @@
     background: var(--surface-soft);
   }
 
+  .row-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    align-items: stretch;
+    min-width: 0;
+  }
+
+  .row-actions > .btn.primary { width: 100%; }
+
+  .flag-btns {
+    display: inline-flex;
+    gap: 4px;
+    align-items: center;
+  }
+
+  .flag-btns.compact { flex-wrap: wrap; }
+
+  .flag-btn {
+    padding: 4px 8px;
+    font-size: 12px;
+    line-height: 1.1;
+    min-height: 26px;
+    border-radius: var(--radius-xs);
+    flex: 1 1 auto;
+    transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
+  }
+
+  .pipeline-status-cell {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    margin-bottom: 6px;
+  }
+
+  .pipeline-status-cell .select {
+    padding: 3px 8px;
+    font-size: 11px;
+    min-height: 24px;
+  }
+
+  .flag-btn.flag-real:hover  { color: var(--ok);   border-color: color-mix(in srgb, var(--ok) 40%, var(--border)); background: var(--ok-soft, color-mix(in srgb, var(--ok) 10%, var(--surface))); }
+  .flag-btn.flag-test:hover  { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 40%, var(--border)); background: color-mix(in srgb, var(--warn) 10%, var(--surface)); }
+  .flag-btn.flag-spam:hover  { color: var(--fail); border-color: color-mix(in srgb, var(--fail) 40%, var(--border)); background: color-mix(in srgb, var(--fail) 10%, var(--surface)); }
+  .flag-btn.flag-discard:hover { color: var(--muted); border-color: var(--border-strong, var(--border)); background: var(--surface-muted); }
+
   .rank {
     width: 32px;
     height: 32px;
@@ -1437,9 +1483,10 @@
     .action-row {
       grid-template-columns: 42px 42px minmax(0, 1fr) 94px 76px;
     }
-    .action-row .action-cta {
+    .action-row .action-cta,
+    .action-row .row-actions {
       grid-column: 3 / -1;
-      justify-self: start;
+      justify-self: stretch;
     }
   }
 
@@ -2311,9 +2358,48 @@
         </div>
         <div class="metric-cell"><span>Est. value</span><strong>${eur(ctx.estimated_value_minor)}</strong><span>+ setup</span></div>
         <div class="metric-cell"><span>${esc(relativeTime(ctx.last_event_at))}</span><strong>${esc(ctx.call_id ? "Last event" : "Submitted")}</strong></div>
-        <div class="action-cta"><button class="btn primary" type="button" onclick='event.stopPropagation(); openDrawer(${jsonAttr(ctx)})'>${icon(ctx.state === "submission_pending" ? "leads" : "send")} ${esc(ctx.label)}</button></div>
+        <div class="row-actions">
+          ${ctx.call_id ? renderFlagButtons(ctx.call_id, { compact: true }) : ""}
+          <button class="btn primary" type="button" onclick='event.stopPropagation(); openDrawer(${jsonAttr(ctx)})'>${icon(ctx.state === "submission_pending" ? "leads" : "send")} ${esc(ctx.label)}</button>
+        </div>
       </article>`;
   }
+
+  // === Classification (Real / Test / Spam / Discard) =====================
+  function renderFlagButtons(callId, opts) {
+    opts = opts || {};
+    const compact = !!opts.compact;
+    const safe = esc(callId);
+    const cls = compact ? "flag-btns compact" : "flag-btns";
+    return `
+      <div class="${cls}" onclick="event.stopPropagation()">
+        <button class="btn ghost flag-btn flag-real" type="button" title="Mark as real lead" onclick="flagCall('${safe}','real',event)">${compact ? "✓" : "✓ Real"}</button>
+        <button class="btn ghost flag-btn flag-test" type="button" title="Mark as test call" onclick="flagCall('${safe}','test',event)">${compact ? "🧪" : "🧪 Test"}</button>
+        <button class="btn ghost flag-btn flag-spam" type="button" title="Flag as spam / robocall" onclick="flagCall('${safe}','spam',event)">${compact ? "🚫" : "🚫 Spam"}</button>
+        <button class="btn ghost flag-btn flag-discard" type="button" title="Discard / not pursuing" onclick="flagCall('${safe}','discard',event)">${compact ? "✗" : "✗ Discard"}</button>
+      </div>`;
+  }
+
+  async function flagCall(callId, classification, ev) {
+    if (ev) { ev.preventDefault(); ev.stopPropagation(); }
+    try {
+      await api("/admin/api/call-flag", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ call_id: callId, classification }),
+      });
+      showToast(`Marked as ${classification}`);
+      // Refresh the active tab so the row drops off where appropriate
+      if (state.currentTab === "today") loadToday();
+      else if (state.currentTab === "calls") loadCalls();
+      else if (state.currentTab === "leads") loadLeads();
+      if (qs("#drawerBackdrop")?.classList.contains("open")) closeDrawer();
+    } catch (err) {
+      showToast(err.message || "Flag failed", "error");
+    }
+  }
+
+  window.flagCall = flagCall;
 
   window.rowKeyOpen = (event, ctx) => {
     if (event.key === "Enter" || event.key === " ") {
@@ -2578,10 +2664,49 @@
               <span class="time">${esc(fmtTime(lead.ts || lead.created_at || lead.last_touch_at))}</span>
               <span class="truncate"><strong>${esc(lead.name || lead.contact_name || lead.business_name || "?")}</strong><br><span class="muted">${esc(lead.business_type || lead.source || lead.primary_channel || "")}</span></span>
               <span class="badge ${heatClass(lead.heat || lead.priority)}">${esc(lead.status || lead.channel || lead.primary_channel || "lead")}</span>
+              ${lead.call_id ? renderFlagButtons(lead.call_id, { compact: true }) : (lead.id ? renderLeadStatusButtons(lead.id, lead.status) : "")}
             </div>
           `).join("") : '<div class="empty">No unified leads returned.</div>'}
         </div>
       </section>`;
+  }
+
+  // === Lead-row direct status buttons (for unified_leads rows w/o call_id) ===
+  function renderLeadStatusButtons(leadId, currentStatus) {
+    const safe = esc(leadId);
+    const cs = String(currentStatus || "");
+    return `
+      <div class="flag-btns compact" onclick="event.stopPropagation()">
+        <button class="btn ghost flag-btn flag-real"    type="button" title="Mark as qualified (real)"    onclick="setLeadStatus('${safe}','qualified','${esc(cs)}',event)">✓</button>
+        <button class="btn ghost flag-btn flag-test"    type="button" title="Mark as test"               onclick="setLeadStatus('${safe}','test','${esc(cs)}',event)">🧪</button>
+        <button class="btn ghost flag-btn flag-spam"    type="button" title="Flag as spam"               onclick="setLeadStatus('${safe}','spam','${esc(cs)}',event)">🚫</button>
+        <button class="btn ghost flag-btn flag-discard" type="button" title="Discard (closed_lost)"      onclick="setLeadStatus('${safe}','closed_lost','${esc(cs)}',event)">✗</button>
+      </div>`;
+  }
+
+  async function setLeadStatus(leadId, status, oldStatus, ev) {
+    if (ev) { ev.preventDefault(); ev.stopPropagation(); }
+    try {
+      await api(`/admin/api/leads/${encodeURIComponent(leadId)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status, reason: `quick-action ${oldStatus || "?"} → ${status}` }),
+      });
+      showToast(`Lead → ${status}`);
+      loadLeads();
+    } catch (err) {
+      showToast(err.message || "Update failed", "error");
+    }
+  }
+
+  window.setLeadStatus = setLeadStatus;
+
+  function pipelineStatusClass(s) {
+    const x = String(s || "").toLowerCase();
+    if (x === "qualified" || x === "closed_won") return "ok";
+    if (x === "test") return "warn";
+    if (x === "spam" || x === "closed_lost") return "muted";
+    return "";
   }
 
   function channelIcon(channel) {
@@ -2629,9 +2754,14 @@
                   <td><strong>${esc(lead.contact_name || lead.business_name || "?")}</strong><br><span class="muted">${esc(lead.contact_phone || lead.contact_email || "")}</span></td>
                   <td>${esc(lead.primary_channel || "")}</td>
                   <td>
-                    <select class="select" onchange="updateLeadStatus('${esc(lead.id)}', this.value, '${esc(lead.status)}')">
-                      ${["new", "contacted", "qualified", "converted", "lost"].map((s) => `<option value="${s}" ${lead.status === s ? "selected" : ""}>${title(s)}</option>`).join("")}
-                    </select>
+                    <div class="pipeline-status-cell">
+                      <span class="badge ${pipelineStatusClass(lead.status)}">${esc(lead.status || "new")}</span>
+                      <select class="select" onchange="updateLeadStatus('${esc(lead.id)}', this.value, '${esc(lead.status)}')" title="Change status">
+                        <option value="" selected disabled>change…</option>
+                        ${["new", "contacted", "qualified", "closed_won", "closed_lost", "spam", "test"].filter((s) => s !== lead.status).map((s) => `<option value="${s}">${esc(s.replace("_"," "))}</option>`).join("")}
+                      </select>
+                    </div>
+                    ${renderLeadStatusButtons(lead.id, lead.status)}
                   </td>
                   <td>${esc(fmtDate(lead.last_touch_at || lead.created_at))}</td>
                 </tr>
@@ -2968,6 +3098,7 @@
         </div>
       </div>
       <div class="drawer-body">
+        ${ctx.call_id ? `<section class="drawer-section"><h3>Classify</h3>${renderFlagButtons(ctx.call_id, { compact: false })}<p class="muted" style="margin-top:6px;font-size:11px">Mark this call so it stops cluttering Today/Calls/Leads.</p></section>` : ""}
         ${ctx.summary ? `<section class="drawer-section"><h3>Call summary</h3><p class="muted">${esc(ctx.summary)}</p></section>` : ""}
         <section id="drawerTimeline" class="drawer-section"><h3>Timeline</h3><div class="empty">Loading timeline...</div></section>
         <section id="drawerRecording" class="drawer-section"><h3>Recording</h3><div class="empty">Loading recording...</div></section>
