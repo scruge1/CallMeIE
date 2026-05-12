@@ -3650,13 +3650,41 @@ async def provision(submission_id: int, token: str = Query("")):
 
 
 @app.get("/admin/api/events")
-async def list_events(token: str = Query(""), limit: int = Query(200)):
+async def list_events(
+    token: str = Query(""),
+    limit: int = Query(200),
+    include_orphans: bool = Query(False),
+):
+    """Return recent call_events.
+
+    Default: hide call_ids that have ONLY 'call-ended' events (= short
+    hang-ups / Vapi retries / spam misdials — 90% of webhook noise). These
+    were drowning the Call Log + Signal Stream surfaces with zero-second
+    blank-caller rows.
+
+    Pass `include_orphans=true` to disable the filter (full raw stream for
+    inspection/debug).
+    """
     check_admin(token)
+    fetch_limit = max(limit * 4, 200) if not include_orphans else limit
     with get_db() as conn:
         rows = conn.execute(
-            "SELECT * FROM call_events ORDER BY created_at DESC LIMIT ?", (limit,)
+            "SELECT * FROM call_events ORDER BY id DESC LIMIT ?", (fetch_limit,)
         ).fetchall()
-    return [dict(r) for r in rows]
+    rows = [dict(r) for r in rows]
+    if include_orphans:
+        return rows[:limit]
+
+    # Group by call_id; drop groups whose only event_type is 'call-ended'
+    groups: dict[str, set] = {}
+    for r in rows:
+        cid = r.get("call_id") or "__no_call__"
+        groups.setdefault(cid, set()).add(r.get("event_type") or "")
+    orphan_ids = {cid for cid, types in groups.items()
+                  if types == {"call-ended"} or types == {"call-ended", ""}}
+    filtered = [r for r in rows
+                if (r.get("call_id") or "__no_call__") not in orphan_ids]
+    return filtered[:limit]
 
 
 @app.get("/admin/api/health")
