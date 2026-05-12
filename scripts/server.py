@@ -732,6 +732,43 @@ def init_db():
                 # them up. Hand-rerun: just restart the container.
                 print(f"[init_db] retention migration {table}.{column} skipped: {e}", file=sys.stderr)
 
+        # Client dashboard tables (alembic 0010_client_tokens) — added inline
+        # as a safety net so the client portal works even if migration
+        # hasn't been stamped in production yet. Alembic IF EXISTS is a no-op
+        # when the tables are already there.
+        conn.execute(_ddl_fix("""
+            CREATE TABLE IF NOT EXISTS client_tokens (
+                id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+                created_at          TEXT DEFAULT (datetime('now')),
+                token               TEXT UNIQUE NOT NULL,
+                tenant_slug         TEXT NOT NULL,
+                tenant_display_name TEXT,
+                assistant_ids       TEXT,
+                last_used_at        TEXT,
+                revoked_at          TEXT,
+                created_by          TEXT
+            )
+        """))
+        conn.execute(_ddl_fix("""
+            CREATE INDEX IF NOT EXISTS idx_client_tokens_token ON client_tokens(token)
+        """))
+        conn.execute(_ddl_fix("""
+            CREATE INDEX IF NOT EXISTS idx_client_tokens_tenant ON client_tokens(tenant_slug)
+        """))
+        conn.execute(_ddl_fix("""
+            CREATE TABLE IF NOT EXISTS call_notes (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                created_at  TEXT DEFAULT (datetime('now')),
+                call_id     TEXT NOT NULL,
+                tenant_slug TEXT,
+                note        TEXT NOT NULL,
+                actor       TEXT
+            )
+        """))
+        conn.execute(_ddl_fix("""
+            CREATE INDEX IF NOT EXISTS idx_call_notes_call_id ON call_notes(call_id)
+        """))
+
         conn.commit()
 
 
@@ -6634,8 +6671,12 @@ def check_client(token: str) -> dict:
             ).fetchone()
             if not row:
                 raise HTTPException(status_code=401, detail="invalid_token")
+            # Portable timestamp expression — Postgres uses NOW(), SQLite uses
+            # datetime('now'). Matches the existing now_expr pattern used
+            # elsewhere in this codebase.
+            now_expr = "NOW()" if _USE_PG else "datetime('now')"
             conn.execute(
-                "UPDATE client_tokens SET last_used_at = NOW() WHERE token = ?",
+                f"UPDATE client_tokens SET last_used_at = {now_expr} WHERE token = ?",
                 (token,),
             )
             conn.commit()
@@ -6651,16 +6692,72 @@ def check_client(token: str) -> dict:
 
 def _client_assistant_filter(client_row: dict) -> tuple[str, list]:
     """Build a SQL fragment + params for filtering rows to this client's
-    assistant_ids. Returns ("assistant_id IN (?,?,?)", ["a","b","c"]).
-    If the client has no assistants assigned, returns ("FALSE", []) which
-    yields zero rows (correct tenant-isolation behaviour)."""
+    assistant_ids. Postgres stores assistant_ids as TEXT[] (array). SQLite
+    stores it as TEXT (comma-separated). Returns ("assistant IN (?,?,?)",
+    ["a","b","c"]). If the client has no assistants assigned, returns
+    ("1=0", []) which yields zero rows (correct tenant-isolation default).
+
+    Note: column name is `assistant` in call_events (singular), not
+    assistant_id. Don't rename — many existing endpoints reference it.
+    """
     ids = client_row.get("assistant_ids") or []
     if isinstance(ids, str):
+        # Postgres array literal like "{a,b,c}" OR plain comma-separated
         ids = [s.strip() for s in ids.strip("{}").split(",") if s.strip()]
     if not ids:
-        return "FALSE", []
+        return "1=0", []
     placeholders = ",".join(["?"] * len(ids))
-    return f"assistant_id IN ({placeholders})", list(ids)
+    return f"assistant IN ({placeholders})", list(ids)
+
+
+def _hetzner_presigned_for_call(call_id: str, expires: int = 3600):
+    """Return a 1h-TTL Hetzner S3 pre-signed URL for the recording of this
+    call_id, or None if not archived. Tries .wav first, .mp3 fallback.
+
+    Reuses HETZNER_OBJECT_STORAGE_* env vars used by _mirror_recording_to_hetzner().
+    """
+    ep = os.environ.get("HETZNER_OBJECT_STORAGE_ENDPOINT", "").strip()
+    ak = os.environ.get("HETZNER_OBJECT_STORAGE_ACCESS_KEY_ID", "").strip()
+    sk = os.environ.get("HETZNER_OBJECT_STORAGE_SECRET_ACCESS_KEY", "").strip()
+    bk = os.environ.get("HETZNER_OBJECT_STORAGE_BUCKET", "").strip()
+    if not all([ep, ak, sk, bk]):
+        return None
+    try:
+        import boto3
+        from botocore.config import Config
+        s3 = boto3.client(
+            "s3",
+            aws_access_key_id=ak,
+            aws_secret_access_key=sk,
+            endpoint_url=ep,
+            region_name="eu-central",
+            config=Config(signature_version="s3v4",
+                          s3={"addressing_style": "path"}),
+        )
+        for ext in ("wav", "mp3"):
+            key = f"recordings/{call_id}.{ext}"
+            try:
+                s3.head_object(Bucket=bk, Key=key)
+                return s3.generate_presigned_url(
+                    "get_object",
+                    Params={"Bucket": bk, "Key": key},
+                    ExpiresIn=expires,
+                )
+            except Exception:
+                continue
+        return None
+    except Exception as e:
+        print(f"[_hetzner_presigned_for_call] {call_id} → {e}", file=sys.stderr)
+        return None
+
+
+# Voice catalog — Vapi voiceId → human-readable label. Update when a new
+# voice is provisioned for any tenant. Used by /client/api/settings to
+# present a friendly name instead of opaque IDs.
+VOICE_CATALOG = {
+    "U3AWuAe8WcVA50PuDMrY": "Cillian (ElevenLabs, Irish, calm)",
+    "ZF6FPAbjXT4488VcRRnw": "Amelia (ElevenLabs, Irish)",
+}
 
 
 @app.get("/client")
@@ -6672,17 +6769,44 @@ async def client_portal():
     return HTMLResponse("<h1>Client dashboard pending build</h1>")
 
 
+async def _fetch_client_assistant(assistant_id: str) -> dict:
+    """Fetch one assistant from Vapi. Returns {} on failure (never raises)."""
+    vk = os.environ.get("VAPI_API_KEY", "").strip()
+    if not vk or not assistant_id:
+        return {}
+    try:
+        async with httpx.AsyncClient(timeout=10) as cli:
+            r = await cli.get(
+                f"https://api.vapi.ai/assistant/{assistant_id}",
+                headers={"Authorization": f"Bearer {vk}"},
+            )
+        if r.status_code == 200:
+            return r.json()
+    except Exception as e:
+        print(f"[_fetch_client_assistant] {assistant_id} → {e}", file=sys.stderr)
+    return {}
+
+
 @app.get("/client/api/me")
 async def client_me(token: str = Query("")):
-    """Return current client's tenant identity + relevant assistant config."""
+    """Return current client's tenant identity + relevant assistant config
+    (recording state fetched live from Vapi)."""
     c = check_client(token)
-    # Pull retention + recording state — placeholder for now (Vapi assistant fetch
-    # is rate-limited; cache for v1 / read from a snapshot in v2).
+    ids = c.get("assistant_ids") or []
+    if isinstance(ids, str):
+        ids = [s.strip() for s in ids.strip("{}").split(",") if s.strip()]
+    has_recording_on = False
+    if ids:
+        a = await _fetch_client_assistant(ids[0])
+        has_recording_on = bool((a.get("artifactPlan") or {}).get("recordingEnabled", a.get("recordingEnabled", True)))
     return {
         "tenant_slug": c["tenant_slug"],
         "tenant_display_name": c["tenant_display_name"],
-        "assistant_ids": c.get("assistant_ids") or [],
-        "has_recording_on": True,
+        "assistant_ids": ids,
+        "has_recording_on": has_recording_on,
+        # Retention values are global system policy (matches public site +
+        # DPA). Hard-coded by design — change here when policy changes,
+        # propagate to privacy.html + vertical sales pages.
         "retention_days_audio": 30,
         "retention_days_transcripts": 90,
     }
@@ -6712,7 +6836,11 @@ async def client_calls(
     )
     args = params + [cutoff]
     if q:
-        sql += "AND (summary ILIKE ? OR detail::text ILIKE ?) "
+        # Portable case-insensitive search — Postgres ILIKE, SQLite LOWER LIKE
+        if _USE_PG:
+            sql += "AND (summary ILIKE ? OR CAST(detail AS TEXT) ILIKE ?) "
+        else:
+            sql += "AND (LOWER(summary) LIKE LOWER(?) OR LOWER(CAST(detail AS TEXT)) LIKE LOWER(?)) "
         like = f"%{q}%"
         args += [like, like]
     sql += "ORDER BY id DESC LIMIT ?"
@@ -6793,9 +6921,9 @@ async def client_call_detail(call_id: str, token: str = Query("")):
         "caller_phone": caller_phone,
         "events": out_events,
         "transcript": "\n\n".join(transcript_parts) if transcript_parts else "",
-        # TODO: generate a 1h-TTL Hetzner pre-signed URL for the recording.
-        # For v1 scaffold, leave as None — frontend hides player gracefully.
-        "recording_url": None,
+        # 1h-TTL Hetzner pre-signed URL; None if the recording isn't mirrored
+        # yet (e.g. call still in progress, or recording disabled per call).
+        "recording_url": _hetzner_presigned_for_call(call_id, expires=3600),
     }
 
 
@@ -6839,17 +6967,28 @@ async def client_call_note(call_id: str, request: Request, token: str = Query(""
 
 @app.get("/client/api/inbox")
 async def client_inbox(token: str = Query(""), status: str = Query("unactioned")):
-    """Outstanding 'message-taken' events scoped to this client."""
+    """Outstanding 'message-taken' events scoped to this client. By default
+    returns only messages without a paired 'inbox-actioned' event."""
     c = check_client(token)
     where_assist, params = _client_assistant_filter(c)
-    if where_assist == "FALSE":
+    if where_assist == "1=0":
         return {"messages": []}
+    # Note: where_assist uses 'assistant IN (?,?)'; we need to qualify it as
+    # ce.assistant once we alias the table for the EXISTS subquery.
+    where_assist_qualified = where_assist.replace("assistant IN", "ce.assistant IN")
     sql = (
-        "SELECT call_id, created_at AS ts, summary, detail "
-        "FROM call_events "
-        f"WHERE event_type = 'message-taken' AND {where_assist} "
-        "ORDER BY id DESC LIMIT 100"
+        "SELECT ce.call_id, ce.created_at AS ts, ce.summary, ce.detail "
+        "FROM call_events ce "
+        f"WHERE ce.event_type = 'message-taken' AND {where_assist_qualified} "
     )
+    if status == "unactioned":
+        sql += (
+            "AND NOT EXISTS ("
+            "  SELECT 1 FROM call_events ce2 "
+            "  WHERE ce2.call_id = ce.call_id AND ce2.event_type = 'inbox-actioned'"
+            ") "
+        )
+    sql += "ORDER BY ce.id DESC LIMIT 100"
     try:
         with get_db() as conn:
             rows = conn.execute(sql, tuple(params)).fetchall()
@@ -6872,48 +7011,175 @@ async def client_inbox(token: str = Query(""), status: str = Query("unactioned")
     return {"messages": messages}
 
 
+@app.post("/client/api/inbox/{call_id}/actioned")
+async def client_inbox_actioned(call_id: str, token: str = Query("")):
+    """Mark an inbox message as actioned. Logs 'inbox-actioned' event so it
+    appears in the unified call timeline and stops surfacing in the inbox."""
+    c = check_client(token)
+    allowed_ids = set(c.get("assistant_ids") or [])
+    if isinstance(c.get("assistant_ids"), str):
+        allowed_ids = {s.strip() for s in c["assistant_ids"].strip("{}").split(",") if s.strip()}
+    try:
+        with get_db() as conn:
+            ev = conn.execute(
+                "SELECT assistant FROM call_events WHERE call_id = ? LIMIT 1",
+                (call_id,),
+            ).fetchone()
+            if not ev or ev["assistant"] not in allowed_ids:
+                raise HTTPException(status_code=403, detail="not_your_call")
+            conn.execute(
+                "INSERT INTO call_events (call_id, event_type, assistant, summary, detail) "
+                "VALUES (?, 'inbox-actioned', ?, ?, ?)",
+                (call_id, ev["assistant"],
+                 f"actioned by {c['tenant_slug']}",
+                 json.dumps({"actor": "client", "tenant_slug": c["tenant_slug"]})),
+            )
+            conn.commit()
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"action_failed: {e}")
+    return {"actioned": True}
+
+
 @app.get("/client/api/insights")
 async def client_insights(token: str = Query(""), days: int = Query(7, ge=1, le=90)):
-    """Weekly summary metrics scoped to this client."""
+    """Weekly summary metrics scoped to this client.
+    Real event_types from log_event(): call-ended, message-taken,
+    lead-captured, demo-complete, booking, booking-fail, lead-error.
+    Derived metrics:
+      total_calls   = distinct call_ids with any event
+      qualified     = call_ids with demo-complete (AI got useful info)
+      messages_taken= distinct call_ids with message-taken
+      bookings      = distinct call_ids with booking
+      short_drops   = call-ended without demo-complete OR message-taken (caller hung up early)
+    """
     c = check_client(token)
     where_assist, params = _client_assistant_filter(c)
-    if where_assist == "FALSE":
-        return {"total_calls": 0, "messages_taken": 0, "transferred": 0, "dropped": 0}
+    if where_assist == "1=0":
+        return {"total_calls": 0, "qualified": 0, "messages_taken": 0,
+                "bookings": 0, "short_drops": 0, "raw_counts": {}}
 
     import datetime as _dt
     cutoff = (_dt.datetime.utcnow() - _dt.timedelta(days=int(days))).strftime("%Y-%m-%d %H:%M:%S")
     try:
         with get_db() as conn:
-            base = f"SELECT event_type, COUNT(DISTINCT call_id) AS n FROM call_events WHERE {where_assist} AND created_at >= ? GROUP BY event_type"
-            args = params + [cutoff]
-            rows = conn.execute(base, tuple(args)).fetchall()
+            # Distinct call_ids per event_type
+            base = (
+                "SELECT event_type, COUNT(DISTINCT call_id) AS n "
+                f"FROM call_events WHERE {where_assist} AND created_at >= ? "
+                "GROUP BY event_type"
+            )
+            rows = conn.execute(base, tuple(params + [cutoff])).fetchall()
+            counts = {r["event_type"]: int(r["n"]) for r in rows}
+            # Total unique calls (any event)
+            total_calls_row = conn.execute(
+                f"SELECT COUNT(DISTINCT call_id) AS n FROM call_events WHERE {where_assist} AND created_at >= ?",
+                tuple(params + [cutoff]),
+            ).fetchone()
+            total_calls = int(total_calls_row["n"]) if total_calls_row else 0
+            # Short-drop = call-ended WITHOUT demo-complete OR message-taken
+            short_drops_row = conn.execute(
+                f"SELECT COUNT(DISTINCT ce.call_id) AS n FROM call_events ce "
+                f"WHERE ce.event_type = 'call-ended' AND " + where_assist.replace("assistant IN", "ce.assistant IN") + " AND ce.created_at >= ? "
+                "AND NOT EXISTS (SELECT 1 FROM call_events ce2 WHERE ce2.call_id = ce.call_id AND ce2.event_type IN ('demo-complete','message-taken'))",
+                tuple(params + [cutoff]),
+            ).fetchone()
+            short_drops = int(short_drops_row["n"]) if short_drops_row else 0
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"query_failed: {e}")
-    counts = {r["event_type"]: int(r["n"]) for r in rows}
     return {
         "days": days,
-        "total_calls": counts.get("call-ended", 0),
+        "total_calls": total_calls,
+        "qualified": counts.get("demo-complete", 0),
         "messages_taken": counts.get("message-taken", 0),
-        "transferred": counts.get("transfer", 0) + counts.get("transferred", 0),
-        "dropped": counts.get("hangup", 0),
+        "bookings": counts.get("booking", 0),
+        "short_drops": short_drops,
         "raw_counts": counts,
     }
 
 
 @app.get("/client/api/settings")
 async def client_settings(token: str = Query("")):
-    """Read-only summary of this client's assistant configuration."""
+    """Read-only summary of this client's assistant configuration.
+    Voice + greeting + recording state are fetched LIVE from Vapi —
+    no hardcoded placeholders. Falls back to '—' if Vapi unreachable
+    so customer sees an honest unknown rather than fake values."""
     c = check_client(token)
-    # Placeholder — v1 returns static + tenant_display_name; v2 fetches live
-    # voice + first_message from Vapi (rate-limit cached).
+    ids = c.get("assistant_ids") or []
+    if isinstance(ids, str):
+        ids = [s.strip() for s in ids.strip("{}").split(",") if s.strip()]
+    voice_label = "—"
+    greeting = "—"
+    recording_on = False
+    if ids:
+        a = await _fetch_client_assistant(ids[0])
+        voice = a.get("voice") or {}
+        vid = voice.get("voiceId") or ""
+        provider = voice.get("provider") or "?"
+        voice_label = VOICE_CATALOG.get(vid) or (f"{provider} · {vid[:8]}…" if vid else "—")
+        greeting = a.get("firstMessage") or "—"
+        recording_on = bool((a.get("artifactPlan") or {}).get("recordingEnabled", a.get("recordingEnabled", True)))
     return {
         "tenant": c["tenant_display_name"],
-        "voice": "Cillian (ElevenLabs Flash 2.5, Irish accent)",
-        "greeting": "Good morning, you've reached [your firm] — this is an automated assistant…",
-        "recording_on": True,
+        "voice": voice_label,
+        "greeting": greeting,
+        "recording_on": recording_on,
         "retention": "30 days audio / 90 days transcripts",
-        "sub_processors": ["Twilio", "Vapi", "ElevenLabs", "Deepgram", "Hetzner"],
+        "sub_processors": ["Twilio", "Vapi", "ElevenLabs", "Deepgram", "Hetzner Object Storage (Nuremberg)"],
     }
+
+
+@app.get("/client/api/export.csv")
+async def client_export_csv(token: str = Query(""), days: int = Query(30, ge=1, le=90)):
+    """CSV download of all calls in date range, scoped to this tenant.
+    Columns: ts, call_id, event_type, caller_name, caller_phone, summary."""
+    c = check_client(token)
+    where_assist, params = _client_assistant_filter(c)
+    if where_assist == "1=0":
+        return PlainTextResponse("ts,call_id,event_type,caller_name,caller_phone,summary\n",
+                                 media_type="text/csv",
+                                 headers={"Content-Disposition": "attachment; filename=calls.csv"})
+
+    import datetime as _dt
+    import csv as _csv
+    import io as _io
+    cutoff = (_dt.datetime.utcnow() - _dt.timedelta(days=int(days))).strftime("%Y-%m-%d %H:%M:%S")
+    try:
+        with get_db() as conn:
+            rows = conn.execute(
+                "SELECT call_id, created_at AS ts, event_type, summary, detail "
+                f"FROM call_events WHERE {where_assist} AND created_at >= ? "
+                "ORDER BY id DESC",
+                tuple(params + [cutoff]),
+            ).fetchall()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"query_failed: {e}")
+
+    buf = _io.StringIO()
+    w = _csv.writer(buf)
+    w.writerow(["ts", "call_id", "event_type", "caller_name", "caller_phone", "summary"])
+    for r in rows:
+        try:
+            d = json.loads(r["detail"]) if isinstance(r["detail"], str) else (r["detail"] or {})
+        except Exception:
+            d = {}
+        w.writerow([
+            str(r["ts"]),
+            r["call_id"] or "",
+            r["event_type"] or "",
+            d.get("name") or d.get("caller_name") or "",
+            d.get("contact_phone") or d.get("phone") or "",
+            (r["summary"] or "").replace("\n", " "),
+        ])
+
+    return Response(
+        content=buf.getvalue(),
+        media_type="text/csv",
+        headers={
+            "Content-Disposition": f"attachment; filename=calls-{c['tenant_slug']}-{days}d.csv",
+        },
+    )
 
 
 @app.post("/client/api/settings/request-change")

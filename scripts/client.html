@@ -589,10 +589,12 @@ async function loadInsights() {
     qs("#insightsBody").innerHTML = `
       <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 16px;">
         <div><div style="font-size: 24px; font-weight: 700;">${esc(data.total_calls || 0)}</div><div class="muted" style="font-size:12px;">Total calls</div></div>
+        <div><div style="font-size: 24px; font-weight: 700;">${esc(data.qualified || 0)}</div><div class="muted" style="font-size:12px;">Qualified leads</div></div>
         <div><div style="font-size: 24px; font-weight: 700;">${esc(data.messages_taken || 0)}</div><div class="muted" style="font-size:12px;">Messages taken</div></div>
-        <div><div style="font-size: 24px; font-weight: 700;">${esc(data.transferred || 0)}</div><div class="muted" style="font-size:12px;">Transferred</div></div>
-        <div><div style="font-size: 24px; font-weight: 700;">${esc(data.dropped || 0)}</div><div class="muted" style="font-size:12px;">Dropped</div></div>
-      </div>`;
+        <div><div style="font-size: 24px; font-weight: 700;">${esc(data.bookings || 0)}</div><div class="muted" style="font-size:12px;">Bookings</div></div>
+        <div><div style="font-size: 24px; font-weight: 700;">${esc(data.short_drops || 0)}</div><div class="muted" style="font-size:12px;">Short hang-ups</div></div>
+      </div>
+      <p class="muted" style="margin-top: 16px; font-size: 12px;">Counts are unique calls in the last ${esc(data.days)} days. Short hang-ups = caller dropped before the AI captured any info.</p>`;
   } catch (err) {
     qs("#insightsBody").innerHTML = `<div class="empty">Could not load insights. ${esc(err.message)}</div>`;
   }
