@@ -2912,15 +2912,16 @@ async def list_assistants(token: str = Query("")):
 # Schema in alembic 0003_unified_leads.py + see PDR-NEXT-P2-4-UNIFIED-LEADS.md
 # =========================================================================
 
-_VALID_STATUS = {"new", "contacted", "qualified", "closed_won", "closed_lost", "spam"}
+_VALID_STATUS = {"new", "contacted", "qualified", "closed_won", "closed_lost", "spam", "test"}
 _STATUS_TRANSITIONS = {
-    "new":         {"contacted", "qualified", "closed_lost", "spam"},
-    "contacted":   {"qualified", "closed_lost", "closed_won"},
-    "qualified":   {"closed_won", "closed_lost"},
+    "new":         {"contacted", "qualified", "closed_lost", "spam", "test"},
+    "contacted":   {"qualified", "closed_lost", "closed_won", "spam", "test"},
+    "qualified":   {"closed_won", "closed_lost", "spam", "test"},
     # Terminal states require explicit reopen — handled by 'reopen' kw not here.
     "closed_won":  set(),
     "closed_lost": set(),
     "spam":        set(),
+    "test":        set(),
 }
 
 
@@ -3649,11 +3650,154 @@ async def provision(submission_id: int, token: str = Query("")):
     return {"status": "provisioned", "assistant_id": assistant_id}
 
 
+_VALID_CALL_CLASSIFICATIONS = {"real", "test", "spam", "discard"}
+
+
+def _get_call_classifications(conn, call_ids: list[str] | None = None) -> dict[str, str]:
+    """Return {call_id: latest_classification} for given ids (or all recent).
+
+    Reads 'call-flagged' events from call_events; latest row per call_id wins.
+    """
+    if call_ids is not None and not call_ids:
+        return {}
+    if call_ids is None:
+        rows = conn.execute(
+            "SELECT call_id, detail FROM call_events "
+            "WHERE event_type = 'call-flagged' "
+            "ORDER BY id DESC LIMIT 1000"
+        ).fetchall()
+    else:
+        placeholders = ",".join(["?"] * len(call_ids))
+        rows = conn.execute(
+            f"SELECT call_id, detail FROM call_events "
+            f"WHERE event_type = 'call-flagged' AND call_id IN ({placeholders}) "
+            f"ORDER BY id DESC",
+            tuple(call_ids),
+        ).fetchall()
+    out: dict[str, str] = {}
+    for r in rows:
+        cid = r["call_id"]
+        if cid in out:
+            continue  # already have latest (rows are DESC)
+        try:
+            d = json.loads(r["detail"] or "{}")
+        except Exception:
+            d = {}
+        cls = (d.get("classification") or "").lower()
+        if cls in _VALID_CALL_CLASSIFICATIONS:
+            out[cid] = cls
+    return out
+
+
+@app.post("/admin/api/call-flag")
+async def admin_call_flag(request: Request, token: str = Query("")):
+    """Flag a call_id with a classification (real|test|spam|discard).
+
+    Writes a 'call-flagged' event into call_events. Latest row per call_id
+    wins on read. Re-flagging just appends a new row (audit-trail kept).
+
+    Side effect: if a unified_leads row matches the call's contact_phone,
+    its status is updated to mirror the classification:
+      test → test, spam → spam, discard → closed_lost, real → qualified
+    """
+    check_admin(token)
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="invalid_json")
+    call_id = (body.get("call_id") or "").strip()
+    classification = (body.get("classification") or "").strip().lower()
+    note = (body.get("note") or "")[:500]
+    if not call_id:
+        raise HTTPException(status_code=422, detail="call_id_required")
+    if classification not in _VALID_CALL_CLASSIFICATIONS:
+        raise HTTPException(
+            status_code=422,
+            detail=f"invalid_classification: {classification} "
+                   f"(allowed: {sorted(_VALID_CALL_CLASSIFICATIONS)})",
+        )
+
+    detail_json = json.dumps({
+        "classification": classification,
+        "actor": "adam",
+        "note": note,
+    })
+
+    # Try to resolve caller phone for unified_leads sync
+    caller_phone = None
+    with get_db() as conn:
+        lc = conn.execute(
+            "SELECT detail FROM call_events "
+            "WHERE call_id = ? AND event_type = 'lead-captured' "
+            "ORDER BY id ASC LIMIT 1",
+            (call_id,),
+        ).fetchone()
+        if lc:
+            try:
+                ld = json.loads(lc["detail"] or "{}")
+                caller_phone = ld.get("contact_phone") or ld.get("phone")
+            except Exception:
+                pass
+        # Insert flag event
+        conn.execute(
+            "INSERT INTO call_events (call_id, event_type, assistant, summary, detail, created_at) "
+            "VALUES (?, 'call-flagged', NULL, ?, ?, NOW())",
+            (call_id, f"flagged: {classification}", detail_json),
+        )
+        # Mirror to unified_leads if phone match
+        if caller_phone:
+            status_map = {
+                "real": "qualified",
+                "test": "test",
+                "spam": "spam",
+                "discard": "closed_lost",
+            }
+            new_status = status_map[classification]
+            try:
+                lr = conn.execute(
+                    "SELECT id, status FROM unified_leads WHERE contact_phone = ? "
+                    "ORDER BY created_at DESC LIMIT 1",
+                    (caller_phone,),
+                ).fetchone()
+                if lr and lr["status"] != new_status:
+                    allowed = _STATUS_TRANSITIONS.get(lr["status"], set())
+                    if new_status in allowed:
+                        conn.execute(
+                            "UPDATE unified_leads SET status = ?, status_changed_at = NOW() "
+                            "WHERE id = ?",
+                            (new_status, lr["id"]),
+                        )
+                        conn.execute(
+                            "INSERT INTO lead_status_log (lead_id, from_status, to_status, actor, note) "
+                            "VALUES (?, ?, ?, 'adam', ?)",
+                            (lr["id"], lr["status"], new_status, f"call-flag {call_id}"),
+                        )
+            except Exception as e:
+                print(f"[call-flag] unified_leads sync skipped: {e}", file=sys.stderr)
+        conn.commit()
+
+    return {
+        "call_id": call_id,
+        "classification": classification,
+        "synced_to_lead": caller_phone is not None,
+    }
+
+
+@app.get("/admin/api/call-flags")
+async def admin_call_flags(token: str = Query("")):
+    """Return latest classification per call_id. Used by frontend to
+    render badges / filter views without re-querying per-row."""
+    check_admin(token)
+    with get_db() as conn:
+        return {"flags": _get_call_classifications(conn)}
+
+
 @app.get("/admin/api/events")
 async def list_events(
     token: str = Query(""),
     limit: int = Query(200),
     include_orphans: bool = Query(False),
+    include_flagged: bool = Query(False),
 ):
     """Return recent call_events.
 
@@ -3662,8 +3806,11 @@ async def list_events(
     were drowning the Call Log + Signal Stream surfaces with zero-second
     blank-caller rows.
 
-    Pass `include_orphans=true` to disable the filter (full raw stream for
-    inspection/debug).
+    Also default: hide call_ids that Adam flagged as test|spam|discard.
+    Pass `include_flagged=true` to see them (for the "Flagged" filter view).
+
+    Pass `include_orphans=true` to disable the call-ended filter (full raw
+    stream for inspection/debug).
     """
     check_admin(token)
     fetch_limit = max(limit * 4, 200) if not include_orphans else limit
@@ -3671,20 +3818,29 @@ async def list_events(
         rows = conn.execute(
             "SELECT * FROM call_events ORDER BY id DESC LIMIT ?", (fetch_limit,)
         ).fetchall()
+        flags = _get_call_classifications(conn) if not include_flagged else {}
     rows = [dict(r) for r in rows]
-    if include_orphans:
+    if include_orphans and include_flagged:
         return rows[:limit]
 
-    # Group by call_id; drop groups whose only event_type is 'call-ended'
-    groups: dict[str, set] = {}
-    for r in rows:
-        cid = r.get("call_id") or "__no_call__"
-        groups.setdefault(cid, set()).add(r.get("event_type") or "")
-    orphan_ids = {cid for cid, types in groups.items()
-                  if types == {"call-ended"} or types == {"call-ended", ""}}
-    filtered = [r for r in rows
+    if not include_orphans:
+        # Group by call_id; drop groups whose only event_type is 'call-ended'
+        groups: dict[str, set] = {}
+        for r in rows:
+            cid = r.get("call_id") or "__no_call__"
+            groups.setdefault(cid, set()).add(r.get("event_type") or "")
+        orphan_ids = {cid for cid, types in groups.items()
+                      if types == {"call-ended"} or types == {"call-ended", ""}}
+        rows = [r for r in rows
                 if (r.get("call_id") or "__no_call__") not in orphan_ids]
-    return filtered[:limit]
+
+    if not include_flagged and flags:
+        hidden = {cid for cid, cls in flags.items() if cls != "real"}
+        rows = [r for r in rows
+                if (r.get("call_id") or "") not in hidden
+                and r.get("event_type") != "call-flagged"]
+
+    return rows[:limit]
 
 
 @app.get("/admin/api/health")
@@ -5760,6 +5916,7 @@ async def admin_caller_timeline(call_id: str, token: str = Query("")):
                 "FROM call_events WHERE call_id = ? ORDER BY id ASC",
                 (call_id,),
             ).fetchall()
+            classification = _get_call_classifications(conn, [call_id]).get(call_id)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"DB error: {e}")
     events = []
@@ -5775,7 +5932,12 @@ async def admin_caller_timeline(call_id: str, token: str = Query("")):
             "summary": r["summary"],
             "detail": d,
         })
-    return JSONResponse({"call_id": call_id, "events": events, "count": len(events)})
+    return JSONResponse({
+        "call_id": call_id,
+        "events": events,
+        "count": len(events),
+        "classification": classification,
+    })
 
 
 @app.get("/admin/api/flow-graph")
@@ -6268,6 +6430,11 @@ async def admin_today_actions(token: str = Query(""), limit: int = Query(10)):
                 "AND created_at >= ? ORDER BY id DESC LIMIT 50",
                 (week_cutoff,),
             ).fetchall()
+            # Exclude call_ids Adam flagged as test|spam|discard from ranking
+            call_ids = [r["call_id"] for r in rows if r["call_id"]]
+            flags = _get_call_classifications(conn, call_ids) if call_ids else {}
+        rows = [r for r in rows
+                if flags.get(r["call_id"], "real") == "real"]
         for r in rows:
             try:
                 d = json.loads(r["detail"] or "{}")
