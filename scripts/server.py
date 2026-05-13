@@ -1198,8 +1198,13 @@ async def call_ended(request: Request, background_tasks: BackgroundTasks):
     ended_reason = msg.get("endedReason") or call.get("endedReason") or ""
     analysis = msg.get("analysis") or {}
 
+    # Cleaner summary line for dashboard display (no raw debug fields)
+    duration_int = int(duration) if duration else 0
+    status_pretty = ended_reason or status or "completed"
+    summary_text = f"{status_pretty} · {duration_int}s · from {caller}" if caller else f"{status_pretty} · {duration_int}s"
+
     log_event(call_id, "call-ended", assistant_id,
-              f"{status} | {duration}s | caller:{caller}",
+              summary_text,
               {
                   "status": status,
                   "duration": duration,
@@ -1234,7 +1239,7 @@ async def call_ended(request: Request, background_tasks: BackgroundTasks):
             call_id,
             "call-ended",
             aid,
-            f"{status} | {duration}s | caller:{caller} | handoff_from={assistant_id}",
+            summary_text,
             {
                 "status": status,
                 "duration": duration,
@@ -1260,7 +1265,17 @@ async def call_ended(request: Request, background_tasks: BackgroundTasks):
             call_id, assistant_id, recording_url, stereo_url,
         )
 
+    # 2026-05-13 — for handoff chains where Vapi reports empty/origin assistantId,
+    # the call may be a demo even if the top-level assistant_id isn't in
+    # DEMO_ASSISTANT_IDS. Walk the activations chain to detect demo membership.
     is_demo = assistant_id in DEMO_ASSISTANT_IDS
+    if not is_demo:
+        for act in (activations or []):
+            if isinstance(act, dict):
+                aid = act.get("assistantId") or (act.get("assistant") or {}).get("id") or ""
+                if aid in DEMO_ASSISTANT_IDS:
+                    is_demo = True
+                    break
 
     if is_demo and caller and duration > 30:
         # Look up the captured lead for this call to get their name
@@ -7172,9 +7187,16 @@ async def client_calls(
 @app.get("/client/api/calls/{call_id}")
 async def client_call_detail(call_id: str, token: str = Query("")):
     """Full timeline + transcript + recording_url for one call.
-    Caller's assistant_id MUST be in client's assistant_ids whitelist."""
+    At LEAST ONE event for this call must belong to client's tenant whitelist."""
     c = check_client(token)
-    allowed_ids = set(c.get("assistant_ids") or [])
+    # 2026-05-13 fix: Postgres returns assistant_ids as TEXT[] which can serialize
+    # as a string literal like "{uuid1,uuid2}" depending on driver. set() on a
+    # string yields characters, not UUIDs — breaks the intersection check.
+    # Coerce to list of strings same way _client_assistant_filter does.
+    raw_ids = c.get("assistant_ids") or []
+    if isinstance(raw_ids, str):
+        raw_ids = [s.strip() for s in raw_ids.strip("{}").split(",") if s.strip()]
+    allowed_ids = set(raw_ids)
     try:
         with get_db() as conn:
             events = conn.execute(
@@ -7186,7 +7208,10 @@ async def client_call_detail(call_id: str, token: str = Query("")):
         raise HTTPException(status_code=500, detail=f"DB error: {e}")
     if not events:
         raise HTTPException(status_code=404, detail="call_not_found")
-    # Authorization check — ALL events for this call must belong to client's tenant
+    # Authorization — at least one event for this call must belong to tenant.
+    # NOTE: for handoff chains (Claire->Dunne->trap), Claire is a shared origin
+    # not in any single tenant whitelist. We deliberately allow access if Dunne
+    # OR trap (handoff-attribution mirror rows) match the tenant.
     event_assistant_ids = {e["assistant"] for e in events if e["assistant"]}
     if not (event_assistant_ids & allowed_ids):
         raise HTTPException(status_code=403, detail="cross_tenant_access_denied")
