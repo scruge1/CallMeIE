@@ -4056,28 +4056,33 @@ async def client_health(token: str = Query("")):
 
 @app.post("/admin/api/events-cleanup")
 async def admin_events_cleanup(token: str = Query("")):
-    """2026-05-13 — delete NULL/0s noise rows.
+    """2026-05-13 — delete NULL/0s noise rows (Vapi pre-filter spam).
 
-    Targets rows where:
-      - call_id IS NULL (Vapi pre-filter noise flooding)
-      - assistant IS NULL AND event_type='call-ended'
-      - summary matches the empty-signature pattern from pre-filter days
-
-    Returns count deleted. Operator-only.
+    Conservative — only deletes rows where call_id is NULL AND assistant is NULL
+    AND event_type='call-ended'. Returns count deleted. Operator-only.
     """
     check_admin(token)
-    with get_db() as conn:
-        # Conservative delete — only NULL call_id + NULL assistant + 0s signature
-        cur = conn.execute(
-            "DELETE FROM call_events "
-            "WHERE call_id IS NULL "
-            "AND assistant IS NULL "
-            "AND event_type = 'call-ended' "
-            "AND (summary IS NULL OR summary LIKE '%| 0s | caller:%')"
-        )
-        deleted = cur.rowcount
-        conn.commit()
-    return {"deleted": deleted, "criterion": "NULL call_id + NULL assistant + 0s call-ended"}
+    deleted = 0
+    try:
+        with get_db() as conn:
+            # Count first for return value
+            before = conn.execute(
+                "SELECT COUNT(*) AS n FROM call_events "
+                "WHERE (call_id IS NULL OR call_id = '') "
+                "AND (assistant IS NULL OR assistant = '') "
+                "AND event_type = 'call-ended'"
+            ).fetchone()
+            deleted = (before["n"] if before else 0) or 0
+            conn.execute(
+                "DELETE FROM call_events "
+                "WHERE (call_id IS NULL OR call_id = '') "
+                "AND (assistant IS NULL OR assistant = '') "
+                "AND event_type = 'call-ended'"
+            )
+            conn.commit()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"cleanup_failed: {e}")
+    return {"deleted": int(deleted), "criterion": "NULL/empty call_id + NULL/empty assistant + event_type='call-ended'"}
 
 
 @app.get("/admin/api/diagnoses")
