@@ -1238,11 +1238,99 @@ async def call_ended(request: Request, background_tasks: BackgroundTasks):
     message = body.get("message") or {}
     msg_type = message.get("type") or body.get("type") or ""
 
-    # Hard filter — only end-of-call-report carries the final assistantId + duration.
-    # Other types (status-update, transcript, hang, etc) flood this endpoint with
-    # near-empty bodies that produced 300+ noise rows in call_events.
-    if msg_type and msg_type != "end-of-call-report":
+    # 2026-05-13 — raw-body diagnostic dump for the next ~20 calls. Disabled
+    # via VAPI_WEBHOOK_RAW_DUMP=0 env. Writes to /tmp/vapi-webhook-dumps/ for
+    # later inspection. Capped at 20 files to avoid disk fill.
+    try:
+        if os.environ.get("VAPI_WEBHOOK_RAW_DUMP", "1") == "1":
+            import datetime as _dt
+            dump_dir = pathlib.Path("/tmp/vapi-webhook-dumps")
+            dump_dir.mkdir(parents=True, exist_ok=True)
+            existing = sorted(dump_dir.glob("*.json"))
+            if len(existing) < 20:
+                ts = _dt.datetime.utcnow().strftime("%Y%m%dT%H%M%S")
+                cid_hint = (message.get("call") or {}).get("id", "") or (body.get("call") or {}).get("id", "") or "nocallid"
+                fp = dump_dir / f"{ts}_{msg_type or 'notype'}_{cid_hint[:13]}.json"
+                fp.write_text(json.dumps(body, indent=2, default=str)[:50000], encoding="utf-8")
+    except Exception as _e:
+        print(f"[vapi-webhook-dump] {_e}")
+
+    # ALLOWED message types — anything else returns 200 OK without persisting.
+    # end-of-call-report: final summary, fires ONCE per call (origin assistant id)
+    # transfer-destination-request: fires per-transfer with from/to assistant ids
+    # tool-calls: fires when a tool is invoked (we extract handoff events here)
+    if msg_type not in ("end-of-call-report", "transfer-destination-request", "tool-calls"):
         return JSONResponse({"status": "ok", "ignored_type": msg_type})
+
+    # Handle transfer-destination-request specifically — extract destination
+    # assistant id + log pod-routed event tagged with destination (the receiving
+    # assistant). This gives /client/api/calls a row for Dunne + trap rather
+    # than only the origin (Claire).
+    if msg_type == "transfer-destination-request":
+        call = message.get("call") or {}
+        call_id = call.get("id", "") or message.get("callId", "")
+        src_aid = call.get("assistantId", "") or message.get("assistantId", "")
+        # The destination is in either message.destination or message.transferDestination
+        dest = (message.get("destination") or message.get("transferDestination") or {})
+        dest_aid = dest.get("assistantId", "") or dest.get("assistant_id", "")
+        dest_name = dest.get("assistantName", "") or dest.get("name", "")
+        # Some Vapi payloads put it under message.toolCallList[*].function.arguments
+        if not dest_aid:
+            for tc in (message.get("toolCallList") or message.get("toolCalls") or []):
+                fn = (tc.get("function") or {})
+                if fn.get("name", "") in POD_ROUTING_LABELS:
+                    args = fn.get("arguments") or {}
+                    if isinstance(args, str):
+                        try:
+                            args = json.loads(args)
+                        except Exception:
+                            args = {}
+                    dest_aid = args.get("assistantId", "") or dest_aid
+        # Map known destination IDs to friendly labels using DEMO_ASSISTANT_IDS + POD_ROUTING_LABELS
+        tool_name = (message.get("toolCallList") or message.get("toolCalls") or [{}])[0].get("function", {}).get("name", "")
+        pod_label = POD_ROUTING_LABELS.get(tool_name, {})
+        if call_id and (dest_aid or src_aid):
+            log_event(
+                call_id, "pod-routed", dest_aid or src_aid,
+                f"transfer: {tool_name or 'handoff'} -> {dest_name or dest_aid[:13] or 'unknown'}",
+                {
+                    "tool_name": tool_name,
+                    "source_assistant_id": src_aid,
+                    "destination_assistant_id": dest_aid,
+                    "destination_assistant_name": dest_name,
+                    "pod_key": pod_label.get("pod_key"),
+                    "pod_label_short": pod_label.get("pod_label_short"),
+                    "pod_label_long": pod_label.get("pod_label_long"),
+                },
+            )
+            print(f"[vapi-transfer] {tool_name or 'handoff'} src={src_aid[:13]} -> dest={dest_aid[:13]} call={call_id[:13]}")
+        return JSONResponse({"status": "ok", "logged": "transfer-destination-request"})
+
+    # tool-calls fires for ANY tool invocation; we log only handoff tools.
+    if msg_type == "tool-calls":
+        call = message.get("call") or {}
+        call_id = call.get("id", "") or message.get("callId", "")
+        src_aid = call.get("assistantId", "") or message.get("assistantId", "")
+        logged_any = False
+        for tc in (message.get("toolCallList") or message.get("toolCalls") or []):
+            fn = (tc.get("function") or {})
+            name = fn.get("name", "")
+            if name in POD_ROUTING_LABELS:
+                pod_label = POD_ROUTING_LABELS.get(name, {})
+                if call_id:
+                    log_event(
+                        call_id, "pod-routed", src_aid,
+                        f"tool-call: {name}",
+                        {
+                            "tool_name": name,
+                            "source_assistant_id": src_aid,
+                            "pod_key": pod_label.get("pod_key"),
+                            "pod_label_short": pod_label.get("pod_label_short"),
+                            "pod_label_long": pod_label.get("pod_label_long"),
+                        },
+                    )
+                    logged_any = True
+        return JSONResponse({"status": "ok", "logged": "tool-calls" if logged_any else "no-pod-tool"})
 
     # Pull `call` from message envelope first, then top-level, then body itself.
     call = message.get("call") or body.get("call") or body
