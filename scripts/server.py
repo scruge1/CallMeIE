@@ -7242,9 +7242,15 @@ async def client_calls(
             "call_id": cid,
             "ts": str(r["ts"]),
             "caller_name": d.get("name") or d.get("caller_name") or "",
-            "caller_phone": d.get("contact_phone") or d.get("phone") or "",
+            "caller_phone": d.get("contact_phone") or d.get("phone") or d.get("caller") or "",
             "summary": r["summary"] or "",
             "outcome": r["event_type"] or "",
+            # 2026-05-13 — expose more fields so client UI can render proper row
+            "duration": d.get("duration") or 0,
+            "ended_reason": d.get("ended_reason") or "",
+            "has_transcript": bool(d.get("transcript")),
+            "assistant_id": r["assistant_id"] or "",
+            "summary_text": d.get("summary") or "",
         }
     return {"calls": list(grouped.values()), "count": len(grouped),
             "tenant_slug": c["tenant_slug"]}
