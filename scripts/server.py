@@ -229,6 +229,39 @@ DEMO_ASSISTANT_IDS = {
     "db4ab378-cd8a-40f5-b3f9-8fcaaba408b0": "salon",
     "7774b535-95fe-4e75-b571-dde098e2f8fb": "solicitor",
     "3e2f8e1c-e4eb-46ab-b8be-d7f97cbe6080": "general business discovery",
+    "4be95112-f3f1-4d71-8596-9da97030526c": "Conall Dunne & Co (accountants)",
+    "5fd9f361-8fbd-46cd-bfba-b909f7ddb71b": "Dunne demo preview destination",
+}
+
+# Per-tenant POD routing labels (production: configurable in DB).
+# Used by /vapi/call-ended pod-routed event detail to populate dashboard.
+POD_ROUTING_LABELS = {
+    # Dunne demo
+    "transfer_pod_a": {
+        "pod_key": "pod_a",
+        "pod_label_short": "Tax POD",
+        "pod_label_long": "Tax POD (junior + senior pair, junior first)",
+    },
+    "transfer_pod_b": {
+        "pod_key": "pod_b",
+        "pod_label_short": "Audit POD",
+        "pod_label_long": "Audit POD (junior + senior pair, junior first)",
+    },
+    "transfer_new_enquiry": {
+        "pod_key": "new_enquiry",
+        "pod_label_short": "New client desk",
+        "pod_label_long": "New enquiry destination (designated partner)",
+    },
+    "transfer_back_to_start": {
+        "pod_key": "loop_back",
+        "pod_label_short": "Loop back to start",
+        "pod_label_long": "Caller chose to walk through workflow again",
+    },
+    "transfer_dunne_demo": {
+        "pod_key": "dunne_bypass",
+        "pod_label_short": "Dunne fast-path",
+        "pod_label_long": "Claire STEP 0 keyword bypass to Dunne assistant",
+    },
 }
 
 # --- DB adapter (Postgres via DATABASE_URL, else SQLite) ---
@@ -1126,6 +1159,68 @@ async def send_telegram(message: str) -> None:
         print(f"[TELEGRAM ERROR] {e}")
 
 
+def _extract_handoff_chain(call: dict, body: dict) -> tuple[str, list[dict]]:
+    """Parse Vapi call body for handoff history.
+
+    Returns (final_assistant_id, handoff_events). final_assistant_id is the
+    LAST assistant in the chain (e.g. trap for a Claire->Dunne->trap call).
+    Falls back to call.assistantId. handoff_events is a list of {tool_name,
+    args, source_assistant} dicts for each tool invocation matching a
+    POD_ROUTING_LABELS key.
+    """
+    handoff_events: list[dict] = []
+    final_assistant_id = call.get("assistantId", "") or body.get("assistant", {}).get("id", "")
+
+    # Vapi exposes messages in artifact.messages and/or call.messages depending on
+    # webhook timing. Each message may have tool_calls when the LLM invoked a tool.
+    artifact = call.get("artifact") or body.get("artifact") or {}
+    messages = (
+        artifact.get("messages")
+        or artifact.get("messagesOpenAIFormatted")
+        or call.get("messages")
+        or body.get("messages")
+        or []
+    )
+
+    current_assistant_id = call.get("assistantId", "")
+    for m in messages:
+        if not isinstance(m, dict):
+            continue
+        # Some Vapi messages include the assistant id that emitted the message
+        msg_assistant = m.get("assistantId") or m.get("assistant_id") or ""
+        if msg_assistant:
+            current_assistant_id = msg_assistant
+        # Tool calls from the assistant
+        for tc in (m.get("toolCalls") or m.get("tool_calls") or []):
+            fn = tc.get("function") or {}
+            name = fn.get("name", "")
+            if name in POD_ROUTING_LABELS:
+                args_raw = fn.get("arguments")
+                try:
+                    args = json.loads(args_raw) if isinstance(args_raw, str) else (args_raw or {})
+                except Exception:
+                    args = {}
+                handoff_events.append({
+                    "tool_name": name,
+                    "args": args,
+                    "source_assistant_id": current_assistant_id,
+                    "label": POD_ROUTING_LABELS.get(name, {}),
+                })
+
+    # If we found handoff chain, the final destination is in the last handoff destinations
+    # — but we don't easily know the destination assistant from tool_calls (Vapi resolves it).
+    # Prefer the most-recent message's assistant id if present.
+    for m in reversed(messages):
+        if not isinstance(m, dict):
+            continue
+        cand = m.get("assistantId") or m.get("assistant_id")
+        if cand and cand != final_assistant_id:
+            final_assistant_id = cand
+            break
+
+    return final_assistant_id, handoff_events
+
+
 # --- Vapi post-call webhook ---
 @app.post("/vapi/call-ended")
 async def call_ended(request: Request, background_tasks: BackgroundTasks):
@@ -1133,11 +1228,51 @@ async def call_ended(request: Request, background_tasks: BackgroundTasks):
     body = await request.json()
 
     call = body.get("call", body)
-    assistant_id = call.get("assistantId", "") or body.get("assistant", {}).get("id", "")
+    # 2026-05-13 fix: handoff chains leave call.assistantId pointing at the
+    # ORIGIN assistant (Claire), not the final destination. Walk the message
+    # list to pick the final assistant. Also emit pod-routed events for each
+    # handoff tool invocation we find — populates dashboard metrics per Adam
+    # request (Tax POD / Audit POD / new enquiry / loop back).
+    final_assistant_id, handoff_events = _extract_handoff_chain(call, body)
+    origin_assistant_id = call.get("assistantId", "") or body.get("assistant", {}).get("id", "")
+    assistant_id = final_assistant_id or origin_assistant_id
     status = call.get("status", "")
     caller = call.get("customer", {}).get("number", "")
     duration = call.get("duration", 0)
     call_id = call.get("id", "")
+
+    # Emit one call_events row per handoff so the dashboard shows the routing path.
+    if call_id and handoff_events:
+        for h in handoff_events:
+            label = h.get("label") or {}
+            short = label.get("pod_label_short") or h.get("tool_name", "")
+            long_ = label.get("pod_label_long") or h.get("tool_name", "")
+            # Tag with the SOURCE assistant so tenant filter matches the
+            # routing-tenant (e.g. handoff from Dunne tags as Dunne).
+            log_event(
+                call_id,
+                "pod-routed",
+                h.get("source_assistant_id") or assistant_id,
+                f"routed: {short}",
+                {
+                    "tool_name": h.get("tool_name"),
+                    "pod_key": label.get("pod_key"),
+                    "pod_label_short": short,
+                    "pod_label_long": long_,
+                    "source_assistant_id": h.get("source_assistant_id"),
+                    "args": h.get("args") or {},
+                },
+            )
+
+    # ALSO emit a call-ended row for EVERY assistant in the chain so tenant filters
+    # match. Origin (Claire) and final (trap) often differ from the routing tenant.
+    chain_ids = {origin_assistant_id, final_assistant_id, assistant_id}
+    chain_ids.discard("")
+    # Source assistants of handoffs go into chain too
+    for h in handoff_events:
+        sid = h.get("source_assistant_id") or ""
+        if sid:
+            chain_ids.add(sid)
 
     if call_id:
         try:
@@ -1157,10 +1292,28 @@ async def call_ended(request: Request, background_tasks: BackgroundTasks):
     owner = client.get("owner", OWNER_NUMBER)
     from_num = client.get("from", TWILIO_FROM)
 
-    print(f"[Call] assistant={assistant_id} status={status} caller={caller} duration={duration}s")
-    log_event(call_id, "call-ended", assistant_id,
-              f"{status} | {duration}s | caller:{caller}",
-              {"status": status, "duration": duration, "caller": caller})
+    print(f"[Call] assistant_final={assistant_id} origin={origin_assistant_id} chain={list(chain_ids)} status={status} caller={caller} duration={duration}s")
+    # 2026-05-13 fix: emit a call-ended row for EACH assistant in the handoff chain
+    # so each tenant whose assistant participated sees the call in /client/api/calls.
+    # Primary row uses the final assistant_id; mirror rows use other chain members.
+    primary_logged = False
+    for cid in (chain_ids or {assistant_id}):
+        if not cid:
+            continue
+        is_primary = (cid == assistant_id and not primary_logged)
+        log_event(
+            call_id, "call-ended", cid,
+            f"{status} | {duration}s | caller:{caller}",
+            {
+                "status": status, "duration": duration, "caller": caller,
+                "origin_assistant_id": origin_assistant_id,
+                "final_assistant_id": final_assistant_id,
+                "chain_assistant_ids": list(chain_ids),
+                "is_primary_row": is_primary,
+            },
+        )
+        if is_primary:
+            primary_logged = True
 
     # P2 — mirror Vapi recording to durable Hetzner archive (90d retention promise).
     # Vapi includes recordingUrl + stereoRecordingUrl on the call object once
@@ -1714,12 +1867,16 @@ async def demo_complete(request: Request):
     call_id = body.get("message", {}).get("call", {}).get("id", "")
 
     demo_type = DEMO_ASSISTANT_IDS.get(assistant_id, "unknown")
-    log_event(call_id, "demo-complete", demo_type,
+    # 2026-05-13 fix: log assistant_id (UUID) in `assistant` column so
+    # /client/api/calls tenant-filter can match. demo_type label is stored
+    # alongside in the detail JSON for display.
+    log_event(call_id, "demo-complete", assistant_id or demo_type,
               f"{interest} | {topics}",
               {
                   "topics_discussed": topics,
                   "interest_level": interest,
                   "demo_type": demo_type,
+                  "assistant_id": assistant_id,
                   "business_type": business_type_arg,
                   "pain_point": pain_point,
                   "estimated_missed_calls_per_week": estimated_missed_calls,
