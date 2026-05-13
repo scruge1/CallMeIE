@@ -1224,22 +1224,48 @@ def _extract_handoff_chain(call: dict, body: dict) -> tuple[str, list[dict]]:
 # --- Vapi post-call webhook ---
 @app.post("/vapi/call-ended")
 async def call_ended(request: Request, background_tasks: BackgroundTasks):
-    """Vapi fires this when any call ends. Returns 200 immediately; anomaly diagnosis runs in background."""
+    """Vapi fires this when any call ends. Returns 200 immediately; anomaly diagnosis runs in background.
+
+    2026-05-13 noise-suppression: Vapi posts MANY webhook event types to this same
+    URL (status-update, transcript, conversation-update, tool-calls, etc). Only
+    `end-of-call-report` carries the actual call summary. Filter at top so we don't
+    insert empty call_events rows for every transient webhook firing.
+    """
     body = await request.json()
 
-    call = body.get("call", body)
+    # Vapi wraps the actual payload under `message`: {message: {type, call, artifact, ...}}.
+    # Older / direct test bodies put `call` at top-level. Support both.
+    message = body.get("message") or {}
+    msg_type = message.get("type") or body.get("type") or ""
+
+    # Hard filter — only end-of-call-report carries the final assistantId + duration.
+    # Other types (status-update, transcript, hang, etc) flood this endpoint with
+    # near-empty bodies that produced 300+ noise rows in call_events.
+    if msg_type and msg_type != "end-of-call-report":
+        return JSONResponse({"status": "ok", "ignored_type": msg_type})
+
+    # Pull `call` from message envelope first, then top-level, then body itself.
+    call = message.get("call") or body.get("call") or body
+
     # 2026-05-13 fix: handoff chains leave call.assistantId pointing at the
     # ORIGIN assistant (Claire), not the final destination. Walk the message
     # list to pick the final assistant. Also emit pod-routed events for each
     # handoff tool invocation we find — populates dashboard metrics per Adam
     # request (Tax POD / Audit POD / new enquiry / loop back).
-    final_assistant_id, handoff_events = _extract_handoff_chain(call, body)
-    origin_assistant_id = call.get("assistantId", "") or body.get("assistant", {}).get("id", "")
+    final_assistant_id, handoff_events = _extract_handoff_chain(call, message or body)
+    origin_assistant_id = (call.get("assistantId", "")
+                           or message.get("assistantId", "")
+                           or body.get("assistant", {}).get("id", ""))
     assistant_id = final_assistant_id or origin_assistant_id
-    status = call.get("status", "")
-    caller = call.get("customer", {}).get("number", "")
-    duration = call.get("duration", 0)
-    call_id = call.get("id", "")
+    status = call.get("status", "") or message.get("status", "")
+    caller = (call.get("customer", {}) or {}).get("number", "") or (message.get("customer", {}) or {}).get("number", "")
+    duration = call.get("duration", 0) or message.get("durationSeconds", 0) or message.get("duration", 0)
+    call_id = call.get("id", "") or message.get("callId", "")
+
+    # Don't write noise rows: if we don't have at least a call_id or an
+    # assistant_id, just return 200 OK.
+    if not call_id and not assistant_id:
+        return JSONResponse({"status": "ok", "skipped": "no_call_id_or_assistant"})
 
     # Emit one call_events row per handoff so the dashboard shows the routing path.
     if call_id and handoff_events:
