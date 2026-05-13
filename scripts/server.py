@@ -4115,6 +4115,92 @@ async def admin_events_reformat(token: str = Query("")):
     return {"updated": updated}
 
 
+@app.post("/admin/api/tenant-wipe")
+async def admin_tenant_wipe(token: str = Query(""), slug: str = Query("")):
+    """2026-05-13 — wipe a tenant's call data clean before sharing dashboard.
+
+    Strategy: find call_ids that have AT LEAST ONE event tagged with the
+    tenant's assistant_ids. Delete ALL call_events + call_notes for those
+    call_ids (including Claire-origin handoff rows in the same chain).
+    Does NOT affect other tenants — their calls don't share these call_ids.
+
+    Use case: clear Dunne tenant before Noah's evaluation.
+    Operator-only.
+    """
+    check_admin(token)
+    slug = (slug or "").strip()
+    if not slug:
+        raise HTTPException(status_code=422, detail="slug required")
+    import traceback as _tb
+    try:
+        with get_db() as conn:
+            row = conn.execute(
+                "SELECT assistant_ids FROM client_tokens "
+                "WHERE tenant_slug = ? LIMIT 1",
+                (slug,),
+            ).fetchone()
+            if not row:
+                raise HTTPException(status_code=404, detail="tenant_not_found")
+            aids_raw = row["assistant_ids"] if row else []
+            if isinstance(aids_raw, str):
+                aids = [s.strip() for s in aids_raw.strip("{}").split(",") if s.strip()]
+            else:
+                aids = list(aids_raw or [])
+            if not aids:
+                return {"deleted_events": 0, "deleted_notes": 0,
+                        "deleted_call_ids": 0, "tenant_slug": slug}
+            ph = ",".join(["?"] * len(aids))
+            cid_rows = conn.execute(
+                f"SELECT DISTINCT call_id FROM call_events "
+                f"WHERE assistant IN ({ph}) AND call_id IS NOT NULL",
+                tuple(aids),
+            ).fetchall()
+            call_ids = [r["call_id"] for r in cid_rows if r["call_id"]]
+            if not call_ids:
+                return {"deleted_events": 0, "deleted_notes": 0,
+                        "deleted_call_ids": 0, "tenant_slug": slug}
+            cph = ",".join(["?"] * len(call_ids))
+            ev_row = conn.execute(
+                f"SELECT COUNT(*) AS n FROM call_events WHERE call_id IN ({cph})",
+                tuple(call_ids),
+            ).fetchone()
+            note_row = conn.execute(
+                f"SELECT COUNT(*) AS n FROM call_notes WHERE call_id IN ({cph})",
+                tuple(call_ids),
+            ).fetchone()
+            try:
+                ev_n = int(ev_row["n"])
+            except Exception:
+                ev_n = int(ev_row[0]) if ev_row else 0
+            try:
+                note_n = int(note_row["n"])
+            except Exception:
+                note_n = int(note_row[0]) if note_row else 0
+            conn.execute(
+                f"DELETE FROM call_events WHERE call_id IN ({cph})",
+                tuple(call_ids),
+            )
+            conn.execute(
+                f"DELETE FROM call_notes WHERE call_id IN ({cph})",
+                tuple(call_ids),
+            )
+            conn.commit()
+            return {
+                "deleted_events": ev_n,
+                "deleted_notes": note_n,
+                "deleted_call_ids": len(call_ids),
+                "tenant_slug": slug,
+            }
+    except HTTPException:
+        raise
+    except Exception as e:
+        return JSONResponse(
+            status_code=500,
+            content={"error": f"tenant_wipe_failed: {e}",
+                     "traceback": _tb.format_exc()[-1500:]},
+        )
+
+
 @app.post("/admin/api/events-cleanup")
 async def admin_events_cleanup(token: str = Query("")):
     """2026-05-13 — delete NULL/0s noise rows (Vapi pre-filter spam).
@@ -6162,6 +6248,10 @@ async def admin_caller_timeline(call_id: str, token: str = Query("")):
             d = json.loads(r["detail"] or "{}")
         except Exception:
             d = {}
+        # 2026-05-13 — skip mirror call-ended rows in timeline (handoff
+        # attribution writes one per chain assistant; same logical event).
+        if r["event_type"] == "call-ended" and d.get("is_mirror_row"):
+            continue
         events.append({
             "ts": r["created_at"],
             "event_type": r["event_type"],
@@ -7311,6 +7401,12 @@ async def client_call_detail(call_id: str, token: str = Query("")):
             analysis_summary = str(d["summary"])
         if d.get("ended_reason") and not ended_reason:
             ended_reason = str(d["ended_reason"])
+        # 2026-05-13 — skip mirror call-ended rows in the visible timeline
+        # (handoff attribution writes one per chain assistant; they're all the
+        # same logical event). Keep only the primary (non-mirror) call-ended
+        # row + non-call-ended events.
+        if r["event_type"] == "call-ended" and d.get("is_mirror_row"):
+            continue
         out_events.append({
             "ts": str(r["created_at"]),
             "event_type": r["event_type"],
