@@ -581,12 +581,79 @@ async function loadCalls() {
     qs("#callsList").innerHTML = `<div class="empty">Could not load calls. ${esc(err.message)}</div>`;
   }
 }
+// 2026-05-13 — call-row helpers (Aircall / CallRail / Dialpad-pattern)
+function formatPhone(p) {
+  if (!p) return "";
+  const digits = String(p).replace(/\D/g, "");
+  if (digits.startsWith("353") && digits.length === 12) {
+    return "+353 " + digits.slice(3,5) + " " + digits.slice(5,8) + " " + digits.slice(8);
+  }
+  if (digits.startsWith("353") && digits.length === 11) {
+    return "+353 " + digits.slice(3,5) + " " + digits.slice(5,8) + " " + digits.slice(8);
+  }
+  return String(p).startsWith("+") ? String(p) : "+" + p;
+}
+function formatDuration(sec) {
+  const s = Math.round(Number(sec) || 0);
+  if (s < 60) return s + "s";
+  const m = Math.floor(s / 60);
+  const r = s - m * 60;
+  return m + "m " + r.toString().padStart(2, "0") + "s";
+}
+function formatCallTime(ts) {
+  if (!ts) return "";
+  const clean = String(ts).replace(/\..+$/, "").replace(" ", "T") + "Z";
+  const d = new Date(clean);
+  if (isNaN(d.getTime())) return String(ts);
+  const now = new Date();
+  const hh = d.getHours().toString().padStart(2, "0");
+  const mm = d.getMinutes().toString().padStart(2, "0");
+  if (d.toDateString() === now.toDateString()) return "Today " + hh + ":" + mm;
+  const y = new Date(now); y.setDate(y.getDate() - 1);
+  if (d.toDateString() === y.toDateString()) return "Yesterday " + hh + ":" + mm;
+  const dd = d.getDate().toString().padStart(2, "0");
+  const mo = (d.getMonth() + 1).toString().padStart(2, "0");
+  return dd + "/" + mo + " " + hh + ":" + mm;
+}
+function statusBadge(c) {
+  const r = (c.ended_reason || "").toLowerCase();
+  if (r.includes("forwarded") || r.includes("transferred") || r.includes("transfer")) return { label: "Transferred", cls: "info" };
+  if (r.includes("customer-ended") || r.includes("assistant-ended")) return { label: "Completed", cls: "ok" };
+  if (r.includes("voicemail") || r.includes("missed")) return { label: "Missed", cls: "warn" };
+  if (r.includes("error") || r.includes("failed")) return { label: "Error", cls: "fail" };
+  if (!c.duration || Number(c.duration) < 10) return { label: "Short hang-up", cls: "warn" };
+  return { label: "Completed", cls: "ok" };
+}
+
 function renderCallRow(c) {
+  const phone = c.caller_phone || "";
+  const name = c.caller_name || "";
+  const title = name || formatPhone(phone) || "Unknown caller";
+  const sub = (name && phone) ? formatPhone(phone) : "";
+  const time = formatCallTime(c.ts);
+  const dur = c.duration ? formatDuration(c.duration) : "";
+  const badge = statusBadge(c);
+  const transcriptIcon = c.has_transcript ? '<span title="Transcript available" style="font-size:11px;color:var(--muted);margin-left:6px;">📄</span>' : "";
+  const sumPreview = (c.summary_text || "").slice(0, 90);
   return `
-    <div class="call-row" onclick="openDrawer('${esc(c.call_id)}')" style="display:grid; grid-template-columns: 70px 1fr 90px; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--border); cursor: pointer;">
-      <span class="mono" style="color: var(--muted); font-size: 12px;">${esc(c.ts || "")}</span>
-      <span><strong>${esc(c.caller_name || c.caller_phone || "Unknown")}</strong><br><span style="color: var(--muted); font-size: 12px;">${esc(c.summary || "")}</span></span>
-      <span style="text-align: right; color: var(--muted); font-size: 12px;">${esc(c.outcome || "")}</span>
+    <div class="call-row" onclick="openDrawer('${esc(c.call_id)}')"
+         style="display:grid;grid-template-columns:auto 1fr auto;gap:14px;padding:14px 6px;border-bottom:1px solid var(--border);cursor:pointer;align-items:center;">
+      <div style="width:42px;height:42px;border-radius:50%;background:rgba(80,140,200,0.12);display:flex;align-items:center;justify-content:center;font-weight:700;color:var(--text-soft);font-size:14px;">
+        ${esc((title[0] || "?").toUpperCase())}
+      </div>
+      <div style="min-width:0;">
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+          <strong style="font-size:14px;">${esc(title)}</strong>
+          ${sub ? '<span class="muted" style="font-size:12px;">· ' + esc(sub) + '</span>' : ""}
+          ${transcriptIcon}
+        </div>
+        <div class="muted" style="font-size:12px;margin-top:3px;">
+          <span>${esc(time)}</span>${dur ? " · <span>" + esc(dur) + "</span>" : ""}${sumPreview ? ' · <span style="opacity:0.8;">' + esc(sumPreview) + '</span>' : ""}
+        </div>
+      </div>
+      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;">
+        <span class="badge ${badge.cls}" style="font-size:11px;padding:3px 8px;border-radius:10px;">${esc(badge.label)}</span>
+      </div>
     </div>`;
 }
 
