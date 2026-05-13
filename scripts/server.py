@@ -7218,7 +7218,12 @@ async def client_call_detail(call_id: str, token: str = Query("")):
 
     out_events = []
     caller_name = caller_phone = ""
-    transcript_parts: list[str] = []
+    # 2026-05-13 — dedupe transcript. Handoff attribution writes mirror
+    # call-ended rows per call, each with the same transcript. Pick the LONGEST
+    # non-empty transcript (most complete) and return ONLY that one.
+    best_transcript = ""
+    analysis_summary = ""
+    ended_reason = ""
     for r in events:
         try:
             d = json.loads(r["detail"]) if isinstance(r["detail"], str) else (r["detail"] or {})
@@ -7227,8 +7232,13 @@ async def client_call_detail(call_id: str, token: str = Query("")):
         if r["event_type"] == "lead-captured":
             caller_name = d.get("name") or caller_name
             caller_phone = d.get("contact_phone") or d.get("phone") or caller_phone
-        if d.get("transcript"):
-            transcript_parts.append(str(d["transcript"]))
+        t = d.get("transcript")
+        if t and isinstance(t, str) and len(t) > len(best_transcript):
+            best_transcript = t
+        if d.get("summary") and not analysis_summary:
+            analysis_summary = str(d["summary"])
+        if d.get("ended_reason") and not ended_reason:
+            ended_reason = str(d["ended_reason"])
         out_events.append({
             "ts": str(r["created_at"]),
             "event_type": r["event_type"],
@@ -7240,7 +7250,9 @@ async def client_call_detail(call_id: str, token: str = Query("")):
         "caller_name": caller_name,
         "caller_phone": caller_phone,
         "events": out_events,
-        "transcript": "\n\n".join(transcript_parts) if transcript_parts else "",
+        "transcript": best_transcript,
+        "analysis_summary": analysis_summary,
+        "ended_reason": ended_reason,
         # 1h-TTL Hetzner pre-signed URL; None if the recording isn't mirrored
         # yet (e.g. call still in progress, or recording disabled per call).
         "recording_url": _hetzner_presigned_for_call(call_id, expires=3600),
