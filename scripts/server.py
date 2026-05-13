@@ -4062,17 +4062,28 @@ async def admin_events_cleanup(token: str = Query("")):
     AND event_type='call-ended'. Returns count deleted. Operator-only.
     """
     check_admin(token)
+    import traceback as _tb
     deleted = 0
     try:
         with get_db() as conn:
             # Count first for return value
-            before = conn.execute(
+            row = conn.execute(
                 "SELECT COUNT(*) AS n FROM call_events "
                 "WHERE (call_id IS NULL OR call_id = '') "
                 "AND (assistant IS NULL OR assistant = '') "
                 "AND event_type = 'call-ended'"
             ).fetchone()
-            deleted = (before["n"] if before else 0) or 0
+            if row is None:
+                deleted = 0
+            else:
+                # Both PG (dict-row) and SQLite (Row) support index access
+                try:
+                    deleted = int(row["n"])
+                except (KeyError, TypeError):
+                    try:
+                        deleted = int(row[0])
+                    except Exception:
+                        deleted = 0
             conn.execute(
                 "DELETE FROM call_events "
                 "WHERE (call_id IS NULL OR call_id = '') "
@@ -4081,7 +4092,10 @@ async def admin_events_cleanup(token: str = Query("")):
             )
             conn.commit()
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"cleanup_failed: {e}")
+        return JSONResponse(
+            status_code=500,
+            content={"error": f"cleanup_failed: {e}", "traceback": _tb.format_exc()[-1500:]},
+        )
     return {"deleted": int(deleted), "criterion": "NULL/empty call_id + NULL/empty assistant + event_type='call-ended'"}
 
 
