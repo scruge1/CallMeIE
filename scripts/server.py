@@ -4082,9 +4082,12 @@ async def admin_events_reformat(token: str = Query("")):
     updated = 0
     try:
         with get_db() as conn:
+            # PG psycopg2 treats unescaped % as parameter placeholder. Use
+            # POSITION (portable to both PG + SQLite) instead of LIKE.
             rows = conn.execute(
                 "SELECT id, summary, detail FROM call_events "
-                "WHERE event_type = 'call-ended' AND summary LIKE '%caller:%'"
+                "WHERE event_type = 'call-ended' AND summary IS NOT NULL "
+                "AND POSITION('caller:' IN summary) > 0"
             ).fetchall()
             import re as _re
             for r in rows:
