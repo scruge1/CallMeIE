@@ -3206,6 +3206,7 @@
       <div class="drawer-body">
         ${ctx.call_id ? `<section class="drawer-section"><h3>Classify</h3>${renderFlagButtons(ctx.call_id, { compact: false })}<p class="muted" style="margin-top:6px;font-size:11px">Mark this call so it stops cluttering Today/Calls/Leads.</p></section>` : ""}
         ${ctx.summary ? `<section class="drawer-section"><h3>Call summary</h3><p class="muted">${esc(ctx.summary)}</p></section>` : ""}
+        <section id="drawerTranscript" class="drawer-section"><h3>Transcript</h3><div class="empty">Loading transcript...</div></section>
         <section id="drawerTimeline" class="drawer-section"><h3>Timeline</h3><div class="empty">Loading timeline...</div></section>
         <section id="drawerRecording" class="drawer-section"><h3>Recording</h3><div class="empty">Loading recording...</div></section>
         <section class="drawer-section">
@@ -3252,8 +3253,38 @@
         const data = await api(`/admin/api/caller/${encodeURIComponent(ctx.call_id)}`);
         const events = data.events || [];
         timelineEl.innerHTML = `<h3>Timeline</h3>${renderTimeline(events)}`;
+        // 2026-05-13 — transcript render. Pulled from call-ended event's
+        // detail.transcript (added server-side in commit d096d4d). Falls back
+        // to detail.summary / detail.messages summary if no transcript.
+        const trEl = qs("#drawerTranscript");
+        if (trEl) {
+          let transcript = "";
+          let analysisSummary = "";
+          let endedReason = "";
+          for (const ev of events) {
+            const d = ev.detail || {};
+            if (d.transcript && !transcript) transcript = d.transcript;
+            if (d.summary && !analysisSummary) analysisSummary = d.summary;
+            if (d.ended_reason && !endedReason) endedReason = d.ended_reason;
+          }
+          let html = "<h3>Transcript</h3>";
+          if (analysisSummary) {
+            html += `<p class="muted" style="margin-bottom:10px;"><strong>Summary:</strong> ${esc(analysisSummary)}</p>`;
+          }
+          if (endedReason) {
+            html += `<p class="muted" style="font-size:11px;margin-bottom:6px;">Ended: ${esc(endedReason)}</p>`;
+          }
+          if (transcript) {
+            html += `<pre style="white-space:pre-wrap;word-break:break-word;background:rgba(255,255,255,0.03);padding:10px;border-radius:6px;font-size:12px;max-height:400px;overflow:auto;">${esc(transcript)}</pre>`;
+          } else {
+            html += `<div class="empty">No transcript stored for this call. (Pre-2026-05-13 calls did not capture transcripts. New calls will. Old call data can be backfilled via Vapi GET /v1/call/{id} if needed.)</div>`;
+          }
+          trEl.innerHTML = html;
+        }
       } catch (err) {
         timelineEl.innerHTML = `<h3>Timeline</h3><div class="empty">${esc(err.message)}</div>`;
+        const trEl = qs("#drawerTranscript");
+        if (trEl) trEl.innerHTML = `<h3>Transcript</h3><div class="empty">${esc(err.message)}</div>`;
       }
       try {
         const recs = await loadRecordingsData(100);
