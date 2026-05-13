@@ -1129,15 +1129,45 @@ async def send_telegram(message: str) -> None:
 # --- Vapi post-call webhook ---
 @app.post("/vapi/call-ended")
 async def call_ended(request: Request, background_tasks: BackgroundTasks):
-    """Vapi fires this when any call ends. Returns 200 immediately; anomaly diagnosis runs in background."""
+    """Vapi fires this when any call ends. Returns 200 immediately; anomaly diagnosis runs in background.
+
+    2026-05-13 — noise-suppression: Vapi posts MANY webhook types to this URL
+    (status-update / transcript / conversation-update / speech-update / hang /
+    user-interrupted / model-output / voice-input / tool-calls / etc). Only
+    `end-of-call-report` carries the final assistant + duration + transcript.
+    Without the top-of-handler guard, every other type produces an empty
+    call-ended row with NULL call_id + NULL assistant + 0s duration.
+
+    Other handler endpoints (/capture-lead, /demo-complete, /check-availability,
+    /book-appointment) handle tool-calls separately at their own routes.
+    """
     body = await request.json()
 
-    call = body.get("call", body)
-    assistant_id = call.get("assistantId", "") or body.get("assistant", {}).get("id", "")
-    status = call.get("status", "")
-    caller = call.get("customer", {}).get("number", "")
-    duration = call.get("duration", 0)
-    call_id = call.get("id", "")
+    # Vapi wraps payload under `message`: {message: {type, call, artifact, ...}}.
+    # Older test bodies put `call` at top-level. Support both.
+    msg = body.get("message") or {}
+    msg_type = msg.get("type") or body.get("type") or ""
+
+    # Guard — only end-of-call-report carries the final summary.
+    # Anything else is ignored at 200 OK (no noise rows).
+    if msg_type and msg_type != "end-of-call-report":
+        return JSONResponse({"status": "ok", "ignored_type": msg_type})
+
+    # Pull call data from message envelope FIRST, fall back to top-level / body.
+    call = msg.get("call") or body.get("call") or body
+    assistant_id = (
+        call.get("assistantId", "")
+        or msg.get("assistantId", "")
+        or body.get("assistant", {}).get("id", "")
+    )
+    status = call.get("status", "") or msg.get("status", "")
+    caller = (call.get("customer", {}) or {}).get("number", "") or (msg.get("customer", {}) or {}).get("number", "")
+    duration = call.get("duration", 0) or msg.get("durationSeconds", 0) or msg.get("duration", 0)
+    call_id = call.get("id", "") or msg.get("callId", "")
+
+    # Skip writing noise rows: if we have neither call_id nor assistant_id, return 200.
+    if not call_id and not assistant_id:
+        return JSONResponse({"status": "ok", "skipped": "no_call_id_or_assistant"})
 
     if call_id:
         try:
@@ -1158,15 +1188,70 @@ async def call_ended(request: Request, background_tasks: BackgroundTasks):
     from_num = client.get("from", TWILIO_FROM)
 
     print(f"[Call] assistant={assistant_id} status={status} caller={caller} duration={duration}s")
+
+    # 2026-05-13 — pull transcript + artifact bits BEFORE writing the row so we
+    # can persist transcript inline in detail JSON (used by /client/api/calls/{id}
+    # which reads d.get("transcript") and joins parts).
+    artifact = msg.get("artifact") or call.get("artifact") or {}
+    transcript_text = artifact.get("transcript", "") or ""
+    artifact_messages = artifact.get("messages") or artifact.get("messagesOpenAIFormatted") or []
+    ended_reason = msg.get("endedReason") or call.get("endedReason") or ""
+    analysis = msg.get("analysis") or {}
+
     log_event(call_id, "call-ended", assistant_id,
               f"{status} | {duration}s | caller:{caller}",
-              {"status": status, "duration": duration, "caller": caller})
+              {
+                  "status": status,
+                  "duration": duration,
+                  "caller": caller,
+                  "transcript": transcript_text[:30000] if transcript_text else "",
+                  "ended_reason": ended_reason,
+                  "summary": (analysis.get("summary") or "")[:1000] if analysis else "",
+                  "structured_data": analysis.get("structuredData") if analysis else None,
+                  "messages_count": len(artifact_messages) if isinstance(artifact_messages, list) else 0,
+              })
+
+    # 2026-05-13 — Handoff attribution. Vapi sends ONE end-of-call-report tagged
+    # with the ORIGINATING assistantId. For multi-assistant chains (Claire ->
+    # Dunne -> trap), the artifact.assistantActivations array lists every
+    # assistant active during the call. Write one extra call-ended row per
+    # non-originating assistant so tenant dashboards (filtered by assistant_id)
+    # see the call WITHOUT needing the shared origin assistant (Claire) in
+    # their whitelist (which would leak other niche calls).
+    activations = artifact.get("assistantActivations") or []
+    seen_aids = {assistant_id} if assistant_id else set()
+    handoff_chain = []
+    for act in activations:
+        if not isinstance(act, dict):
+            continue
+        aid = act.get("assistantId") or (act.get("assistant") or {}).get("id") or ""
+        if aid:
+            handoff_chain.append(aid)
+        if not aid or aid in seen_aids:
+            continue
+        seen_aids.add(aid)
+        log_event(
+            call_id,
+            "call-ended",
+            aid,
+            f"{status} | {duration}s | caller:{caller} | handoff_from={assistant_id}",
+            {
+                "status": status,
+                "duration": duration,
+                "caller": caller,
+                "handoff_from": assistant_id,
+                "handoff_chain": handoff_chain or [assistant_id],
+                "transcript": transcript_text[:30000] if transcript_text else "",
+                "ended_reason": ended_reason,
+                "summary": (analysis.get("summary") or "")[:1000] if analysis else "",
+                "is_mirror_row": True,
+            },
+        )
 
     # P2 — mirror Vapi recording to durable Hetzner archive (90d retention promise).
     # Vapi includes recordingUrl + stereoRecordingUrl on the call object once
     # the recording is available; schedule a background task so the webhook
     # returns 200 immediately. Skip if no recording (e.g. silent failed call).
-    artifact = call.get("artifact") or {}
     recording_url = artifact.get("recordingUrl") or call.get("recordingUrl") or ""
     stereo_url = artifact.get("stereoRecordingUrl") or call.get("stereoRecordingUrl") or ""
     if call_id and (recording_url or stereo_url):
@@ -3967,6 +4052,32 @@ async def client_health(token: str = Query("")):
     # Real clients first, demos last
     results.sort(key=lambda x: (x["is_demo"], x["name"]))
     return results
+
+
+@app.post("/admin/api/events-cleanup")
+async def admin_events_cleanup(token: str = Query("")):
+    """2026-05-13 — delete NULL/0s noise rows.
+
+    Targets rows where:
+      - call_id IS NULL (Vapi pre-filter noise flooding)
+      - assistant IS NULL AND event_type='call-ended'
+      - summary matches the empty-signature pattern from pre-filter days
+
+    Returns count deleted. Operator-only.
+    """
+    check_admin(token)
+    with get_db() as conn:
+        # Conservative delete — only NULL call_id + NULL assistant + 0s signature
+        cur = conn.execute(
+            "DELETE FROM call_events "
+            "WHERE call_id IS NULL "
+            "AND assistant IS NULL "
+            "AND event_type = 'call-ended' "
+            "AND (summary IS NULL OR summary LIKE '%| 0s | caller:%')"
+        )
+        deleted = cur.rowcount
+        conn.commit()
+    return {"deleted": deleted, "criterion": "NULL call_id + NULL assistant + 0s call-ended"}
 
 
 @app.get("/admin/api/diagnoses")

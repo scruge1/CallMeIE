@@ -2866,12 +2866,13 @@
         </div>
         ${renderSendSetupCard("ssl")}
         <div class="toolbar">
-          <button class="filter-chip active" type="button">All calls</button>
-          <button class="filter-chip" type="button">Hot</button>
-          <button class="filter-chip" type="button">Hang-ups hidden</button>
-          <span class="muted">${esc(state.events.length)} events</span>
+          <button class="filter-chip ${(state.callFilter||'all')==='all'?'active':''}" type="button" data-filter="all" onclick="setCallFilter('all')">All calls</button>
+          <button class="filter-chip ${state.callFilter==='hot'?'active':''}" type="button" data-filter="hot" onclick="setCallFilter('hot')">Hot</button>
+          <button class="filter-chip ${state.callFilter==='no-hangups'?'active':''}" type="button" data-filter="no-hangups" onclick="setCallFilter('no-hangups')">Hang-ups hidden</button>
+          <span class="muted" id="callEventsCount">${esc(state.events.length)} events</span>
         </div>
-        <div id="callTimeline">${renderCallGroups(state.events, scoring)}</div>`;
+        <div id="callTimeline">${renderFilteredCallGroups(state.events, scoring, state.callFilter || 'all')}</div>`;
+      state.scoring = scoring;
       hydrateLatestLeadPhone();
     } catch (err) {
       view.innerHTML = renderError("Calls could not load", err.message);
@@ -2935,6 +2936,54 @@
     }
     const rows = Array.from(groups.entries()).slice(0, 60);
     if (!rows.length) return '<div class="empty">No call events returned.</div>';
+    return rows.map(([callId, evs]) => renderCallGroup(callId, evs, scoring)).join("");
+  }
+
+  // 2026-05-13 — Call Log filter chip click handler + filtered renderer.
+  // Three modes: 'all' / 'hot' / 'no-hangups'.
+  window.setCallFilter = function(mode) {
+    state.callFilter = mode;
+    const scoring = state.scoring || (state.events || []).reduce((a,e)=>a, {});
+    const timeline = document.getElementById('callTimeline');
+    if (timeline) {
+      timeline.innerHTML = renderFilteredCallGroups(state.events || [], scoring, mode);
+    }
+    document.querySelectorAll('.filter-chip').forEach(b => {
+      b.classList.toggle('active', b.dataset && b.dataset.filter === mode);
+    });
+    const counter = document.getElementById('callEventsCount');
+    if (counter) {
+      const filt = filteredCallGroups(state.events || [], scoring, mode);
+      counter.textContent = `${filt.flatCount} events`;
+    }
+  };
+
+  function filteredCallGroups(events, scoring, mode) {
+    const groups = new Map();
+    for (const ev of events || []) {
+      const id = ev.call_id || "uncategorised";
+      if (!groups.has(id)) groups.set(id, []);
+      groups.get(id).push(ev);
+    }
+    let entries = Array.from(groups.entries());
+    if (mode === 'hot') {
+      entries = entries.filter(([cid, evs]) => heatClass(callHeat(evs, scoring, cid)) === 'hot');
+    } else if (mode === 'no-hangups') {
+      // Drop groups whose only event_type is 'call-ended' (= hang-up / no signal)
+      entries = entries.filter(([cid, evs]) => {
+        const types = new Set(evs.map(e => e.event_type));
+        return !(types.size === 1 && types.has('call-ended'));
+      });
+    }
+    let flatCount = 0;
+    for (const [, evs] of entries) flatCount += evs.length;
+    return { entries, flatCount };
+  }
+
+  function renderFilteredCallGroups(events, scoring, mode) {
+    const { entries } = filteredCallGroups(events, scoring, mode);
+    const rows = entries.slice(0, 60);
+    if (!rows.length) return '<div class="empty">No matching calls.</div>';
     return rows.map(([callId, evs]) => renderCallGroup(callId, evs, scoring)).join("");
   }
 
