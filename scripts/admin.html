@@ -3268,6 +3268,10 @@
             if (d.ended_reason && !endedReason) endedReason = d.ended_reason;
           }
           let html = "<h3>Transcript</h3>";
+          if (transcript) {
+            // 2026-05-13 — STT disclaimer + AI-confirm callout
+            html += `<div style="background:rgba(255,200,80,0.10);border-left:3px solid rgba(255,180,40,0.7);padding:8px 10px;border-radius:4px;font-size:11px;color:var(--muted);margin-bottom:10px;line-height:1.4;"><strong>Transcription note:</strong> automated transcription may render some words incorrectly. The AI confirms sensitive or routing-critical data (name, business, callback number, reason) with the caller before saving or transferring.</div>`;
+          }
           if (analysisSummary) {
             html += `<p class="muted" style="margin-bottom:10px;"><strong>Summary:</strong> ${esc(analysisSummary)}</p>`;
           }
@@ -3278,6 +3282,14 @@
             html += `<pre style="white-space:pre-wrap;word-break:break-word;background:rgba(255,255,255,0.03);padding:10px;border-radius:6px;font-size:12px;max-height:400px;overflow:auto;">${esc(transcript)}</pre>`;
           } else {
             html += `<div class="empty">No transcript stored for this call. (Pre-2026-05-13 calls did not capture transcripts. New calls will. Old call data can be backfilled via Vapi GET /v1/call/{id} if needed.)</div>`;
+          }
+          // Notes list (saved notes)
+          const notes = (data.notes || []);
+          html += `<h3 style="margin-top:14px;">Notes</h3>`;
+          if (notes.length) {
+            html += notes.map(n => `<div style="background:rgba(255,255,255,0.04);padding:8px 10px;border-radius:4px;margin-bottom:6px;font-size:12px;"><div class="mono muted" style="font-size:10px;margin-bottom:3px;">${esc((n.ts||'').slice(0,19))} · ${esc(n.actor||'')}${n.tenant_slug?(' · '+esc(n.tenant_slug)):''}</div><div style="white-space:pre-wrap;">${esc(n.note||'')}</div></div>`).join("");
+          } else {
+            html += `<div class="empty" style="font-size:11px;">No notes saved yet.</div>`;
           }
           trEl.innerHTML = html;
         }

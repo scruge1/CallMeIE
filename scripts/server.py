@@ -4069,6 +4069,49 @@ async def client_health(token: str = Query("")):
     return results
 
 
+@app.post("/admin/api/events-reformat")
+async def admin_events_reformat(token: str = Query("")):
+    """2026-05-13 — backfill old call-ended row summaries to new clean format.
+
+    Old format: 'ringing | 88.167s | caller:+353... | handoff_from=...'
+    New format: 'completed · 88s · from +353...'
+
+    Operator-only. Returns count updated.
+    """
+    check_admin(token)
+    updated = 0
+    try:
+        with get_db() as conn:
+            rows = conn.execute(
+                "SELECT id, summary, detail FROM call_events "
+                "WHERE event_type = 'call-ended' AND summary LIKE '%caller:%'"
+            ).fetchall()
+            import re as _re
+            for r in rows:
+                summ = r["summary"] or ""
+                # Parse old pattern: '<status> | <Ns> | caller:<phone> | <misc>'
+                m = _re.match(r"^([^|]+)\s*\|\s*([\d.]+)s\s*\|\s*caller:([^\s|]+)", summ)
+                if not m:
+                    continue
+                status = (m.group(1) or "").strip()
+                dur_s = float(m.group(2) or 0)
+                caller = (m.group(3) or "").strip()
+                # Pull endedReason from detail if available for cleaner status
+                try:
+                    d = json.loads(r["detail"]) if isinstance(r["detail"], str) else (r["detail"] or {})
+                except Exception:
+                    d = {}
+                er = (d.get("ended_reason") or "").strip()
+                pretty_status = er or status
+                new_summ = f"{pretty_status} · {int(dur_s)}s · from {caller}" if caller else f"{pretty_status} · {int(dur_s)}s"
+                conn.execute("UPDATE call_events SET summary = ? WHERE id = ?", (new_summ, r["id"]))
+                updated += 1
+            conn.commit()
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": f"reformat_failed: {e}"})
+    return {"updated": updated}
+
+
 @app.post("/admin/api/events-cleanup")
 async def admin_events_cleanup(token: str = Query("")):
     """2026-05-13 — delete NULL/0s noise rows (Vapi pre-filter spam).
@@ -6123,11 +6166,31 @@ async def admin_caller_timeline(call_id: str, token: str = Query("")):
             "summary": r["summary"],
             "detail": d,
         })
+    # 2026-05-13 — include saved notes (client + Adam-side admin notes)
+    notes_out = []
+    try:
+        with get_db() as conn:
+            note_rows = conn.execute(
+                "SELECT created_at, note, actor, tenant_slug FROM call_notes "
+                "WHERE call_id = ? ORDER BY id ASC",
+                (call_id,),
+            ).fetchall()
+        for n in note_rows:
+            notes_out.append({
+                "ts": str(n["created_at"]),
+                "note": n["note"] or "",
+                "actor": n["actor"] or "",
+                "tenant_slug": n["tenant_slug"] or "",
+            })
+    except Exception as e:
+        print(f"[admin_caller_timeline] notes fetch failed: {e}")
+
     return JSONResponse({
         "call_id": call_id,
         "events": events,
         "count": len(events),
         "classification": classification,
+        "notes": notes_out,
     })
 
 
@@ -7245,6 +7308,26 @@ async def client_call_detail(call_id: str, token: str = Query("")):
             "summary": r["summary"] or "",
         })
 
+    # 2026-05-13 — return saved notes for this call (Adam request: notes were
+    # saving to call_notes table but never displayed back in drawer).
+    notes_out = []
+    try:
+        with get_db() as conn:
+            note_rows = conn.execute(
+                "SELECT created_at, note, actor, tenant_slug FROM call_notes "
+                "WHERE call_id = ? ORDER BY id ASC",
+                (call_id,),
+            ).fetchall()
+        for n in note_rows:
+            notes_out.append({
+                "ts": str(n["created_at"]),
+                "note": n["note"] or "",
+                "actor": n["actor"] or "client",
+                "tenant_slug": n["tenant_slug"] or "",
+            })
+    except Exception as e:
+        print(f"[client_call_detail] notes fetch failed: {e}")
+
     return {
         "call_id": call_id,
         "caller_name": caller_name,
@@ -7253,6 +7336,7 @@ async def client_call_detail(call_id: str, token: str = Query("")):
         "transcript": best_transcript,
         "analysis_summary": analysis_summary,
         "ended_reason": ended_reason,
+        "notes": notes_out,
         # 1h-TTL Hetzner pre-signed URL; None if the recording isn't mirrored
         # yet (e.g. call still in progress, or recording disabled per call).
         "recording_url": _hetzner_presigned_for_call(call_id, expires=3600),

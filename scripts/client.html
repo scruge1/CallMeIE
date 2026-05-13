@@ -711,8 +711,20 @@ async function openDrawer(callId) {
         ${(data.events || []).map((e) => `<li><span class="mono" style="color: var(--muted);">${esc(e.ts || "")}</span> · ${esc(e.event_type || "")} ${esc(e.summary ? "— " + e.summary : "")}</li>`).join("")}
       </ol>
       ${data.recording_url ? `<h4 style="margin: 0 0 8px;">Recording</h4><audio controls src="${esc(data.recording_url)}" style="width: 100%; margin-bottom: 16px;"></audio>` : ""}
-      ${data.transcript ? `<h4 style="margin: 0 0 8px;">Transcript</h4><div style="white-space: pre-wrap; font-size: 13px; color: var(--text-soft); margin-bottom: 16px;">${esc(data.transcript)}</div>` : ""}
-      <h4 style="margin: 0 0 8px;">Internal note</h4>
+      ${data.transcript ? `
+        <h4 style="margin: 0 0 8px;">Transcript</h4>
+        <div style="background:rgba(255,200,80,0.10);border-left:3px solid rgba(255,180,40,0.7);padding:8px 10px;border-radius:4px;font-size:12px;color:var(--text-soft);margin-bottom:10px;">
+          <strong>Note:</strong> automated transcription may show some words incorrectly. The AI confirms sensitive or routing-critical data (name, business, callback number, reason) with the caller before saving or transferring.
+        </div>
+        <div style="white-space: pre-wrap; font-size: 13px; color: var(--text-soft); margin-bottom: 16px;">${esc(data.transcript)}</div>
+      ` : ""}
+      ${data.analysis_summary ? `<h4 style="margin: 0 0 8px;">Summary</h4><div style="font-size: 13px; color: var(--text-soft); margin-bottom: 16px;">${esc(data.analysis_summary)}</div>` : ""}
+      <h4 style="margin: 0 0 8px;">Notes</h4>
+      <div id="drawerNotesList" style="margin-bottom:10px;">${
+        (data.notes && data.notes.length) ?
+        data.notes.map((n) => `<div style="background:rgba(255,255,255,0.04);padding:8px 10px;border-radius:4px;margin-bottom:6px;font-size:13px;"><div class="mono muted" style="font-size:11px;margin-bottom:4px;">${esc((n.ts||'').slice(0,19))} · ${esc(n.actor||'client')}</div><div style="white-space:pre-wrap;">${esc(n.note||'')}</div></div>`).join("")
+        : `<div class="empty" style="font-size:12px;">No notes saved yet.</div>`
+      }</div>
       <textarea id="drawerNote" class="textarea" rows="3" placeholder="Add a note (saved to this call only)…"></textarea>
       <button class="btn primary" type="button" onclick="saveNote('${esc(callId)}')" style="margin-top: 8px;">Save note</button>`;
   } catch (err) {
@@ -732,6 +744,8 @@ async function saveNote(callId) {
       body: JSON.stringify({ note }),
     });
     qs("#drawerNote").value = "";
+    // 2026-05-13 — reload drawer so saved note appears in Notes list
+    await openDrawer(callId);
   } catch (err) { alert("Save failed: " + err.message); }
 }
 
