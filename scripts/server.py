@@ -7274,15 +7274,22 @@ async def client_call_note(call_id: str, request: Request, token: str = Query(""
     if len(note) > 4000:
         raise HTTPException(status_code=422, detail="note_too_long")
 
-    # Authorization: confirm the call belongs to this tenant
-    allowed_ids = set(c.get("assistant_ids") or [])
+    # Authorization: confirm the call belongs to this tenant.
+    # 2026-05-13 — same string-array coercion as /client/api/calls/{id};
+    # query ALL events (not LIMIT 1) since handoff chains have multiple rows
+    # and the FIRST one is often the shared origin (Claire), not the tenant's.
+    raw_ids = c.get("assistant_ids") or []
+    if isinstance(raw_ids, str):
+        raw_ids = [s.strip() for s in raw_ids.strip("{}").split(",") if s.strip()]
+    allowed_ids = set(raw_ids)
     try:
         with get_db() as conn:
-            ev = conn.execute(
-                "SELECT assistant FROM call_events WHERE call_id = ? LIMIT 1",
+            evs = conn.execute(
+                "SELECT assistant FROM call_events WHERE call_id = ?",
                 (call_id,),
-            ).fetchone()
-            if not ev or ev["assistant"] not in allowed_ids:
+            ).fetchall()
+            event_aids = {e["assistant"] for e in evs if e["assistant"]}
+            if not (event_aids & allowed_ids):
                 raise HTTPException(status_code=403, detail="not_your_call")
             conn.execute(
                 "INSERT INTO call_notes (call_id, tenant_slug, note, actor) "
@@ -7348,21 +7355,25 @@ async def client_inbox_actioned(call_id: str, token: str = Query("")):
     """Mark an inbox message as actioned. Logs 'inbox-actioned' event so it
     appears in the unified call timeline and stops surfacing in the inbox."""
     c = check_client(token)
-    allowed_ids = set(c.get("assistant_ids") or [])
-    if isinstance(c.get("assistant_ids"), str):
-        allowed_ids = {s.strip() for s in c["assistant_ids"].strip("{}").split(",") if s.strip()}
+    raw_ids = c.get("assistant_ids") or []
+    if isinstance(raw_ids, str):
+        raw_ids = [s.strip() for s in raw_ids.strip("{}").split(",") if s.strip()]
+    allowed_ids = set(raw_ids)
     try:
         with get_db() as conn:
-            ev = conn.execute(
-                "SELECT assistant FROM call_events WHERE call_id = ? LIMIT 1",
+            evs = conn.execute(
+                "SELECT assistant FROM call_events WHERE call_id = ?",
                 (call_id,),
-            ).fetchone()
-            if not ev or ev["assistant"] not in allowed_ids:
+            ).fetchall()
+            event_aids = {e["assistant"] for e in evs if e["assistant"]}
+            tenant_match = event_aids & allowed_ids
+            if not tenant_match:
                 raise HTTPException(status_code=403, detail="not_your_call")
+            pick_aid = next(iter(tenant_match))
             conn.execute(
                 "INSERT INTO call_events (call_id, event_type, assistant, summary, detail) "
                 "VALUES (?, 'inbox-actioned', ?, ?, ?)",
-                (call_id, ev["assistant"],
+                (call_id, pick_aid,
                  f"actioned by {c['tenant_slug']}",
                  json.dumps({"actor": "client", "tenant_slug": c["tenant_slug"]})),
             )
