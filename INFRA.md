@@ -80,9 +80,6 @@ curl -X PATCH -H "Authorization: Bearer $TOK" -H "Content-Type: application/json
 | Name | Type | UUID | Status | Public URL (current) | Target URL |
 |---|---|---|---|---|---|
 | owltradezone | application (git) | `kvpvd10evtfhn074p0kgk525` | running | `https://owlzone.trade` | same |
-| document-ops-portal | application (git) | `rs0jyp5cj24hutaxijacye6r` | running | `https://portal.callmeie.ie` (+ portal.owlzone.trade, books.callmeie.ie) | same |
-| **callmeie-api** (NEW 2026-05-09) | application (git, dockerfile, scripts/) | `xml9wji6109b1kergfz05665` | running:unknown | `http://xml9wji6109b1kergfz05665.178.104.205.255.sslip.io` | `https://api.callmeie.ie` (post-Stage-3 cutover) |
-| **callmeie-api-pg** (NEW 2026-05-09) | database (postgres:16-alpine) | `zpy3t4torksez48k8attrzbr` | running | internal: `postgres://callmeie:…@zpy3t4torksez48k8attrzbr:5432/callmeie` | n/a (internal-only) |
 | owl-vaultwarden | service (vaultwarden) | `hx8st0ta4xecr0d0cm2b5l44` | running:healthy | `http://vaultwarden-hx8st0ta4xecr0d0cm2b5l44.178.104.205.255.sslip.io` | `https://vault.owlzone.trade` (DNS added, Traefik label update pending) |
 | owl-uptime-kuma | service (uptime-kuma) | `t10jb009nm5e36oy1n8bki97` | running:healthy | `http://uptimekuma-t10jb009nm5e36oy1n8bki97.178.104.205.255.sslip.io` | `https://uptime.owlzone.trade` (same) |
 | owl-umami | service (umami) | `txd1tt0zup0yckhlfojdf301` | running:healthy | `http://umami-txd1tt0zup0yckhlfojdf301.178.104.205.255.sslip.io` | `https://analytics.owlzone.trade` (same) |
@@ -106,19 +103,7 @@ The table is `service_applications` (NOT `services_applications`). `custom_label
 
 ---
 
-## 3 · Render (legacy runtime — migration to Coolify in progress, P0-9 2026-05-09)
-
-> **Migration status (2026-05-09):** Stages 1+2 complete. Coolify
-> deploy `callmeie-api` (uuid `xml9wji6109b1kergfz05665`) is live at
-> `http://xml9wji6109b1kergfz05665.178.104.205.255.sslip.io` with a
-> dedicated Postgres (uuid `zpy3t4torksez48k8attrzbr`,
-> `callmeie-api-pg`). All 25 prod env vars copied from Render via
-> `scripts/migrate-env-render-to-coolify.py`. Health + discovery
-> verified end-to-end (xAI → Postgres → response, ~3s warm). Render
-> still owns `https://callmeie.onrender.com` + the `api.callmeie.ie`
-> CNAME and is serving live traffic. Stages 3-4 (Vapi serverUrl /
-> Stripe webhook / onboard form / DNS / decommission) pending — see
-> `MIGRATION-RENDER-TO-COOLIFY.md` runbook.
+## 3 · Render (cloud runtime — to migrate to Coolify later)
 
 | Field | Value |
 |---|---|
@@ -863,11 +848,41 @@ docs-callmeie/
 
 ### 15.3 Stripe Payment Links wired
 
-| CTA on page | Link |
-|---|---|
-| Buy Pilot · €500 (Entry) | `https://buy.stripe.com/dRm00i0Y3gdgbbCgypaIM09` |
-| Buy Standard Pilot · €1,500 | `https://buy.stripe.com/14A3cueOTbX04NeeqhaIM0a` |
-| Start at €250/mo (Operations Monthly) | `https://buy.stripe.com/14AfZg4afaSW5Rici9aIM0b` |
+**Canonical pricing = `PRICING-SSOT.md` (this dir).** Reconciled 2026-05-15 to match the live `callmeie-hub` site. Stripe is **live mode**.
+
+**Websites (one-off, full all-in — D1 reconciliation 2026-05-15):**
+
+| CTA | Price | Link |
+|---|---|---|
+| Start a Starter | €695 `price_1TXOiTCEqG2AuI1zZzAGb44I` | `https://buy.stripe.com/cNi14mbCH2mq93ube5aIM0k` |
+| Start a Pro | €1,595 `price_1TXOiTCEqG2AuI1zlW1NC8ZK` | `https://buy.stripe.com/5kQ28q6in8KO7ZqgypaIM0l` |
+| Book €99 scoping audit (Custom entry) | €99 | `https://buy.stripe.com/bJe6oGbCH7GK0wY4PHaIM00` |
+
+> ⚠️ OLD 50%-deposit links `cNicN40Y31imenO2HzaIM07` (€348) + `bJe28qeOTf9c5RidmdaIM08` (€798) are **still active pending site redeploy** — deactivate them ONCE callmeie.ie is redeployed with the new links above (do not deactivate before deploy or live buy buttons break).
+
+**Receptionist (monthly + setup — D3, created 2026-05-15):**
+
+| CTA | Price | Link |
+|---|---|---|
+| Starter €149/mo | `price_1TXOiVCEqG2AuI1zGWDwhEJG` (prod `prod_UWRbvcwglnsgON`) | `https://buy.stripe.com/3cI7sK36b4uy6Vm81TaIM0m` |
+| Professional €249/mo | `price_1TVxwgCEqG2AuI1zPZzlP7q3` | `https://buy.stripe.com/dRmaEW5ej8KO2F6dmdaIM0n` |
+| Growth €397/mo | `price_1TVxwgCEqG2AuI1zzsCH9YG1` | `https://buy.stripe.com/eVqbJ0dKP7GKcfGci9aIM0o` |
+| Setup €297 (Starter/Pro) | `price_1TVxwgCEqG2AuI1zkxlRvISY` | `https://buy.stripe.com/14A9AS6in6CGenO0zraIM0j` |
+| Setup €497 (Growth) | `price_1TXOiVCEqG2AuI1zF7raG6Gr` | `https://buy.stripe.com/00waEWbCH5yCgvW6XPaIM0p` |
+
+**Document Ops (canonical — links already correctly priced):**
+
+| CTA | Price | Link |
+|---|---|---|
+| Entry Pilot | €500 one-off | `https://buy.stripe.com/dRm00i0Y3gdgbbCgypaIM09` |
+| Standard Pilot | €1,500 one-off | `https://buy.stripe.com/14A3cueOTbX04NeeqhaIM0a` |
+| Auto | €99/mo | `https://buy.stripe.com/14A9AS9uzgdggvW95XaIM0f` |
+| Auto Plus | €249/mo | `https://buy.stripe.com/eVq6oG8qvaSW0wYgypaIM0g` |
+| Rescue + Export | €499/mo | `https://buy.stripe.com/4gM14m2273qufrS3LDaIM0h` |
+| Bespoke | from €1,500/mo | `mailto:` (no link by design) |
+| Operations Monthly Starter €250/mo | *(grandfathered — keep, unadvertised)* | `https://buy.stripe.com/14AfZg4afaSW5Rici9aIM0b` |
+
+> Duplicate "Document Ops — Self-serve" links (`…IM0c/d/e`) DEACTIVATED 2026-05-15. Obsolete 4-tier ladder products (`prod_UQowfvaBTt487e/GVxn6bpMeg/BGv7jwRdpb/zW8jkmW9kX`, CallMeIE Starter/Growth/Pro/Concierge €99/299/699/1500) ARCHIVED 2026-05-15. Owl Studio Essential/Growth/Concierge care plans left untouched (legacy — confirm separately).
 
 Same Stripe webhook handler at `https://portal.callmeie.ie/webhooks/stripe` covers checkouts.
 
