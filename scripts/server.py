@@ -3144,6 +3144,21 @@ async def tts_preview(
         return Response(content=au, media_type="audio/mpeg")
     say = (text or _TTS_LINE)[:600]
     vn, _, _ = _TTS_PRESETS.get(voice, (voice, None, None))
+
+    def _signed(val, unit):
+        # edge_tts requires SIGNED offsets (+0%/-6%/+2Hz). Sliders send
+        # bare "0%"/"0Hz" -> ValueError -> 502. Force a leading +/-.
+        s = str(val).strip()
+        if s.endswith(unit):
+            s = s[:-len(unit)]
+        s = s.strip() or "0"
+        if not s.startswith(("+", "-")):
+            s = "+" + s
+        return s + unit
+
+    rate = _signed(rate, "%")
+    volume = _signed(volume, "%")
+    pitch = _signed(pitch, "Hz")
     try:
         import io as _io, edge_tts as _et, asyncio as _aio
         async def _gen():
