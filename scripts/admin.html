@@ -3436,47 +3436,71 @@
 
   async function renderVoices() {
     const d = await api("/admin/api/tts-samples").catch(() => ({line:""}));
+    let el = {voices:[], chars_used:0, chars_limit:0};
+    try { el = await api("/admin/api/el-voices"); } catch (e) {}
     const sl = (id,min,max,val,unit) =>
-      `<label style="display:block;margin:10px 0">${id} `
+      `<label style="display:block;margin:8px 0">${id} `
       + `<output id="${id}o">${val}${unit}</output>`
       + `<input type="range" id="${id}" min="${min}" max="${max}" `
-      + `value="${val}" style="width:100%" `
-      + `oninput="document.getElementById('${id}o').textContent=this.value+'${unit}'"></label>`;
-    setTimeout(() => { window.ttsPreview = async () => {
-      const v = document.getElementById('ttsVoice').value;
-      const r = document.getElementById('rate').value + '%';
-      const p = document.getElementById('pitch').value + 'Hz';
-      const vol = document.getElementById('vol').value + '%';
-      const t = encodeURIComponent(document.getElementById('ttsText').value || d.line);
+      + `step="${unit==='Hz'||unit==='%'?1:0.05}" value="${val}" `
+      + `style="width:100%" oninput="document.getElementById('${id}o')`
+      + `.textContent=this.value+'${unit}'"></label>`;
+    const elOpts = el.voices.map(v =>
+      `<option value="${v.id}">${esc(v.name)} ${esc((v.labels||[])
+      .slice(0,3).join(' / '))}</option>`).join("");
+    setTimeout(() => { window.ttsPreview = async (eng) => {
       const a = document.getElementById('ttsOut');
-      a.parentElement.querySelector('.muted').textContent = 'generating...';
-      const url = endpoint(`/admin/api/tts-preview?voice=${v}&rate=${r}&pitch=${p}&volume=${vol}&text=${t}`);
+      const note = a.parentElement.querySelector('.muted');
+      const t = encodeURIComponent(document.getElementById('ttsText').value || d.line);
+      let url;
+      if (eng === 'edge') {
+        const v = document.getElementById('ttsVoice').value;
+        const r = document.getElementById('rate').value + '%';
+        const p = document.getElementById('pitch').value + 'Hz';
+        const vo = document.getElementById('vol').value + '%';
+        url = endpoint(`/admin/api/tts-preview?engine=edge&voice=${v}&rate=${r}&pitch=${p}&volume=${vo}&text=${t}`);
+      } else {
+        const ev = document.getElementById('elVoice').value;
+        const m = document.getElementById('elModel').value;
+        const st = document.getElementById('stab').value;
+        const si = document.getElementById('sim').value;
+        const sy = document.getElementById('sty').value;
+        url = endpoint(`/admin/api/tts-preview?engine=elevenlabs&el_voice=${ev}&model=${m}&stability=${st}&similarity=${si}&style=${sy}&text=${t}`);
+      }
+      note.textContent = 'generating...';
       try {
         const res = await fetch(url);
-        if (!res.ok) { a.parentElement.querySelector('.muted').textContent =
-          'failed: ' + (await res.text()).slice(0,200); return; }
-        a.src = URL.createObjectURL(await res.blob());
-        a.play(); a.parentElement.querySelector('.muted').textContent =
-          `${v} | rate ${r} | pitch ${p} | vol ${vol}`;
-      } catch (e) { a.parentElement.querySelector('.muted').textContent = e.message; }
+        if (!res.ok) { note.textContent = 'failed: ' + (await res.text()).slice(0,180); return; }
+        a.src = URL.createObjectURL(await res.blob()); a.play();
+        note.textContent = eng === 'edge' ? 'edge ($0)' : 'ElevenLabs (used Starter cap)';
+      } catch (e) { note.textContent = e.message; }
     }; }, 0);
+    const left = (el.chars_limit||0) - (el.chars_used||0);
     return `<section class="panel pad">
-      <p class="muted">Live edge voice studio. Adjust, hear instantly. All $0 (edge). Research: Multilingual voices (Andrew/Brian) = Microsoft's newest tier, maintainer's pick; Connor = older Irish accent; Claire = ElevenLabs premium (separate, brand voice).</p>
-      <label>Voice <select id="ttsVoice" style="width:100%;padding:8px;margin:6px 0">
-        <option value="premium">Premium - Andrew Multilingual (warm, confident) [recommended]</option>
-        <option value="casual">Casual - Brian Multilingual (approachable)</option>
+      <p class="muted">Two engines. <b>Edge</b> = $0, tune freely. <b>ElevenLabs</b> = premium + brand voice (Claire), each preview burns Starter cap (${left} chars left of ${el.chars_limit||'?'}) - explicit click only.</p>
+      <h3>Edge (free)</h3>
+      <label>Voice <select id="ttsVoice" style="width:100%;padding:6px;margin:4px 0">
+        <option value="premium">Premium - Andrew Multilingual [recommended]</option>
+        <option value="casual">Casual - Brian Multilingual</option>
         <option value="premium-f">Premium F - Ava Multilingual</option>
-        <option value="irish">Irish - Connor (local accent, older tier)</option>
-        <option value="irish-f">Irish F - Emily</option>
-      </select></label>
-      ${sl('rate',-30,30,-6,'%')}
-      ${sl('pitch',-20,20,0,'Hz')}
-      ${sl('vol',-50,50,0,'%')}
-      <label>Script <textarea id="ttsText" rows="3" style="width:100%;margin:6px 0" placeholder="${esc(d.line||'')}">${esc(d.line||'')}</textarea></label>
-      <button class="btn primary" type="button" onclick="ttsPreview()">Hear it</button>
-      <div style="margin-top:14px"><span class="muted">adjust + hear</span><br>
+        <option value="irish">Irish - Connor (older tier)</option>
+        <option value="irish-f">Irish F - Emily</option></select></label>
+      ${sl('rate',-30,30,-6,'%')}${sl('pitch',-20,20,0,'Hz')}${sl('vol',-50,50,0,'%')}
+      <button class="btn primary" type="button" onclick="ttsPreview('edge')">Hear edge ($0)</button>
+      <h3 style="margin-top:22px">ElevenLabs (premium - uses cap)</h3>
+      <label>Voice <select id="elVoice" style="width:100%;padding:6px;margin:4px 0">${elOpts || '<option>none loaded</option>'}</select></label>
+      <label>Model <select id="elModel" style="width:100%;padding:6px;margin:4px 0">
+        <option value="eleven_multilingual_v2">Multilingual v2 (default)</option>
+        <option value="eleven_v3">v3 (newest)</option>
+        <option value="eleven_turbo_v2_5">Turbo v2.5 (fast)</option>
+        <option value="eleven_flash_v2_5">Flash v2.5 (fastest)</option></select></label>
+      ${sl('stab',0,1,0.5,'')}${sl('sim',0,1,0.75,'')}${sl('sty',0,1,0,'')}
+      <button class="btn" type="button" onclick="ttsPreview('elevenlabs')">Hear ElevenLabs (uses cap)</button>
+      <div style="margin-top:16px"><span class="muted">adjust + hear</span><br>
       <audio id="ttsOut" controls style="width:100%;margin-top:6px"></audio></div>
-      <p class="muted" style="margin-top:14px">Claire (ElevenLabs, premium, final-cut only): <audio controls style="width:100%" src="${d.claire||''}"></audio></p>
+      <label style="display:block;margin-top:12px">Script
+      <textarea id="ttsText" rows="3" style="width:100%;margin:6px 0" placeholder="${esc(d.line||'')}">${esc(d.line||'')}</textarea></label>
+      <p class="muted">stab/sim/sty = ElevenLabs stability / similarity boost / style. Reply with the engine+settings you want locked for the video pipeline.</p>
     </section>`;
   }
 
