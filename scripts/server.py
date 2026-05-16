@@ -3056,15 +3056,65 @@ async def tts_samples_api(token: str = Query("")):
     }
 
 
+@app.get("/admin/api/el-voices")
+async def el_voices(token: str = Query("")):
+    check_admin(token)
+    import urllib.request as _u, json as _j
+    key = os.environ.get("ELEVENLABS_API_KEY", "")
+    try:
+        v = _j.loads(_u.urlopen(_u.Request(
+            "https://api.elevenlabs.io/v1/voices",
+            headers={"xi-api-key": key}), timeout=20).read())
+        sub = _j.loads(_u.urlopen(_u.Request(
+            "https://api.elevenlabs.io/v1/user/subscription",
+            headers={"xi-api-key": key}), timeout=20).read())
+    except Exception as exc:  # noqa: BLE001
+        return JSONResponse(status_code=502,
+                            content={"error": str(exc)[:200]})
+    return {
+        "chars_used": sub.get("character_count"),
+        "chars_limit": sub.get("character_limit"),
+        "voices": [{"id": x.get("voice_id"), "name": x.get("name"),
+                    "labels": list((x.get("labels") or {}).values())}
+                   for x in v.get("voices", [])],
+    }
+
+
 @app.get("/admin/api/tts-preview")
 async def tts_preview(
-    token: str = Query(""), voice: str = Query("premium"),
+    token: str = Query(""), engine: str = Query("edge"),
+    voice: str = Query("premium"),
     rate: str = Query("-6%"), pitch: str = Query("+0Hz"),
     volume: str = Query("+0%"), text: str = Query(""),
+    el_voice: str = Query(""),
+    stability: float = Query(0.5),
+    similarity: float = Query(0.75),
+    style: float = Query(0.0),
+    model: str = Query("eleven_multilingual_v2"),
 ):
     # Live edge voice studio. Lazy import: a missing edge-tts dep
     # 502s ONLY this endpoint, never the receptionist server.
     check_admin(token)
+    if engine == "elevenlabs":
+        import urllib.request as _u, json as _j
+        key = os.environ.get("ELEVENLABS_API_KEY", "")
+        vid = el_voice or os.environ.get("ELEVENLABS_CLAIRE_VOICE_ID", "")
+        say_el = (text or _TTS_LINE)[:600]
+        body = _j.dumps({"text": say_el, "model_id": model,
+            "voice_settings": {"stability": stability,
+                "similarity_boost": similarity,
+                "style": style,
+                "use_speaker_boost": True}}).encode()
+        try:
+            au = _u.urlopen(_u.Request(
+                "https://api.elevenlabs.io/v1/text-to-speech/" + vid, body,
+                {"xi-api-key": key,
+                 "Content-Type": "application/json",
+                 "Accept": "audio/mpeg"}), timeout=120).read()
+        except Exception as exc:  # noqa: BLE001
+            return JSONResponse(status_code=502, content={
+                "error": "elevenlabs: " + type(exc).__name__ + str(exc)[:200]})
+        return Response(content=au, media_type="audio/mpeg")
     say = (text or _TTS_LINE)[:600]
     vn, _, _ = _TTS_PRESETS.get(voice, (voice, None, None))
     try:
