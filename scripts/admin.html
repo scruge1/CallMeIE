@@ -1869,6 +1869,7 @@
     ["discovery", "Discovery", "Quiz submissions", "search"],
     ["ads", "Ads", "Meta campaign control", "spark"],
     ["inbox", "Inbox", "Unified lead stream", "inbox"],
+    ["voices", "Voice Samples", "TTS voiceover A/B", "record"],
     ["settings", "Settings", "Theme, tokens, exports", "settings"],
   ];
 
@@ -3405,6 +3406,7 @@
       else if (which === "ads") view.innerHTML = header("Ads", "Meta campaign control plane.") + await renderAds();
       else if (which === "inbox") view.innerHTML = header("Inbox", "Unified omnichannel lead feed.") + await renderInbox();
       else if (which === "settings") view.innerHTML = header("Settings", "Theme, diagnostics, token rotation, and exports.") + await renderSettings();
+      else if (which === "voices") view.innerHTML = header("Voice Samples", "Pick the video voiceover voice.") + await renderVoices();
       else renderMoreHome();
     } catch (err) {
       view.innerHTML = renderError(`${title(which)} could not load`, err.message);
@@ -3431,6 +3433,11 @@
 
   window.renderMoreHome = renderMoreHome;
   window.loadMore = loadMore;
+
+  async function renderVoices() {
+    const d = await api("/admin/api/tts-samples");
+    return `<section class="panel pad"><p class="muted">Same line, two engines. edge = free, every draft. Claire = ElevenLabs, the voice callers hear, final cut only.</p><h3>1. edge-tts (free, Irish)</h3><audio controls style="width:100%" src="${d.edge}"></audio><h3>2. ElevenLabs &mdash; Claire (brand voice)</h3><audio controls style="width:100%" src="${d.claire}"></audio><p class="muted" style="margin-top:18px">&ldquo;${esc(d.line)}&rdquo;</p></section>`;
+  }
 
   async function renderQueue() {
     const rows = await api("/admin/api/submissions");
