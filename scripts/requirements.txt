@@ -21,3 +21,4 @@ python-multipart==0.0.9
 # 90-day retention is honoured. Lifecycle policy on bucket auto-expires at d90.
 boto3==1.35.0
 botocore==1.35.0
+edge-tts>=7.0
