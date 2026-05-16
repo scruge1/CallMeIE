@@ -3435,8 +3435,49 @@
   window.loadMore = loadMore;
 
   async function renderVoices() {
-    const d = await api("/admin/api/tts-samples");
-    return `<section class="panel pad"><p class="muted">Same line, two engines. edge = free, every draft. Claire = ElevenLabs, the voice callers hear, final cut only.</p><h3>1. edge-tts (free, Irish)</h3><audio controls style="width:100%" src="${d.edge}"></audio><h3>2. ElevenLabs &mdash; Claire (brand voice)</h3><audio controls style="width:100%" src="${d.claire}"></audio><p class="muted" style="margin-top:18px">&ldquo;${esc(d.line)}&rdquo;</p></section>`;
+    const d = await api("/admin/api/tts-samples").catch(() => ({line:""}));
+    const sl = (id,min,max,val,unit) =>
+      `<label style="display:block;margin:10px 0">${id} `
+      + `<output id="${id}o">${val}${unit}</output>`
+      + `<input type="range" id="${id}" min="${min}" max="${max}" `
+      + `value="${val}" style="width:100%" `
+      + `oninput="document.getElementById('${id}o').textContent=this.value+'${unit}'"></label>`;
+    setTimeout(() => { window.ttsPreview = async () => {
+      const v = document.getElementById('ttsVoice').value;
+      const r = document.getElementById('rate').value + '%';
+      const p = document.getElementById('pitch').value + 'Hz';
+      const vol = document.getElementById('vol').value + '%';
+      const t = encodeURIComponent(document.getElementById('ttsText').value || d.line);
+      const a = document.getElementById('ttsOut');
+      a.parentElement.querySelector('.muted').textContent = 'generating...';
+      const url = endpoint(`/admin/api/tts-preview?voice=${v}&rate=${r}&pitch=${p}&volume=${vol}&text=${t}`);
+      try {
+        const res = await fetch(url);
+        if (!res.ok) { a.parentElement.querySelector('.muted').textContent =
+          'failed: ' + (await res.text()).slice(0,200); return; }
+        a.src = URL.createObjectURL(await res.blob());
+        a.play(); a.parentElement.querySelector('.muted').textContent =
+          `${v} | rate ${r} | pitch ${p} | vol ${vol}`;
+      } catch (e) { a.parentElement.querySelector('.muted').textContent = e.message; }
+    }; }, 0);
+    return `<section class="panel pad">
+      <p class="muted">Live edge voice studio. Adjust, hear instantly. All $0 (edge). Research: Multilingual voices (Andrew/Brian) = Microsoft's newest tier, maintainer's pick; Connor = older Irish accent; Claire = ElevenLabs premium (separate, brand voice).</p>
+      <label>Voice <select id="ttsVoice" style="width:100%;padding:8px;margin:6px 0">
+        <option value="premium">Premium - Andrew Multilingual (warm, confident) [recommended]</option>
+        <option value="casual">Casual - Brian Multilingual (approachable)</option>
+        <option value="premium-f">Premium F - Ava Multilingual</option>
+        <option value="irish">Irish - Connor (local accent, older tier)</option>
+        <option value="irish-f">Irish F - Emily</option>
+      </select></label>
+      ${sl('rate',-30,30,-6,'%')}
+      ${sl('pitch',-20,20,0,'Hz')}
+      ${sl('vol',-50,50,0,'%')}
+      <label>Script <textarea id="ttsText" rows="3" style="width:100%;margin:6px 0" placeholder="${esc(d.line||'')}">${esc(d.line||'')}</textarea></label>
+      <button class="btn primary" type="button" onclick="ttsPreview()">Hear it</button>
+      <div style="margin-top:14px"><span class="muted">adjust + hear</span><br>
+      <audio id="ttsOut" controls style="width:100%;margin-top:6px"></audio></div>
+      <p class="muted" style="margin-top:14px">Claire (ElevenLabs, premium, final-cut only): <audio controls style="width:100%" src="${d.claire||''}"></audio></p>
+    </section>`;
   }
 
   async function renderQueue() {
