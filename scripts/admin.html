@@ -3435,7 +3435,8 @@
   window.loadMore = loadMore;
 
   async function renderVoices() {
-    const d = await api("/admin/api/tts-samples").catch(() => ({line:""}));
+    const ref = await api("/admin/api/tts-samples").catch(() => ({line:""}));
+    const d = ref;
     let el = {voices:[], chars_used:0, chars_limit:0};
     try { el = await api("/admin/api/el-voices"); } catch (e) {}
     let edgeV = {voices:[]};
@@ -3479,7 +3480,7 @@
       } catch (e) { note.textContent = e.message; }
     }; }, 0);
     const left = (el.chars_limit||0) - (el.chars_used||0);
-    return `<section class="panel pad">
+    return `<section class="panel pad"><h3>Reference A/B (same line)</h3><p class="muted">Decide the engine. All $0 except Claire.</p><div style="margin:8px 0"><strong>Kokoro</strong> <span class="muted">free, LOCAL (hero finals) - highest quality</span><br><audio controls style="width:100%" src="${ref.kokoro||''}"></audio></div><div style="margin:8px 0"><strong>Edge - Andrew Multilingual</strong> <span class="muted">free, cloud-OK (drafts/bulk)</span><br><audio controls style="width:100%" src="${ref.premium||''}"></audio></div><div style="margin:8px 0"><strong>Edge - Connor (Irish)</strong> <span class="muted">free, older tier</span><br><audio controls style="width:100%" src="${ref.irish||''}"></audio></div><div style="margin:8px 0"><strong>Claire (ElevenLabs)</strong> <span class="muted">premium, brand voice, cap-limited</span><br><audio controls style="width:100%" src="${ref.claire||''}"></audio></div></section>`+`<section class="panel pad">
       <p class="muted">Two engines. <b>Edge</b> = $0, tune freely. <b>ElevenLabs</b> = premium + brand voice (Claire), each preview burns Starter cap (${left} chars left of ${el.chars_limit||'?'}) - explicit click only.</p>
       <h3>Edge (free)</h3>
       <label>Voice <select id="ttsVoice" style="width:100%;padding:6px;margin:4px 0">${edgeOpts || '<option value="premium">Andrew Multilingual</option>'}</select></label>
