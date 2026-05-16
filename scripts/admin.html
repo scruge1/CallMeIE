@@ -3438,6 +3438,9 @@
     const d = await api("/admin/api/tts-samples").catch(() => ({line:""}));
     let el = {voices:[], chars_used:0, chars_limit:0};
     try { el = await api("/admin/api/el-voices"); } catch (e) {}
+    let edgeV = {voices:[]};
+    try { edgeV = await api("/admin/api/edge-voices"); } catch (e) {}
+    const edgeOpts = edgeV.voices.map(v => `<option value="${v.id}">${v.premium?'★ ':''}${esc(v.loc)} ${esc(v.label)} ${esc(v.gender)}${v.premium?' (premium)':''}</option>`).join('');
     const sl = (id,min,max,val,unit) =>
       `<label style="display:block;margin:8px 0">${id} `
       + `<output id="${id}o">${val}${unit}</output>`
@@ -3479,12 +3482,7 @@
     return `<section class="panel pad">
       <p class="muted">Two engines. <b>Edge</b> = $0, tune freely. <b>ElevenLabs</b> = premium + brand voice (Claire), each preview burns Starter cap (${left} chars left of ${el.chars_limit||'?'}) - explicit click only.</p>
       <h3>Edge (free)</h3>
-      <label>Voice <select id="ttsVoice" style="width:100%;padding:6px;margin:4px 0">
-        <option value="premium">Premium - Andrew Multilingual [recommended]</option>
-        <option value="casual">Casual - Brian Multilingual</option>
-        <option value="premium-f">Premium F - Ava Multilingual</option>
-        <option value="irish">Irish - Connor (older tier)</option>
-        <option value="irish-f">Irish F - Emily</option></select></label>
+      <label>Voice <select id="ttsVoice" style="width:100%;padding:6px;margin:4px 0">${edgeOpts || '<option value="premium">Andrew Multilingual</option>'}</select></label>
       ${sl('rate',-30,30,-6,'%')}${sl('pitch',-20,20,0,'Hz')}${sl('vol',-50,50,0,'%')}
       <button class="btn primary" type="button" onclick="ttsPreview('edge')">Hear edge ($0)</button>
       <h3 style="margin-top:22px">ElevenLabs (premium - uses cap)</h3>

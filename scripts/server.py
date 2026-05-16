@@ -3056,6 +3056,33 @@ async def tts_samples_api(token: str = Query("")):
     }
 
 
+@app.get("/admin/api/edge-voices")
+async def edge_voices(token: str = Query("")):
+    check_admin(token)
+    try:
+        import edge_tts as _et
+        vs = await _et.list_voices()
+    except Exception as exc:  # noqa: BLE001
+        return JSONResponse(status_code=502,
+                            content={"error": str(exc)[:200]})
+    out = []
+    for v in vs:
+        sn = v.get("ShortName", "")
+        if not sn.startswith(("en-US", "en-GB", "en-AU", "en-IE",
+                              "en-CA", "en-NZ")):
+            continue
+        out.append({
+            "id": sn,
+            "loc": sn.split("-")[1],
+            "premium": "Multilingual" in sn,
+            "label": sn.replace("Neural", "").replace("Multilingual",
+                     " Multilingual").split("-", 2)[-1],
+            "gender": v.get("Gender", ""),
+        })
+    out.sort(key=lambda x: (not x["premium"], x["loc"], x["id"]))
+    return {"voices": out}
+
+
 @app.get("/admin/api/el-voices")
 async def el_voices(token: str = Query("")):
     check_admin(token)
