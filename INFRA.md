@@ -169,6 +169,11 @@ Owl Studio: `owl_sites`, `owl_leads`, `owl_tickets`, `owl_payments`
 | `care-concierge` | Owl Studio · Concierge care plan | `care-concierge-monthly`, `care-concierge-yearly` | €195/mo · €1,950/yr |
 | `site-starter-deposit` | Owl Studio · Starter site deposit (€348) | `site-starter-deposit` | €348 one-off (AUD-019) |
 | `site-pro-deposit` | Owl Studio · Pro site deposit (€798) | `site-pro-deposit` | €798 one-off (AUD-019) |
+| `site-managed-launch` | Owl Studio · Managed Website — Launch | `site-managed-launch-monthly` | €69/mo (D5, 2026-05-19) `price_1TYuVGCEqG2AuI1zqvAc1w2B` |
+| `site-managed-business` | Owl Studio · Managed Website — Business | `site-managed-business-monthly` | €100/mo (D5) `price_1TYuVHCEqG2AuI1zDn31aEM1` |
+| `site-managed-premium` | Owl Studio · Managed Website — Premium | `site-managed-premium-monthly` | €149/mo (D5) `price_1TYuVHCEqG2AuI1zSmCBhi0f` |
+
+> **D5 (2026-05-19, Adam "run now"):** Managed Website recurring ladder added. €0 onboarding, source retained, 12/12/18-mo min term = contractual (order-form §B1b), NOT a Stripe schedule. Canonical = `PRICING-SSOT.md` §1/§6a/§7 "Phase B execution log". **Note:** this §4 product/webhook table is otherwise stale (still lists pre-D1 €348/€798 deposits; webhook URL below = old onrender — the live canonical webhook is `we_1TVCAzCEqG2AuI1zI2qB6OM5` at `api.callmeie.ie`, see `OWL_STRIPE_WEBHOOK_SECRET_COOLIFY`). Stale rows annotated-in-place per staleness discipline; full §4 reconciliation tracked separately, not part of D5.
 
 ### 4.2 Payment Links (saved in `~/.claude/routes/.env`)
 
@@ -183,6 +188,9 @@ Owl Studio: `owl_sites`, `owl_leads`, `owl_tickets`, `owl_payments`
 | `care-concierge-yearly` | `OWL_STRIPE_LINK_CARE_CONCIERGE_YEARLY` |
 | `site-starter-deposit` | `OWL_STRIPE_LINK_SITE_STARTER_DEPOSIT` (AUD-019 — pending provisioner run) |
 | `site-pro-deposit` | `OWL_STRIPE_LINK_SITE_PRO_DEPOSIT` (AUD-019 — pending provisioner run) |
+| `site-managed-launch-monthly` | `OWL_STRIPE_LINK_SITE_MANAGED_LAUNCH` (D5 2026-05-19 — `buy.stripe.com/…IM0s`) |
+| `site-managed-business-monthly` | `OWL_STRIPE_LINK_SITE_MANAGED_BUSINESS` (D5 — `buy.stripe.com/…IM0t`) |
+| `site-managed-premium-monthly` | `OWL_STRIPE_LINK_SITE_MANAGED_PREMIUM` (D5 — `buy.stripe.com/…IM0u`) |
 
 #### AUD-019 — site-build deposit Payment Links runbook
 
