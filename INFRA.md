@@ -822,6 +822,72 @@ Per `document-ops-portal/CALLMEIE-DOCAI-V0.4-PRD.md` D-V0.4-07. Replaces Hugging
 
 **Adam-keyboard remaining: NONE for v0.4.1 corrections flywheel** — all four user-requested items (Label Studio config, consumer daemon, scheduled push, HCLOUD_TOKEN) shipped. First correction submitted via Label Studio UI will end-to-end verify webhook → INSERT → NOTIFY → consumer → JSONL → cron → bucket.
 
+### 14.6 Tenant inbox-{slug}@callmeie.ie IMAP credentials (RESOLVED 2026-05-20 — path picked = Mailcow self-host)
+
+**Decision 2026-05-20:** Adam picked Path 2 (Mailcow on AX52) over Path 1 (CF Email Routing → Proton Bridge). Bridge requires a desktop Proton client running on the box — AX52 is a headless server, no Bridge home. Full deploy plan at `jake-van-clief-icm/workspaces/doc-ops-product/stages/02-customer-intake/output/2026-05-20-mailcow-deploy-plan.md`. See §14.7 below for the operational reference.
+
+**Status as of 2026-05-20:** plan written; Adam-action items pending (Hetzner Robot rDNS, Mailcow `git clone` + install, mailbox + alias creation in admin UI, vault paste). Once those land, `INBOX_*` envs go into Coolify per §14.7 wiring section and daemon goes live.
+
+**Customer-facing runbook stance until live:** welcome-email + onboarding runbook still say "browser upload at /portal/{slug}/extract" — flip to "forward to inbox-{slug}@callmeie.ie" only once smoke test in §14.7 passes.
+
+### 14.7 Mailcow Mail Stack (callmeie.ie self-host, AX52 — provisioned 2026-05-20)
+
+Mailcow Dockerized takes over `*@callmeie.ie` mail flow. Replaces Cloudflare Email Routing (§16.6 in canonical). One mailbox `inbox@callmeie.ie` + catch-all alias `*@callmeie.ie → inbox@callmeie.ie` collects all `inbox-{slug}@callmeie.ie` forwards; `inbox_poller.py` daemon polls + dispatches per-slug. `hello@callmeie.ie` becomes a Mailcow alias forwarding to `Scruge@pm.me` (preserves existing UX).
+
+| Field | Value |
+|---|---|
+| Host | AX52 (`178.104.205.255`), Hetzner Nuremberg |
+| FQDN | `mail.callmeie.ie` |
+| rDNS | `mail.callmeie.ie` (Adam-action, Hetzner Robot panel) |
+| Software | Mailcow Dockerized (GPL-3.0; https://docs.mailcow.email) |
+| Install path | `/opt/mailcow-dockerized/` |
+| Data path | `/opt/mailcow-dockerized/data/` |
+| Admin UI | `https://mail.callmeie.ie/` (via Traefik reverse-proxy to 127.0.0.1:8080; `SKIP_LETS_ENCRYPT=y` — Traefik terminates TLS) |
+| Webmail (SOGo) | `https://mail.callmeie.ie/SOGo/` |
+| Direct ports (NOT proxied — Traefik can't reverse-proxy raw SMTP/IMAP) | `25/tcp` SMTP in · `465/tcp` SMTPS · `587/tcp` STARTTLS · `993/tcp` IMAPS · `4190/tcp` Sieve (optional) |
+| Admin creds | `MAILCOW_ADMIN_PASSWORD` in `~/.claude/routes/.env` (default `admin / moohoo` rotated at first login) |
+| IMAP user | `inbox@callmeie.ie` |
+| IMAP creds | `MAILCOW_IMAP_HOST=mail.callmeie.ie` · `MAILCOW_IMAP_PORT=993` · `MAILCOW_IMAP_USER=inbox@callmeie.ie` · `MAILCOW_IMAP_PASS=<vault>` · `MAILCOW_IMAP_TLS=true` — all in `~/.claude/routes/.env` |
+| Daemon contract | `document-ops-portal/app/services/inbox_poller.py` reads `INBOX_IMAP_*` (substrate-agnostic). Coolify env panel maps `MAILCOW_IMAP_*` (vault) → `INBOX_IMAP_*` (daemon) so future mail-backend swap is trivial |
+| Coolify env wiring | `INBOX_IMAP_HOST` · `INBOX_IMAP_PORT` · `INBOX_IMAP_USERNAME` · `INBOX_IMAP_PASSWORD` · `INBOX_DOMAIN=callmeie.ie` · `INBOX_POLL_INTERVAL_SEC=60` on portal app uuid `rs0jyp5cj24hutaxijacye6r` |
+| Aliases | `*@callmeie.ie → inbox@callmeie.ie` (catch-all for daemon) · `hello@callmeie.ie → Scruge@pm.me` (CF Email Routing replacement) · `postmaster@callmeie.ie → Scruge@pm.me` (DMARC reports) |
+
+**DNS records at Cloudflare (zone `0ed441de9cda4746aa4bbc3c46532c81`, callmeie.ie):**
+
+```
+A     mail.callmeie.ie                   178.104.205.255           TTL 300 (DNS-only)
+MX    callmeie.ie                        mail.callmeie.ie prio 10  TTL 300
+TXT   callmeie.ie                        v=spf1 a:mail.callmeie.ie ip4:178.104.205.255 ~all   TTL 300  [REPLACES old CF SPF]
+TXT   dkim._domainkey.callmeie.ie        v=DKIM1; k=rsa; p=<Mailcow-generated public key>     TTL 300
+TXT   _dmarc.callmeie.ie                 v=DMARC1; p=quarantine; rua=mailto:postmaster@callmeie.ie; ruf=mailto:postmaster@callmeie.ie; pct=100; aspf=r; adkim=r   TTL 300
+SRV   _autodiscover._tcp.callmeie.ie     0 0 443 mail.callmeie.ie  TTL 300 (optional AutoConfig)
+```
+
+**DELETED 2026-05-20** as part of cutover (use this list for rollback re-add):
+```
+MX  callmeie.ie  route1.mx.cloudflare.net  prio 81
+MX  callmeie.ie  route2.mx.cloudflare.net  prio 12
+MX  callmeie.ie  route3.mx.cloudflare.net  prio 23
+```
+
+**KEPT** the existing `cf2024-1._domainkey` TXT record (unused by Mailcow, harmless; safe to prune after 30 days of zero CF traffic).
+
+**Coolify port collision (resolved at install):** Coolify Traefik holds 80 + 443. Mailcow set `HTTP_BIND=127.0.0.1`, `HTTP_PORT=8080`, `HTTPS_BIND=127.0.0.1`, `HTTPS_PORT=8443`, `SKIP_LETS_ENCRYPT=y` in `mailcow.conf` BEFORE first `docker compose up`. Traefik label override added per Label Studio §14.4 compose-rewrite pattern.
+
+**Hetzner port 25 outbound:** open Robot support ticket "Allow outbound SMTP for legitimate mail" if blocked. Inbound 25 is open by default. Until the ticket clears, queue outbound mail in Mailcow (Postfix retries with backoff).
+
+**§16.6 supersession:** Cloudflare Email Routing for `hello@callmeie.ie` is **REPLACED** by Mailcow alias `hello@callmeie.ie → Scruge@pm.me`. `hello@` UX unchanged from end-user perspective; mail path now flows Mailcow Postfix → Proton SMTP. CF Email Routing rule status set to OFF in dashboard once smoke test passes. Update §16.6 in tandem if reverting.
+
+**Rollback:** see deploy plan §"Rollback procedure". DNS-only revert; Mailcow stays running for diagnosis. CF MX records + SPF + email-routing rule can be re-added in <5 min via Cloudflare API.
+
+**Cost:** zero incremental (Mailcow GPL-3.0, runs on existing AX52 headroom).
+
+**Cross-link:** full deploy plan + claude-mem findings + runbooks at
+- `jake-van-clief-icm/workspaces/doc-ops-product/stages/02-customer-intake/output/2026-05-20-mailcow-deploy-plan.md` (canonical plan)
+- `DOC-OPS-AUDIT-2026-05-20/09-CLAUDE-MEM-MAILCOW.md` (prior-state evidence)
+- `jake-van-clief-icm/workspaces/doc-ops-product/shared/producer-config.md` (producer-config inbox-host note)
+- `document-ops-portal/.env.example` (daemon env contract — Mailcow block)
+
 ## 15 · docs.callmeie.ie (Document Ops sales site — GitHub Pages)
 
 > **SUPERSEDED 2026-05-03:** subdomain `docs.callmeie.ie` retired. Sales surface folded into the path-based monorepo at `https://callmeie.ie/docs/` (scruge1/callmeie-hub). Cloudflare CNAME deleted, GH Pages custom-domain config cleared on `scruge1/docs-callmeie` (now serves only at `https://scruge1.github.io/docs-callmeie/`). Reason: LE cert never provisioned (`https_enforced: false`) — broken HTTPS state during transition window flagged by Codex peer review as P0 blocker. Faster to drop than fix-then-drop. Old GSC URL-prefix property submission should be removed by Adam at Search Console. Section kept for historical reference only.
