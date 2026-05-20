@@ -895,6 +895,62 @@ def _mirror_recording_to_hetzner(call_id: str, assistant_id: str,
         print(f"[Mirror] {call_id} → {archived}")
 
 
+def _delayed_mirror_via_vapi(call_id: str, assistant_id: str,
+                              max_attempts: int = 6, delay_seconds: int = 30):
+    """Poll Vapi GET /call/{id} on a delay; mirror as soon as URLs appear.
+
+    Handles the race where /vapi/call-ended fires before Vapi has finished
+    multiplexing + uploading the recording. Adam 2026-05-20: 4 days of silent
+    drops because the EOC payload had empty recordingUrl. Vapi populates the
+    fields seconds-to-minutes after the EOC webhook returns; this poller
+    waits and tries.
+
+    NEVER raises — runs in BackgroundTasks. Logs `recording-archive-failed`
+    only after exhausting all attempts so a delayed success leaves a clean
+    `recording-archived` row, not a misleading failure row."""
+    import time as _time
+    import requests as _rq
+    api_key = os.environ.get("VAPI_API_KEY", "").strip()
+    if not api_key:
+        log_event(call_id, "recording-archive-failed", assistant_id,
+                  "VAPI_API_KEY missing for delayed mirror",
+                  {"reason": "missing_api_key"})
+        return
+    last_error = ""
+    for attempt in range(1, max_attempts + 1):
+        _time.sleep(delay_seconds)
+        try:
+            r = _rq.get(
+                f"https://api.vapi.ai/call/{call_id}",
+                headers={"Authorization": f"Bearer {api_key}"},
+                timeout=15,
+            )
+            r.raise_for_status()
+            call = r.json()
+        except Exception as e:
+            last_error = f"Vapi GET attempt {attempt} failed: {str(e)[:120]}"
+            print(f"[DelayedMirror] {call_id} attempt {attempt}/{max_attempts} fetch error: {e}")
+            continue
+        art = call.get("artifact") or {}
+        mono = art.get("recordingUrl") or call.get("recordingUrl") or ""
+        stereo = art.get("stereoRecordingUrl") or call.get("stereoRecordingUrl") or ""
+        if not (mono or stereo):
+            rec = (art.get("recording") or {})
+            stereo = stereo or rec.get("stereoUrl") or ""
+            mono = mono or ((rec.get("mono") or {}).get("combinedUrl") or "")
+        if mono or stereo:
+            print(f"[DelayedMirror] {call_id} URLs populated on attempt {attempt}; mirroring")
+            _mirror_recording_to_hetzner(call_id, assistant_id, mono, stereo)
+            return
+        print(f"[DelayedMirror] {call_id} attempt {attempt}/{max_attempts} — URLs still empty")
+    log_event(
+        call_id, "recording-archive-failed", assistant_id,
+        f"Vapi recordingUrl never populated after {max_attempts}x{delay_seconds}s",
+        {"max_attempts": max_attempts, "delay_seconds": delay_seconds,
+         "last_error": last_error},
+    )
+
+
 def score_anomaly(status: str, duration: int, is_demo: bool) -> float:
     """
     Score how anomalous a call-ended event is (0.0â1.0).
@@ -1263,6 +1319,16 @@ async def call_ended(request: Request, background_tasks: BackgroundTasks):
         background_tasks.add_task(
             _mirror_recording_to_hetzner,
             call_id, assistant_id, recording_url, stereo_url,
+        )
+    elif call_id:
+        # 2026-05-20 — Vapi EOC race: recordingUrl/stereoRecordingUrl can be
+        # empty in the end-of-call-report payload because the recording
+        # mux/upload finishes seconds-to-minutes AFTER the EOC webhook fires.
+        # Schedule a delayed poller that hits Vapi GET /call/{id} until the
+        # URLs appear, then mirrors. Without this the recording is silently
+        # dropped (no row in recordings/, no recording-archive-failed event).
+        background_tasks.add_task(
+            _delayed_mirror_via_vapi, call_id, assistant_id,
         )
 
     # 2026-05-13 — for handoff chains where Vapi reports empty/origin assistantId,
@@ -6022,6 +6088,89 @@ async def admin_recordings(token: str = Query(""), limit: int = Query(50)):
         return JSONResponse({"recordings": out, "count": len(out)})
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Hetzner list failed: {e}")
+
+
+@app.post("/admin/api/remirror/{call_id}")
+async def admin_remirror(call_id: str, background_tasks: BackgroundTasks,
+                          token: str = Query("")):
+    """2026-05-20 — manual recording-mirror trigger.
+
+    Use to backfill a single call when the EOC race (recordingUrl empty in
+    end-of-call-report payload) silently dropped the mirror. Hits Vapi
+    GET /call/{id}; if URLs present, schedules `_mirror_recording_to_hetzner`
+    immediately; if still empty, schedules the delayed poller. Idempotent
+    against the Hetzner key (existing audio is overwritten with same bytes;
+    safe to call multiple times).
+
+    Token-gated via ADMIN_TOKEN. Look up assistant_id from the latest
+    call_events row so the mirror log_event() carries the right tenant."""
+    check_admin(token)
+    if not call_id:
+        raise HTTPException(status_code=400, detail="call_id required")
+    api_key = os.environ.get("VAPI_API_KEY", "").strip()
+    if not api_key:
+        raise HTTPException(status_code=500, detail="VAPI_API_KEY missing on server")
+
+    assistant_id = ""
+    try:
+        with get_db() as conn:
+            row = conn.execute(
+                "SELECT assistant FROM call_events WHERE call_id=? "
+                "AND event_type='call-ended' ORDER BY id DESC LIMIT 1",
+                (call_id,),
+            ).fetchone()
+            if row:
+                assistant_id = (row["assistant"] if "assistant" in row.keys() else "") or ""
+    except Exception:
+        pass
+
+    import requests as _rq
+    try:
+        r = _rq.get(
+            f"https://api.vapi.ai/call/{call_id}",
+            headers={"Authorization": f"Bearer {api_key}"},
+            timeout=15,
+        )
+        r.raise_for_status()
+        call = r.json()
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Vapi fetch failed: {str(e)[:200]}")
+
+    art = call.get("artifact") or {}
+    mono = art.get("recordingUrl") or call.get("recordingUrl") or ""
+    stereo = art.get("stereoRecordingUrl") or call.get("stereoRecordingUrl") or ""
+    if not (mono or stereo):
+        rec = (art.get("recording") or {})
+        stereo = stereo or rec.get("stereoUrl") or ""
+        mono = mono or ((rec.get("mono") or {}).get("combinedUrl") or "")
+    if not assistant_id:
+        assistant_id = (
+            call.get("assistantId")
+            or (call.get("assistant") or {}).get("id")
+            or ""
+        )
+
+    if mono or stereo:
+        background_tasks.add_task(
+            _mirror_recording_to_hetzner,
+            call_id, assistant_id, mono, stereo,
+        )
+        return JSONResponse({
+            "status": "scheduled",
+            "call_id": call_id,
+            "assistant_id": assistant_id,
+            "mono": bool(mono),
+            "stereo": bool(stereo),
+        })
+
+    background_tasks.add_task(
+        _delayed_mirror_via_vapi, call_id, assistant_id,
+    )
+    return JSONResponse({
+        "status": "delayed_retry_scheduled",
+        "call_id": call_id,
+        "assistant_id": assistant_id,
+    })
 
 
 # ========== Sprint 3 (PRD-ADMIN-DASHBOARD-OWNER-CONTROL-2026-05-11) ==========
