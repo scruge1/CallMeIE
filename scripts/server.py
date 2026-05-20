@@ -5249,6 +5249,118 @@ _OWL_KEY_TO_CARE_TIER = {
 }
 
 
+# ─── D5 managed-website Stripe price IDs (canonical = PRICING-SSOT.md §6a) ──
+# Live mode. These three IDs trigger a /new-service-site build job via the
+# d5_build_runner daemon; nothing else here triggers a build. Update this
+# set if PRICING-SSOT changes. Gap A from PDR-CLIENT-FULFILLMENT.md §6.
+D5_PRICE_ID_TO_TIER = {
+    "price_1TYuVGCEqG2AuI1zqvAc1w2B": "launch",     # €69/mo, 12-mo min
+    "price_1TYuVHCEqG2AuI1zDn31aEM1": "business",   # €100/mo, 12-mo min
+    "price_1TYuVHCEqG2AuI1zSmCBhi0f": "premium",    # €149/mo, 18-mo min
+}
+
+
+def _d5_init_queue_table() -> None:
+    """Idempotent runtime DDL — mirrors _owl_init_payments_table pattern so
+    the table exists on both SQLite (local dev) and Postgres (prod) without
+    waiting for alembic. The alembic migration 0011_d5_build_queue.py uses
+    native postgres types (JSONB, TIMESTAMPTZ) for prod; this runtime DDL
+    uses cross-compatible TEXT for the payload + the existing
+    `TEXT NOT NULL DEFAULT (datetime('now'))` pattern for timestamps (which
+    _ddl_fix translates to NOW() on PG). _ddl_fix already handles
+    INTEGER PRIMARY KEY AUTOINCREMENT -> BIGSERIAL.
+    """
+    with get_db() as conn:
+        conn.execute(_ddl_fix("""
+            CREATE TABLE IF NOT EXISTS d5_build_queue (
+                id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+                stripe_event_id     TEXT NOT NULL UNIQUE,
+                site_id             TEXT NOT NULL,
+                tier                TEXT NOT NULL,
+                stripe_price_id     TEXT NOT NULL,
+                customer_email      TEXT NOT NULL,
+                customer_name       TEXT,
+                customer_phone      TEXT,
+                intake_payload      TEXT NOT NULL DEFAULT '{}',
+                status              TEXT NOT NULL DEFAULT 'queued',
+                attempts            INTEGER NOT NULL DEFAULT 0,
+                last_error          TEXT,
+                queued_at           TEXT NOT NULL DEFAULT (datetime('now')),
+                started_at          TEXT,
+                finished_at         TEXT,
+                notified_owner_at   TEXT,
+                anonymise_at        TEXT
+            )
+        """))
+        conn.execute(_ddl_fix(
+            "CREATE INDEX IF NOT EXISTS idx_d5_build_site ON d5_build_queue(site_id)"
+        ))
+
+
+_d5_init_queue_table()
+
+
+def _extract_stripe_price_id(obj: dict, event_type: str) -> str:
+    """Extract price.id from either a checkout.session or subscription event.
+    Tolerant — returns '' if not found (caller treats '' as 'not D5').
+    Tried sources, in order:
+      1. obj.metadata.price_id (set by some Payment Links)
+      2. obj.items.data[0].price.id (subscription events)
+      3. obj.line_items.data[0].price.id (expanded checkout sessions, rare)
+    """
+    meta = obj.get("metadata") or {}
+    pid = (meta.get("price_id") or "").strip()
+    if pid:
+        return pid
+    items = (obj.get("items") or {}).get("data") or []
+    if items:
+        price = items[0].get("price") or {}
+        if price.get("id"):
+            return price["id"]
+    li = (obj.get("line_items") or {}).get("data") or []
+    if li:
+        price = li[0].get("price") or {}
+        if price.get("id"):
+            return price["id"]
+    return ""
+
+
+def _d5_pull_intake_for_email(email: str) -> dict:
+    """Best-effort link to a prior /submit-onboarding row (the proven intake
+    surface — see submit_onboarding handler). Matches on contact_email, latest
+    row wins. Returns {} on miss. The returned dict is the seed for the
+    /new-service-site brief.json the runner later writes."""
+    if not email:
+        return {}
+    try:
+        with get_db() as conn:
+            cur = conn.execute(
+                """SELECT business_name, contact_name, contact_phone, contact_email,
+                          business_type, address, hours, services, plan, ai_name, notes
+                     FROM submissions
+                    WHERE lower(contact_email) = lower(?)
+                    ORDER BY id DESC LIMIT 1""",
+                (email,),
+            )
+            row = cur.fetchone()
+            if not row:
+                return {}
+            cols = ["business_name", "contact_name", "contact_phone",
+                    "contact_email", "business_type", "address", "hours",
+                    "services", "plan", "ai_name", "notes"]
+            # Tolerant of dict_row (psycopg dict_row) vs tuple (sqlite Row)
+            if isinstance(row, dict):
+                return {k: row[k] for k in cols if row.get(k) is not None}
+            try:
+                items = dict(row)  # sqlite3.Row supports dict()
+            except Exception:
+                items = {cols[i]: row[i] for i in range(len(cols))}
+            return {k: items[k] for k in cols if items.get(k) is not None}
+    except Exception as e:
+        print(f"[d5_enqueue] intake lookup failed for {email}: {e}", flush=True)
+        return {}
+
+
 @app.post("/owl/stripe/webhook")
 async def owl_stripe_webhook(request: Request, background_tasks: BackgroundTasks) -> JSONResponse:
     """Stripe webhook receiver. Verifies signature, dedupes by event id,
@@ -5381,9 +5493,136 @@ async def owl_stripe_webhook(request: Request, background_tasks: BackgroundTasks
                 except Exception as e:  # noqa: BLE001 — auto-provision must not break the webhook
                     print(f"[owl_stripe] auto-provision failed for {cust_email}: {e}", flush=True)
 
+    # ─── D5 managed-website build enqueue (Gap A) ────────────────────
+    # If this is a checkout.session.completed for one of the 3 D5 price
+    # IDs, write a row into d5_build_queue. The d5_build_runner daemon
+    # picks it up within ≤60s and invokes /new-service-site. Webhook
+    # returns 200 fast — Stripe requires <10s response — the build
+    # happens out-of-band.
+    #
+    # This branch FIRES BEFORE the existing owner-SMS block but AFTER
+    # the legacy auto_provisioned_site_id (site-starter-deposit /
+    # site-pro-deposit) path. They're orthogonal: legacy = one-off
+    # website deposits with `owl_key` metadata; D5 = recurring managed
+    # websites with `price_id` matching D5_PRICE_ID_TO_TIER. A single
+    # Stripe event will match at most one path.
+    d5_enqueued = False
+    d5_tier = None
+    target_site_id = None
+    if event_type == "checkout.session.completed":
+        import re as _d5_re  # local — module-level `re` is not imported
+        import time as _d5_time
+        stripe_price_id = _extract_stripe_price_id(obj, event_type)
+        d5_tier = D5_PRICE_ID_TO_TIER.get(stripe_price_id)
+        if d5_tier:
+            details = obj.get("customer_details") or {}
+            cust_email = (details.get("email") or "").strip().lower()
+            cust_name = (details.get("name") or "").strip()
+            cust_phone = (details.get("phone") or "").strip()
+            if not cust_email:
+                # No email = can't auto-provision a site or contact the
+                # customer. Don't enqueue; SMS Adam to handle manually.
+                print(
+                    f"[d5_enqueue] D5 purchase {stripe_price_id} but no "
+                    f"customer_email — manual handling",
+                    flush=True,
+                )
+                if OWNER_NUMBER:
+                    background_tasks.add_task(
+                        send_sms,
+                        OWNER_NUMBER,
+                        f"CallMeIE * D5 NO-EMAIL * {stripe_price_id} * "
+                        f"cust {customer_id[:12]} * handle manually",
+                    )
+            else:
+                # site_id: reuse auto_provisioned_site_id if the upstream
+                # block already created one (won't happen for D5 since
+                # D5 price_ids are not in SITE_BUILD_KEYS); otherwise
+                # mint a new one in parallel to the site-*-deposit branch.
+                target_site_id = site_id or auto_provisioned_site_id
+                if not target_site_id:
+                    slug = _d5_re.sub(r"[^a-z0-9]+", "-",
+                                      cust_email.split("@")[0].lower()).strip("-") or "client"
+                    ts_suffix = str(int(_d5_time.time()))[-6:]
+                    target_site_id = f"{slug}-{ts_suffix}"
+                    token_val = _secrets.token_urlsafe(24)
+                    try:
+                        with get_db() as conn:
+                            conn.execute(
+                                """INSERT INTO owl_sites
+                                     (site_id, display_name, tier, care_tier,
+                                      lead_email, lead_sms, edit_emails,
+                                      admin_token, live_url, status)
+                                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                                (target_site_id, cust_name or cust_email, d5_tier,
+                                 None, cust_email, cust_phone, "[]", token_val,
+                                 f"https://callmeie.ie/clients/{target_site_id}/",
+                                 "intake"),
+                            )
+                    except Exception as e:  # noqa: BLE001 — must not break webhook
+                        print(
+                            f"[d5_enqueue] owl_sites insert failed for {cust_email}: {e}",
+                            flush=True,
+                        )
+
+                intake = _d5_pull_intake_for_email(cust_email)
+                # Merge Stripe customer_details on top of the submissions row
+                # (Stripe is fresher for name/phone if customer updated during checkout).
+                intake.setdefault("business_name", cust_name or cust_email)
+                intake["contact_email"] = cust_email
+                if cust_name:
+                    intake["contact_name"] = cust_name
+                if cust_phone:
+                    intake["contact_phone"] = cust_phone
+                intake["tier"] = d5_tier
+                intake["stripe_price_id"] = stripe_price_id
+
+                try:
+                    with get_db() as conn:
+                        # ON CONFLICT (stripe_event_id) DO NOTHING in Postgres;
+                        # SQLite UNIQUE enforces the same shape, the
+                        # _DbIntegrityError catch below handles SQLite path.
+                        conn.execute(
+                            """INSERT INTO d5_build_queue
+                                 (stripe_event_id, site_id, tier, stripe_price_id,
+                                  customer_email, customer_name, customer_phone,
+                                  intake_payload)
+                               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                            (event_id, target_site_id, d5_tier, stripe_price_id,
+                             cust_email, cust_name or None, cust_phone or None,
+                             json.dumps(intake, ensure_ascii=False)),
+                        )
+                    d5_enqueued = True
+                except _DbIntegrityError:
+                    # Replayed event (same stripe_event_id). Already enqueued —
+                    # webhook is idempotent at this layer just like owl_payments.
+                    print(
+                        f"[d5_enqueue] dedupe (already enqueued) "
+                        f"event={event_id} site={target_site_id}",
+                        flush=True,
+                    )
+                except Exception as e:  # noqa: BLE001 — hard-log, do NOT raise
+                    print(
+                        f"[d5_enqueue] FAIL site={target_site_id} err={e}",
+                        flush=True,
+                    )
+                    if OWNER_NUMBER:
+                        background_tasks.add_task(
+                            send_sms,
+                            OWNER_NUMBER,
+                            f"CallMeIE * D5 ENQUEUE FAIL * {target_site_id} * "
+                            f"{cust_email} * see logs",
+                        )
+    # ─── /D5 enqueue ──────────────────────────────────────────────────
+
     # Owner SMS on notable events
     if event_type == "checkout.session.completed":
-        if auto_provisioned_site_id:
+        if d5_enqueued:
+            sms = (
+                f"CallMeIE * D5 PAID * {d5_tier} * {target_site_id} * "
+                f"{amount/100:.0f} {currency} * build queued"
+            )
+        elif auto_provisioned_site_id:
             sms = (
                 f"OwlStudio * NEW SITE * {auto_provisioned_site_id} * "
                 f"{product_key} * {amount/100:.0f} {currency} * cust {customer_id[:12]}"
@@ -5402,6 +5641,8 @@ async def owl_stripe_webhook(request: Request, background_tasks: BackgroundTasks
         "event_type": event_type,
         "product_key": product_key,
         "auto_provisioned_site_id": auto_provisioned_site_id,
+        "d5_enqueued": d5_enqueued,
+        "d5_tier": d5_tier,
     })
 
 

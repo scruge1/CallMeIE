@@ -1,0 +1,36 @@
+# Dockerfile.d5-build-runner — Coolify build pack target (PDR §6 Gap A).
+#
+# Deploys as a SEPARATE Coolify app (not folded into callmeie-api per
+# constraint: "must NOT crash the existing callmeie-api FastAPI process").
+# Mirror of docops-rescue-daemon shape: python:3.13-slim + node for the
+# claude CLI + psycopg + a thin runtime layer.
+FROM python:3.13-slim
+
+# claude CLI is a Node-based package — install nodejs + the official package.
+# Pinning to @latest matches @anthropic-ai/claude-code release cadence;
+# tighten to a specific version once we've smoke-tested.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+       curl ca-certificates nodejs npm git \
+    && rm -rf /var/lib/apt/lists/*
+RUN npm install -g @anthropic-ai/claude-code@latest
+
+# Python deps (separate file so build cache survives source edits).
+COPY requirements-d5-runner.txt /tmp/requirements-d5-runner.txt
+RUN pip install --no-cache-dir -r /tmp/requirements-d5-runner.txt
+
+WORKDIR /app
+COPY d5_build_runner.py d5-build-runner.sh /app/
+RUN chmod +x /app/d5-build-runner.sh \
+    && mkdir -p /var/d5-builds
+
+ENV PYTHONUNBUFFERED=1 \
+    CLAUDE_CLI_BIN=/usr/local/bin/claude \
+    BUILD_OUTPUT_ROOT=/var/d5-builds \
+    POLL_INTERVAL_SECONDS=60 \
+    MAX_ATTEMPTS=3 \
+    BUILD_TIMEOUT_SEC=1800 \
+    D5_RETENTION_DAYS=90
+
+# No public port — daemon only polls Postgres.
+CMD ["/app/d5-build-runner.sh"]
