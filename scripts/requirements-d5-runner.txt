@@ -1,0 +1,5 @@
+# d5_build_runner daemon deps (kept minimal — runner does not import the
+# FastAPI stack). Pin minor versions to match the Postgres driver used by
+# server.py (psycopg 3.x).
+psycopg[binary]>=3.1,<4
+requests>=2.31,<3
