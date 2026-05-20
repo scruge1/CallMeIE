@@ -37,6 +37,8 @@ import os
 import sys
 import requests
 
+from voice_catalog import voice_for_industry
+
 VAPI_API_KEY = os.environ.get("VAPI_API_KEY", "")
 TEMPLATE_PROMPT = """You are {ai_name}, the receptionist at {business_name} in Limerick. You answer phone calls, help callers with questions, and book appointments.
 
@@ -111,7 +113,7 @@ def create_client(config: dict) -> dict:
                 "temperature": 0.7,
                 "messages": [{"role": "system", "content": prompt}],
             },
-            "voice": {"provider": "11labs", "voiceId": "dN8hviqdNrAsEcL57yFj"},
+            "voice": {"provider": "11labs", "voiceId": voice_for_industry(industry=config.get("industry"))["voice_id"]},
             "transcriber": {
                 "provider": "deepgram",
                 "model": "nova-3",
