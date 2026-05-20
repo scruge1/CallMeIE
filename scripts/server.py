@@ -43,6 +43,8 @@ from googleapiclient.discovery import build
 
 sys.path.insert(0, os.path.dirname(__file__))
 
+from voice_catalog import voice_for_industry  # noqa: E402  (D6 — needs sys.path above)
+
 app = FastAPI(title="CallMeIE — AI Receptionist Server")
 
 
@@ -2996,7 +2998,7 @@ async def provision_client(sub: dict) -> str:
                 "temperature": 0.7,
                 "messages": [{"role": "system", "content": prompt}],
             },
-            "voice": {"provider": "11labs", "voiceId": "dN8hviqdNrAsEcL57yFj"},
+            "voice": {"provider": "11labs", "voiceId": voice_for_industry(business_type=sub.get("business_type"))["voice_id"]},
             "transcriber": {"provider": "deepgram", "model": "nova-3",
                             "language": "en", "smartFormat": True, "numerals": True,
                             "endpointing": 10},
