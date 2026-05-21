@@ -19,10 +19,13 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-# Pull URL from env at runtime (psycopg-compatible).
+# Pull URL from env at runtime (psycopg3-compatible — container ships psycopg + psycopg-binary v3, NOT psycopg2).
 db_url = os.environ.get("DATABASE_URL", "").strip()
 if db_url.startswith("postgres://"):
     db_url = db_url.replace("postgres://", "postgresql://", 1)
+# Force psycopg3 dialect — SQLAlchemy default "postgresql://" maps to psycopg2.
+if db_url.startswith("postgresql://") and not db_url.startswith("postgresql+psycopg://"):
+    db_url = db_url.replace("postgresql://", "postgresql+psycopg://", 1)
 if not db_url:
     print(
         "[alembic.env] DATABASE_URL not set — refusing to run. "
