@@ -65,6 +65,16 @@ MAX_ATTEMPTS = int(os.environ.get("MAX_ATTEMPTS", "3"))
 BUILD_TIMEOUT_SEC = int(os.environ.get("BUILD_TIMEOUT_SEC", "1800"))
 RETENTION_DAYS = int(os.environ.get("D5_RETENTION_DAYS", "90"))
 
+# ─── Codex-audit hardening knobs (commit 73a3a2a review) ─────────────
+# A runaway `claude` CLI run can hang past the timeout, leave orphan
+# child processes (npm/node/git the skill spawns), spew unbounded
+# output into the daemon's RAM, or produce a junk dist/. These caps
+# make every one of those a loud, bounded failure.
+MAX_OUTPUT_BYTES = int(os.environ.get("D5_MAX_CLAUDE_OUTPUT_BYTES", "2000000"))
+MAX_DIST_BYTES = int(os.environ.get("D5_MAX_DIST_BYTES", "25000000"))
+MIN_INDEX_BYTES = int(os.environ.get("D5_MIN_INDEX_BYTES", "200"))
+CLAUDE_MAX_TURNS = int(os.environ.get("D5_CLAUDE_MAX_TURNS", "60"))
+
 
 def _preflight() -> None:
     """Fail closed if dependencies are missing. Constraint:
@@ -244,9 +254,47 @@ def _build_brief(job: dict) -> dict:
     }
 
 
+def _validate_dist(build_dir: Path) -> str | None:
+    """Validate the skill's dist/ output. Returns a reason string on
+    failure, or None when the build is acceptable. Codex audit (commit
+    73a3a2a) — an exit-0 from `claude` is not proof of a real site;
+    the skill can exit clean with an empty/junk/bloated dist/.
+      - dist/ must exist and be a directory
+      - dist/index.html must exist and be >= MIN_INDEX_BYTES
+      - total dist/ size must be <= MAX_DIST_BYTES
+    """
+    dist = build_dir / "dist"
+    index = dist / "index.html"
+    if not dist.is_dir():
+        return "missing dist/"
+    if not index.is_file():
+        return "missing dist/index.html"
+    if index.stat().st_size < MIN_INDEX_BYTES:
+        return (
+            f"dist/index.html too small "
+            f"({index.stat().st_size} < {MIN_INDEX_BYTES} bytes)"
+        )
+    total = sum(p.stat().st_size for p in dist.rglob("*") if p.is_file())
+    if total > MAX_DIST_BYTES:
+        return f"dist too large: {total} > {MAX_DIST_BYTES} bytes"
+    return None
+
+
 def _invoke_skill(brief_path: Path, build_dir: Path) -> tuple[int, str, str]:
     """Run `claude` CLI in headless mode to execute /new-service-site.
-    Returns (exit_code, stdout, stderr)."""
+    Returns (exit_code, stdout, stderr).
+
+    Codex audit (commit 73a3a2a) hardening:
+      - `start_new_session=True` puts the CLI + every child it spawns
+        (node/npm/git) in a fresh process GROUP, so a timeout kill can
+        os.killpg the WHOLE tree — not just the `claude` parent, which
+        would otherwise orphan a runaway `npm install`.
+      - `--max-turns` caps the agent loop so a stuck skill cannot burn
+        the full BUILD_TIMEOUT_SEC every attempt.
+      - output is bounded: if stdout+stderr exceed MAX_OUTPUT_BYTES the
+        process group is killed and exit 124 is returned, so a chatty
+        run cannot exhaust the daemon container's RAM.
+    """
     env = os.environ.copy()
     env["ANTHROPIC_API_KEY"] = ANTHROPIC_API_KEY
     prompt = (
@@ -254,16 +302,52 @@ def _invoke_skill(brief_path: Path, build_dir: Path) -> tuple[int, str, str]:
         f"Output to {build_dir}. Do not prompt for confirmation — proceed end-to-end. "
         f"Stop only on hard QA failure."
     )
-    proc = subprocess.run(
-        [CLAUDE_CLI_BIN, "-p", prompt, "--output-format", "text"],
+    proc = subprocess.Popen(
+        [
+            CLAUDE_CLI_BIN, "-p", prompt,
+            "--output-format", "text",
+            "--max-turns", str(CLAUDE_MAX_TURNS),
+        ],
         env=env,
-        capture_output=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
         text=True,
-        timeout=BUILD_TIMEOUT_SEC,
         cwd=str(build_dir),
-        check=False,
+        start_new_session=True,
     )
-    return proc.returncode, proc.stdout, proc.stderr
+    try:
+        out, err = proc.communicate(timeout=BUILD_TIMEOUT_SEC)
+    except subprocess.TimeoutExpired:
+        _kill_process_group(proc)
+        out, err = proc.communicate()
+        raise subprocess.TimeoutExpired(
+            proc.args, BUILD_TIMEOUT_SEC, out, err
+        )
+
+    out = out or ""
+    err = err or ""
+    if len(out.encode("utf-8", "replace")) + len(err.encode("utf-8", "replace")) > MAX_OUTPUT_BYTES:
+        _kill_process_group(proc)
+        return (
+            124,
+            out[-4000:],
+            f"claude output exceeded D5_MAX_CLAUDE_OUTPUT_BYTES "
+            f"({MAX_OUTPUT_BYTES} bytes) — killed",
+        )
+    return proc.returncode, out, err
+
+
+def _kill_process_group(proc: subprocess.Popen) -> None:
+    """SIGKILL the whole process group started by `start_new_session=True`.
+    Best-effort — the process may already be gone."""
+    try:
+        os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+    except (ProcessLookupError, PermissionError, OSError) as e:
+        print(f"[d5_runner] process-group kill best-effort: {e}", flush=True)
+        try:
+            proc.kill()
+        except Exception:  # noqa: BLE001
+            pass
 
 
 def _process_job(job: dict) -> None:
@@ -298,15 +382,21 @@ def _process_job(job: dict) -> None:
         return
 
     if code == 0:
-        # Sanity: dist/ should exist now (skill's QA stage produces it)
-        dist_dir = build_dir / "dist"
-        if not dist_dir.is_dir() or not any(dist_dir.iterdir()):
-            err_msg = f"skill exited 0 but dist/ empty (build_dir={build_dir})"
+        # Sanity: a clean exit is not proof of a real site. The skill's
+        # QA stage produces dist/ — validate it actually exists, has a
+        # non-trivial index.html, and is not pathologically large
+        # (Codex audit, commit 73a3a2a).
+        dist_reason = _validate_dist(build_dir)
+        if dist_reason is not None:
+            err_msg = (
+                f"skill exited 0 but dist invalid: {dist_reason} "
+                f"(build_dir={build_dir})"
+            )
             final = _mark_failed(job_id, job["attempts"], err_msg)
             if final:
                 _sms_owner(
                     f"CallMeIE * D5 BUILD BLOCKED * {site_id} * "
-                    f"empty dist after success exit"
+                    f"invalid dist after success exit ({dist_reason})"
                 )
             return
         _mark_succeeded(job_id)

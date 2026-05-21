@@ -5307,21 +5307,97 @@ def _extract_stripe_price_id(obj: dict, event_type: str) -> str:
       1. obj.metadata.price_id (set by some Payment Links)
       2. obj.items.data[0].price.id (subscription events)
       3. obj.line_items.data[0].price.id (expanded checkout sessions, rare)
+      4. obj.lines.data[0].price.id (invoice events)
+      5. Stripe API fallback for unexpanded Checkout Sessions
     """
     meta = obj.get("metadata") or {}
     pid = (meta.get("price_id") or "").strip()
     if pid:
         return pid
-    items = (obj.get("items") or {}).get("data") or []
-    if items:
-        price = items[0].get("price") or {}
-        if price.get("id"):
-            return price["id"]
-    li = (obj.get("line_items") or {}).get("data") or []
-    if li:
-        price = li[0].get("price") or {}
-        if price.get("id"):
-            return price["id"]
+
+    for container in ("items", "line_items", "lines"):
+        pid = _extract_stripe_price_id_from_data(obj.get(container))
+        if pid:
+            return pid
+
+    if event_type == "checkout.session.completed":
+        return _fetch_checkout_session_price_id(obj)
+    return ""
+
+
+def _extract_stripe_price_id_from_data(container: object) -> str:
+    data = (container or {}).get("data") if isinstance(container, dict) else []
+    for item in data or []:
+        if not isinstance(item, dict):
+            continue
+        price = item.get("price") or {}
+        if isinstance(price, dict) and price.get("id"):
+            return str(price["id"])
+        plan = item.get("plan") or {}
+        if isinstance(plan, dict) and plan.get("id"):
+            return str(plan["id"])
+        meta = item.get("metadata") or {}
+        if isinstance(meta, dict) and meta.get("price_id"):
+            return str(meta["price_id"]).strip()
+    return ""
+
+
+def _fetch_checkout_session_price_id(session: dict) -> str:
+    """Checkout webhooks do not include line_items unless explicitly expanded."""
+    api_key = (
+        globals().get("OWL_STRIPE_API_KEY")
+        or os.environ.get("STRIPE_API_KEY")
+        or os.environ.get("STRIPE_SECRET_KEY")
+        or os.environ.get("STRIPE_API")
+        or ""
+    ).strip()
+    session_id = (session.get("id") or "").strip()
+    if not api_key or not session_id:
+        return ""
+
+    headers = {"Authorization": f"Bearer {api_key}"}
+
+    # Works for payment mode and subscription mode Checkout line items.
+    try:
+        r = httpx.get(
+            f"https://api.stripe.com/v1/checkout/sessions/{session_id}/line_items",
+            headers=headers,
+            params={"limit": 10, "expand[]": "data.price"},
+            timeout=5.0,
+        )
+        if r.status_code == 200:
+            pid = _extract_stripe_price_id_from_data(r.json())
+            if pid:
+                return pid
+        else:
+            print(
+                f"[d5_enqueue] Stripe line_items lookup failed "
+                f"session={session_id} status={r.status_code} body={r.text[:160]}",
+                flush=True,
+            )
+    except Exception as e:  # noqa: BLE001 — webhook must stay best-effort
+        print(f"[d5_enqueue] Stripe line_items lookup failed session={session_id}: {e}", flush=True)
+
+    # Extra guard for subscription mode if line_items lookup is unavailable.
+    sub_id = session.get("subscription") or ""
+    if isinstance(sub_id, str) and sub_id:
+        try:
+            r = httpx.get(
+                f"https://api.stripe.com/v1/subscriptions/{sub_id}",
+                headers=headers,
+                params={"expand[]": "items.data.price"},
+                timeout=5.0,
+            )
+            if r.status_code == 200:
+                return _extract_stripe_price_id_from_data((r.json() or {}).get("items"))
+            print(
+                f"[d5_enqueue] Stripe subscription lookup failed "
+                f"subscription={sub_id} status={r.status_code} body={r.text[:160]}",
+                flush=True,
+            )
+        except Exception as e:  # noqa: BLE001
+            print(f"[d5_enqueue] Stripe subscription lookup failed subscription={sub_id}: {e}", flush=True)
+
     return ""
 
 
@@ -5514,6 +5590,34 @@ async def owl_stripe_webhook(request: Request, background_tasks: BackgroundTasks
         import time as _d5_time
         stripe_price_id = _extract_stripe_price_id(obj, event_type)
         d5_tier = D5_PRICE_ID_TO_TIER.get(stripe_price_id)
+        if not stripe_price_id:
+            # A checkout.session.completed where NO extraction path
+            # (metadata / items / line_items / API fallback) resolved a
+            # price. For a subscription-mode checkout this is the
+            # revenue-to-fulfilment break the Codex audit flagged: a
+            # paying customer may be a D5 buyer and the build would be
+            # silently skipped. A loud failure beats a silent one — log
+            # an error AND SMS the owner for manual review. Non-D5
+            # one-off deposits (mode=payment, handled via owl_key
+            # SITE_BUILD_KEYS above) are NOT alerted on here: that path
+            # has its own provisioning and does not need a price_id.
+            session_mode = (obj.get("mode") or "").strip()
+            print(
+                f"[d5_enqueue] ERROR checkout.session.completed could not "
+                f"resolve a price_id session={obj.get('id') or '?'} "
+                f"mode={session_mode or '?'} "
+                f"subscription={obj.get('subscription') or ''}",
+                flush=True,
+            )
+            if session_mode == "subscription" and OWNER_NUMBER:
+                _sess_id = (obj.get("id") or "?")
+                background_tasks.add_task(
+                    send_sms,
+                    OWNER_NUMBER,
+                    f"CallMeIE * D5 PRICE-RESOLVE FAIL * checkout {_sess_id} "
+                    f"* sub-mode checkout, no price_id resolved * possible "
+                    f"D5 build skipped * manual review needed",
+                )
         if d5_tier:
             details = obj.get("customer_details") or {}
             cust_email = (details.get("email") or "").strip().lower()
