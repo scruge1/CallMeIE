@@ -8692,6 +8692,379 @@ async def client_root(assistant: str = Query(""), token: str = Query("")):
 # --- END MVP customer Receptionist Today routes --------------------------
 
 
+# --- BEGIN MVP D5 edit-budget meter (client.callmeie.ie/edits) -----------
+# Added per MVP-CUSTOMER-DASHBOARDS-DRAFT.md §4. Reads request_queue +
+# tier_sla_hours from the document-ops-portal Postgres via PORTAL_PG_URL
+# env. 503 cleanly when not wired.
+#
+# Source-of-truth: operator MVP alembic 0010 (request_queue +
+# tier_sla_hours + time_entry, document-ops-portal). PB3 default applied:
+# ship after operator MVP, which is live.
+
+TIER_EDIT_CAP_HOURS = {
+    "web_launch":   0.5,
+    "web_business": 2.0,
+    "web_premium":  6.0,   # v1 monthly approximation; rolling-90 in v1.1
+    "care_silver":  0.5,
+    "care_gold":    2.0,
+    "care_platinum": 6.0,
+}
+
+
+def _portal_db_connect():
+    """Open a psycopg connection to the document-ops-portal Postgres.
+
+    Returns the connection on success; raises 503 with an actionable hint
+    when ``PORTAL_PG_URL`` is unset. Independent of the receptionist's own
+    DATABASE_URL — the portal lives on a different Postgres (Coolify
+    container `m19o67kvb3d2ugvobm9zs9z4`).
+    """
+    url = os.environ.get("PORTAL_PG_URL", "").strip()
+    if not url:
+        raise HTTPException(
+            status_code=503,
+            detail="PORTAL_PG_URL env var not set. "
+                   "Wire the document-ops-portal Postgres DSN in Render "
+                   "to enable the edit-budget meter.",
+        )
+    try:
+        import psycopg
+        from psycopg.rows import dict_row
+    except ImportError:
+        raise HTTPException(
+            status_code=503,
+            detail="psycopg not installed on this container.",
+        )
+    return psycopg.connect(url, row_factory=dict_row, connect_timeout=10)
+
+
+@app.get("/client/api/edits")
+async def client_edits_api(
+    tenant_id: str = Query(..., min_length=1),
+    tier: str = Query(...),
+    token: str = Query(""),
+):
+    """Edit-budget meter + in-flight list for one tenant + tier."""
+    _check_client(token)
+    cap = TIER_EDIT_CAP_HOURS.get(tier)
+    if cap is None:
+        raise HTTPException(
+            status_code=400,
+            detail=f"unknown tier '{tier}'. "
+                   f"Known: {sorted(TIER_EDIT_CAP_HOURS.keys())}",
+        )
+
+    with _portal_db_connect() as conn, conn.cursor() as cur:
+        cur.execute(
+            "SELECT COALESCE(SUM(hours_logged), 0)::numeric(6,2) AS hours_used, "
+            "       COUNT(*) FILTER (WHERE status IN ('open','in_progress')) AS in_flight "
+            "FROM request_queue "
+            "WHERE tenant_id = %s "
+            "  AND date_trunc('month', submitted_at) = date_trunc('month', now())",
+            (tenant_id,),
+        )
+        agg = cur.fetchone() or {"hours_used": 0, "in_flight": 0}
+
+        cur.execute(
+            "SELECT id, request_type, description_text, status, "
+            "       submitted_at, sla_target_at, hours_logged, screenshot_url "
+            "FROM request_queue "
+            "WHERE tenant_id = %s AND status IN ('open','in_progress') "
+            "ORDER BY "
+            "  CASE WHEN sla_target_at IS NULL THEN 1 ELSE 0 END, "
+            "  sla_target_at ASC",
+            (tenant_id,),
+        )
+        in_flight_rows = cur.fetchall()
+
+    used = float(agg["hours_used"] or 0)
+    pct = (used / cap) * 100 if cap > 0 else 0
+    if pct < 60:   color = "green"
+    elif pct < 90: color = "amber"
+    else:          color = "red"
+
+    return JSONResponse({
+        "tier": tier,
+        "cap_hours": cap,
+        "hours_used": used,
+        "pct": round(pct, 1),
+        "color": color,
+        "in_flight_count": int(agg["in_flight"] or 0),
+        "in_flight": [
+            {
+                "id": int(r["id"]),
+                "request_type": r["request_type"],
+                "description": r["description_text"],
+                "status": r["status"],
+                "submitted_at": r["submitted_at"].isoformat()
+                                if r["submitted_at"] else None,
+                "sla_target_at": r["sla_target_at"].isoformat()
+                                 if r["sla_target_at"] else None,
+                "hours_logged": float(r["hours_logged"] or 0),
+            }
+            for r in in_flight_rows
+        ],
+    })
+
+
+def _client_edits_html(tenant_id: str, tier: str, token: str) -> str:
+    t_id = _js_string_safe(tenant_id)
+    t_tier = _js_string_safe(tier)
+    t_tok = _js_string_safe(token)
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Edits &middot; CallMeIE</title>
+  <style>
+    :root {{ --ink:#0f172a; --muted:#64748b; --bg:#f8fafc; --line:#e2e8f0;
+            --green:#16a34a; --amber:#f59e0b; --red:#dc2626; }}
+    body {{ margin:0; font:15px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+           color:var(--ink); background:var(--bg); }}
+    .wrap {{ max-width: 900px; margin: 0 auto; padding: 24px 16px; }}
+    h1 {{ font-size: 1.5rem; margin: 0 0 4px; font-weight: 600; }}
+    .muted {{ color: var(--muted); }}
+    .meter {{ background: white; border: 1px solid var(--line);
+             border-radius: 8px; padding: 18px 20px; margin: 20px 0; }}
+    .meter .label {{ font-size: 0.85rem; color: var(--muted);
+                     text-transform: uppercase; letter-spacing: 0.04em; }}
+    .meter .figure {{ font-size: 1.8rem; font-weight: 600; margin: 6px 0; }}
+    .bar {{ height: 10px; background: #e2e8f0; border-radius: 4px;
+           overflow: hidden; margin-top: 6px; }}
+    .bar .fill {{ display: block; height: 100%;
+                 transition: width 0.3s ease; }}
+    .bar.green .fill {{ background: var(--green); }}
+    .bar.amber .fill {{ background: var(--amber); }}
+    .bar.red   .fill {{ background: var(--red);   }}
+    .in-flight {{ background: white; border: 1px solid var(--line);
+                  border-radius: 8px; margin-top: 16px; }}
+    .req-row {{ padding: 14px 16px; border-bottom: 1px solid var(--line); }}
+    .req-row:last-child {{ border-bottom: none; }}
+    .desc {{ font-size: 0.95rem; line-height: 1.4; }}
+    .req-meta {{ font-size: 0.82rem; color: var(--muted); margin-top: 4px; }}
+    .pill {{ display: inline-block; padding: 2px 8px; font-size: 0.78rem;
+             border-radius: 12px; background: #e2e8f0; color: #334155;
+             margin-right: 6px; }}
+    .pill.open        {{ background: #fef3c7; color: #78350f; }}
+    .pill.in_progress {{ background: #dbeafe; color: #1e3a8a; }}
+    .form-card {{ background: white; border: 1px solid var(--line);
+                  border-radius: 8px; padding: 20px; margin-top: 20px; }}
+    .form-card h2 {{ margin: 0 0 12px; font-size: 1.05rem; font-weight: 600; }}
+    .form-card .row {{ margin: 10px 0; }}
+    .form-card label {{ display: block; font-size: 0.85rem;
+                        color: var(--muted); margin-bottom: 4px; }}
+    .form-card textarea {{ width: 100%; min-height: 70px; padding: 8px 10px;
+                           border: 1px solid var(--line); border-radius: 6px;
+                           font: inherit; box-sizing: border-box; }}
+    .form-card input[type=date],
+    .form-card input[type=url] {{ width: 100%; padding: 8px 10px;
+                                   border: 1px solid var(--line);
+                                   border-radius: 6px; font: inherit;
+                                   box-sizing: border-box; }}
+    button.submit {{ padding: 10px 18px; background: var(--ink); color: white;
+                     border: none; border-radius: 6px; cursor: pointer;
+                     font-size: 0.95rem; font-weight: 500; }}
+    .empty {{ padding: 24px 16px; text-align: center; color: var(--muted); }}
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Edits</h1>
+  <p class="muted">Your edit budget and in-flight requests this month.</p>
+
+  <div class="meter" id="meter">
+    <div class="label">Edit budget this month</div>
+    <div class="figure">Loading...</div>
+  </div>
+
+  <div class="form-card">
+    <h2>Request an edit</h2>
+    <form id="req-form">
+      <div class="row">
+        <label for="description">What needs to change?</label>
+        <textarea id="description" name="description" required minlength="10"
+                  placeholder="e.g. Replace the homepage hero image with the new product shot."></textarea>
+      </div>
+      <div class="row">
+        <label for="screenshot_url">Screenshot link (optional)</label>
+        <input id="screenshot_url" name="screenshot_url" type="url" placeholder="https://...">
+      </div>
+      <div class="row">
+        <label for="due_date">When do you need it (optional)?</label>
+        <input id="due_date" name="due_date" type="date">
+      </div>
+      <button type="submit" class="submit">Send request</button>
+      <div id="submit-result" style="margin-top: 8px; font-size: 0.9rem;"></div>
+    </form>
+  </div>
+</div>
+<script>
+const TENANT = '{t_id}';
+const TIER   = '{t_tier}';
+const TOKEN  = '{t_tok}';
+
+function esc(s) {{
+  return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {{
+    return {{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":"&#39;"}}[c];
+  }});
+}}
+
+async function refresh() {{
+  const url = '/client/api/edits?tenant_id=' + encodeURIComponent(TENANT)
+            + '&tier=' + encodeURIComponent(TIER)
+            + '&token=' + encodeURIComponent(TOKEN);
+  try {{
+    const r = await fetch(url);
+    const root = document.getElementById('meter');
+    if (!r.ok) {{
+      let detail = '';
+      try {{ detail = (await r.json()).detail || ''; }} catch (_) {{}}
+      root.innerHTML = '<div class="label">Edit budget this month</div>'
+        + '<div class="figure">Unavailable (' + r.status + ')</div>'
+        + '<div class="muted">' + esc(detail) + '</div>';
+      return;
+    }}
+    const data = await r.json();
+    const cap = data.cap_hours;
+    const used = data.hours_used;
+    const color = data.color;
+    let html = '<div class="label">Edit budget this month</div>'
+      + '<div class="figure">' + used.toFixed(1) + ' of ' + cap + ' hours used</div>'
+      + '<div class="bar ' + color + '"><span class="fill" style="width: '
+      + Math.min(100, data.pct) + '%"></span></div>'
+      + '<div class="muted" style="margin-top: 6px; font-size: 0.85rem;">'
+      + data.in_flight_count + ' request' + (data.in_flight_count === 1 ? '' : 's') + ' in flight'
+      + '</div>';
+    root.innerHTML = html;
+
+    const old = document.getElementById('in-flight');
+    if (old) old.remove();
+    if (data.in_flight && data.in_flight.length > 0) {{
+      const wrap = document.createElement('div');
+      wrap.id = 'in-flight';
+      wrap.className = 'in-flight';
+      let h = '';
+      for (let i = 0; i < data.in_flight.length; i++) {{
+        const rr = data.in_flight[i];
+        const due = rr.sla_target_at
+          ? ('due ' + new Date(rr.sla_target_at).toLocaleString('en-IE'))
+          : 'no SLA';
+        h += '<div class="req-row">'
+           + '<div class="desc">' + esc(rr.description) + '</div>'
+           + '<div class="req-meta">'
+           + '<span class="pill ' + esc(rr.status) + '">' + esc((rr.status || '').replace('_',' ')) + '</span>'
+           + due + ' &middot; ' + rr.hours_logged.toFixed(1) + 'h logged'
+           + '</div>'
+           + '</div>';
+      }}
+      wrap.innerHTML = h;
+      root.parentNode.insertBefore(wrap, root.nextSibling);
+    }}
+  }} catch (e) {{ console.error(e); }}
+}}
+
+document.getElementById('req-form').addEventListener('submit', async function (e) {{
+  e.preventDefault();
+  const form = e.target;
+  const fd = new FormData(form);
+  fd.append('tenant_id', TENANT);
+  fd.append('tier', TIER);
+  const out = document.getElementById('submit-result');
+  out.textContent = 'Sending...';
+  try {{
+    const r = await fetch('/client/api/request-edit?token=' + encodeURIComponent(TOKEN), {{
+      method: 'POST', body: fd,
+    }});
+    const data = await r.json();
+    if (r.ok) {{
+      out.textContent = 'Sent. Request #' + data.id + ' is in the queue.';
+      form.reset();
+      refresh();
+    }} else {{
+      out.textContent = 'Failed: ' + (data.detail || r.status);
+    }}
+  }} catch (err) {{
+    out.textContent = 'Network error.';
+  }}
+}});
+
+refresh();
+setInterval(refresh, 60000);
+</script>
+</body>
+</html>"""
+
+
+@app.get("/client/edits", response_class=HTMLResponse)
+async def client_edits_page(
+    tenant_id: str = Query(""),
+    tier: str = Query(""),
+    token: str = Query(""),
+):
+    _check_client(token)
+    if not tenant_id or not tier:
+        raise HTTPException(
+            status_code=400,
+            detail="?tenant_id=<slug>&tier=<tier_key> required. "
+                   "Tiers: " + ",".join(sorted(TIER_EDIT_CAP_HOURS.keys())),
+        )
+    return HTMLResponse(_client_edits_html(tenant_id, tier, token))
+
+
+@app.post("/client/api/request-edit")
+async def client_request_edit(
+    request: Request,
+    token: str = Query(""),
+):
+    """Customer-initiated edit request. INSERT one request_queue row.
+
+    sla_target_at left NULL — operator side recomputes from the tier
+    lookup on dashboard load (acceptable v1 per PB3). Long-term home is
+    the portal app's request_queue.create endpoint; this is the
+    bridge while the meter lives on callmeie-api.
+    """
+    _check_client(token)
+    form = await request.form()
+    tenant_id = (form.get("tenant_id") or "").strip()
+    tier = (form.get("tier") or "").strip()
+    description = (form.get("description") or "").strip()
+    screenshot_url = (form.get("screenshot_url") or "").strip() or None
+    due_date = (form.get("due_date") or "").strip()
+
+    if not tenant_id:
+        raise HTTPException(status_code=400, detail="tenant_id required")
+    if tier not in TIER_EDIT_CAP_HOURS:
+        raise HTTPException(status_code=400, detail=f"unknown tier '{tier}'")
+    if len(description) < 10:
+        raise HTTPException(
+            status_code=400, detail="description too short (>=10 chars)"
+        )
+
+    notes = f"customer due_date: {due_date}" if due_date else None
+
+    with _portal_db_connect() as conn, conn.cursor() as cur:
+        cur.execute(
+            "INSERT INTO request_queue "
+            "(tenant_id, tier, request_type, description_text, "
+            " screenshot_url, notes) "
+            "VALUES (%s, %s, 'edit', %s, %s, %s) "
+            "RETURNING id, submitted_at",
+            (tenant_id, tier, description, screenshot_url, notes),
+        )
+        row = cur.fetchone()
+        conn.commit()
+
+    return JSONResponse({
+        "ok": True,
+        "id": int(row["id"]),
+        "submitted_at": row["submitted_at"].isoformat() if row["submitted_at"] else None,
+    })
+
+
+# --- END MVP D5 edit-budget meter ----------------------------------------
+
+
 if __name__ == "__main__":
     import uvicorn
     port = int(os.environ.get("PORT", 8080))
