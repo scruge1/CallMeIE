@@ -165,6 +165,30 @@ app.add_middleware(
 )
 
 
+# --- Security headers (P2-3) ---
+# Content-neutral hardening headers on every response. A strict
+# Content-Security-Policy is deliberately NOT enforced here: this app
+# serves heterogeneous HTML (marketing index + admin + client dashboards)
+# with inline <script> blocks, so a blanket `script-src 'self'` would
+# break live pages. CSP needs per-surface tuning + testing before it can
+# be enforced. The five headers below cannot break page content.
+@app.middleware("http")
+async def security_headers(request: Request, call_next):
+    response = await call_next(request)
+    response.headers.setdefault(
+        "Strict-Transport-Security", "max-age=31536000; includeSubDomains"
+    )
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("X-Frame-Options", "SAMEORIGIN")
+    response.headers.setdefault(
+        "Referrer-Policy", "strict-origin-when-cross-origin"
+    )
+    response.headers.setdefault(
+        "Permissions-Policy", "geolocation=(), microphone=(), camera=()"
+    )
+    return response
+
+
 @app.get("/favicon.svg")
 async def favicon_svg():
     return Response(content=FAVICON_SVG, media_type="image/svg+xml")
@@ -4504,6 +4528,17 @@ async def list_discovery_submissions(token: str = Query(""), limit: int = Query(
 # /admin/health (token-required) below.
 @app.get("/health")
 async def health():
+    return {
+        "status": "ok",
+        "service": "callmeie-receptionist",
+    }
+
+
+# P2-2 — /healthz alias. Same minimal payload as /health; exists so
+# uptime monitoring can probe one consistent path across every service
+# (the Doc Ops portal already serves /healthz).
+@app.get("/healthz")
+async def healthz():
     return {
         "status": "ok",
         "service": "callmeie-receptionist",
