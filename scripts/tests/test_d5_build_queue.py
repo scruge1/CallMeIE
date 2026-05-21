@@ -169,6 +169,119 @@ class TestExtractStripePriceId:
         ) == D5_LAUNCH
 
 
+class TestExtractStripePriceIdFallbacks:
+    """Codex audit (commit 73a3a2a) — payload shapes that previously
+    returned '' and silently skipped the D5 build. Each must now resolve."""
+
+    def test_price_under_plan_id(self, server_module):
+        """Legacy/alternate item shape: price lives under .plan.id, not .price.id."""
+        obj = {"items": {"data": [{"plan": {"id": D5_BUSINESS}}]}}
+        assert server_module._extract_stripe_price_id(
+            obj, "customer.subscription.created"
+        ) == D5_BUSINESS
+
+    def test_price_under_item_metadata(self, server_module):
+        """Item-level metadata.price_id (vs top-level obj.metadata.price_id)."""
+        obj = {"line_items": {"data": [{"metadata": {"price_id": D5_PREMIUM}}]}}
+        assert server_module._extract_stripe_price_id(
+            obj, "checkout.session.completed"
+        ) == D5_PREMIUM
+
+    def test_invoice_lines_container(self, server_module):
+        """Invoice events carry the price under `lines.data[].price.id`."""
+        obj = {"lines": {"data": [{"price": {"id": D5_LAUNCH}}]}}
+        assert server_module._extract_stripe_price_id(
+            obj, "invoice.payment_succeeded"
+        ) == D5_LAUNCH
+
+    def test_unexpanded_subscription_checkout_no_api_key(
+        self, server_module, monkeypatch
+    ):
+        """Subscription-mode checkout.session.completed with NO line_items
+        (Stripe default — line_items not expanded on the webhook payload)
+        and no Stripe API key configured → returns '' (cannot recover),
+        but does not raise. This is the case the owner-SMS alert covers."""
+        monkeypatch.setattr(server_module, "OWL_STRIPE_API_KEY", "", raising=False)
+        monkeypatch.delenv("STRIPE_API_KEY", raising=False)
+        monkeypatch.delenv("STRIPE_SECRET_KEY", raising=False)
+        monkeypatch.delenv("STRIPE_API", raising=False)
+        obj = {
+            "id": "cs_test_unexpanded",
+            "mode": "subscription",
+            "subscription": "sub_test_unexpanded",
+        }
+        assert server_module._extract_stripe_price_id(
+            obj, "checkout.session.completed"
+        ) == ""
+
+    def test_unexpanded_checkout_recovered_via_line_items_api(
+        self, server_module, monkeypatch
+    ):
+        """When line_items are not on the webhook payload, the function
+        falls back to GET /v1/checkout/sessions/{id}/line_items and
+        recovers the price from the API response."""
+        monkeypatch.setattr(
+            server_module, "OWL_STRIPE_API_KEY", "sk_test_fake", raising=False
+        )
+
+        class _FakeResp:
+            status_code = 200
+
+            @staticmethod
+            def json():
+                return {"data": [{"price": {"id": D5_PREMIUM}}]}
+
+        def _fake_get(url, **kwargs):
+            assert "/checkout/sessions/" in url and url.endswith("/line_items")
+            return _FakeResp()
+
+        monkeypatch.setattr(server_module.httpx, "get", _fake_get)
+        obj = {"id": "cs_test_api_recover", "mode": "subscription"}
+        assert server_module._extract_stripe_price_id(
+            obj, "checkout.session.completed"
+        ) == D5_PREMIUM
+
+    def test_unexpanded_checkout_recovered_via_subscription_api(
+        self, server_module, monkeypatch
+    ):
+        """If the line_items API call yields nothing, fall back to the
+        subscription object's items.data[].price.id."""
+        monkeypatch.setattr(
+            server_module, "OWL_STRIPE_API_KEY", "sk_test_fake", raising=False
+        )
+
+        class _EmptyResp:
+            status_code = 200
+
+            @staticmethod
+            def json():
+                return {"data": []}
+
+        class _SubResp:
+            status_code = 200
+
+            @staticmethod
+            def json():
+                return {"items": {"data": [{"price": {"id": D5_BUSINESS}}]}}
+
+        def _fake_get(url, **kwargs):
+            if url.endswith("/line_items"):
+                return _EmptyResp()
+            if "/subscriptions/" in url:
+                return _SubResp()
+            raise AssertionError(f"unexpected URL {url}")
+
+        monkeypatch.setattr(server_module.httpx, "get", _fake_get)
+        obj = {
+            "id": "cs_test_sub_recover",
+            "mode": "subscription",
+            "subscription": "sub_test_recover",
+        }
+        assert server_module._extract_stripe_price_id(
+            obj, "checkout.session.completed"
+        ) == D5_BUSINESS
+
+
 class TestWebhookDetectsD5:
     def test_d5_launch_enqueues_and_returns_200(self, client, server_module):
         body = _checkout_session_completed_body(
@@ -294,6 +407,70 @@ class TestWebhookNonD5IsNoOp:
         )
         assert r.status_code == 200
         assert r.json()["d5_enqueued"] is False
+
+
+class TestSubModeNoPriceAlertsOwner:
+    """Codex audit (commit 73a3a2a) — a subscription-mode
+    checkout.session.completed where no price can be resolved is the
+    revenue-to-fulfilment break: a paying customer, no build, and
+    (before this fix) no owner alert. It must now SMS the owner and
+    still return 200 (Stripe requires a fast ack)."""
+
+    def test_sub_mode_no_price_id_sms_owner(
+        self, client, server_module, monkeypatch
+    ):
+        # Owner number must be set for the alert branch to fire.
+        monkeypatch.setattr(server_module, "OWNER_NUMBER", "+353000000000")
+        # No Stripe API key → the API fallback cannot recover a price.
+        monkeypatch.setattr(
+            server_module, "OWL_STRIPE_API_KEY", "", raising=False
+        )
+        monkeypatch.delenv("STRIPE_API_KEY", raising=False)
+        monkeypatch.delenv("STRIPE_SECRET_KEY", raising=False)
+        monkeypatch.delenv("STRIPE_API", raising=False)
+
+        sms_calls: list[tuple] = []
+
+        async def _capture_sms(to, body, from_number=""):
+            sms_calls.append((to, body))
+            return {"ok": True, "status": "mocked"}
+
+        monkeypatch.setattr(server_module, "send_sms", _capture_sms)
+
+        body_dict = {
+            "id": "evt_submode_noprice_001",
+            "type": "checkout.session.completed",
+            "data": {
+                "object": {
+                    "id": "cs_submode_noprice",
+                    "mode": "subscription",
+                    "subscription": "sub_submode_noprice",
+                    "customer": "cus_submode_noprice",
+                    "customer_details": {"email": "noprice@biz.ie"},
+                }
+            },
+        }
+        body = json.dumps(body_dict).encode("utf-8")
+        sig = _sign(body)
+        r = client.post(
+            "/owl/stripe/webhook",
+            content=body,
+            headers={"stripe-signature": sig, "content-type": "application/json"},
+        )
+        # Fast 200 ack — never block Stripe even on the failure path.
+        assert r.status_code == 200, r.text
+        assert r.json()["d5_enqueued"] is False
+        # Owner must have been alerted.
+        assert any(
+            "PRICE-RESOLVE FAIL" in body_txt for _to, body_txt in sms_calls
+        ), f"expected owner price-resolve-fail SMS, got {sms_calls}"
+        # No queue row was created (nothing to build without a price).
+        with server_module.get_db() as conn:
+            n = conn.execute(
+                "SELECT COUNT(*) FROM d5_build_queue WHERE stripe_event_id = ?",
+                ("evt_submode_noprice_001",),
+            ).fetchone()[0]
+        assert n == 0
 
 
 class TestIdempotency:
