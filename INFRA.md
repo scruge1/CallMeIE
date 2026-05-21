@@ -14,17 +14,20 @@
 
 ## 1 · Hetzner VPS (shared home for everything self-hosted)
 
+> **HARDWARE CORRECTION 2026-05-21:** Previously labeled "AX52 Hetzner Robot dedicated 64GB" across docs. Live hcloud API probe confirmed actual = Hetzner Cloud cax11 (4GB ARM Ampere Altra, Nuremberg). Resized to cax21 (8GB) this session to fit Mailcow's 6GB floor. Doc-set patched in same session.
+
 | Field | Value |
 |---|---|
 | Name | `ubuntu-4gb-nbg1-8` |
-| Provider | Hetzner Cloud (Nuremberg) |
-| Spec | 4 GB RAM · Ubuntu |
+| Provider | Hetzner Cloud (Nuremberg DE) |
+| Server type | `cax21` (Hetzner Cloud, Nuremberg DE) — 8 GB RAM ARM Ampere Altra (resized from cax11 4 GB ARM on 2026-05-21) |
+| Spec | 8 GB RAM · Ubuntu · ARM64 |
 | IPv4 | `178.104.205.255` |
 | IPv6 | `2a01:4f8:1c18:5cf5::/64` |
 | SSH user | `root` |
 | SSH password | `$HETZNER_ROOT_PASSWORD` in `~/.claude/routes/.env` |
 | Hetzner API key | **not yet saved** — user has it; paste into `HCLOUD_TOKEN` in routes/.env when available |
-| Hetzner Cloud Console login | **NOT IN VAULT** — `HETZNER_CLOUD_EMAIL` / `HETZNER_CLOUD_PASSWORD` placeholders added 2026-05-04. Currently logged-in Hetzner account at project 14229666 shows ZERO servers — AX52 (`ubuntu-4gb-nbg1-8`, 178.104.205.255 / `CLOUD-NBG1`) is owned by a DIFFERENT Hetzner account. Need correct account creds for Cloud Console + Object Storage bucket creation. |
+| Hetzner Cloud Console login | **NOT IN VAULT** — `HETZNER_CLOUD_EMAIL` / `HETZNER_CLOUD_PASSWORD` placeholders added 2026-05-04. Currently logged-in Hetzner account at project 14229666 shows ZERO servers — the production server cax21 (`ubuntu-4gb-nbg1-8`, 178.104.205.255 / `CLOUD-NBG1`) is owned by a DIFFERENT Hetzner account. Need correct account creds for Cloud Console + Object Storage bucket creation. |
 | Coolify dashboard login | **IN VAULT (resolved 2026-05-08)** — `COOLIFY_DASHBOARD_EMAIL=scruge@pm.me` / `COOLIFY_DASHBOARD_PASSWORD` in `~/.claude/routes/.env`. Adam never set a password during install ("you set up Coolify completely on your own"); password generated + bcrypt-hashed + DB-UPDATEd this session — see §14.1d for runbook. Needed for: proxy restart, Terminal tab, Persistent Storage Directory Mount UI (API rejects volume-mount fields — see §14.1c), FQDN cascade fix #6281. API tokens (`COOLIFY_API_ROOT_TOKEN`) work for most automation but the above three need dashboard. |
 | Claude Code SSH pubkey | `CLAUDE_CODE_PUBKEY` in routes/.env. Paste into AX52 `/root/.ssh/authorized_keys` via Hetzner Cloud Console "Server > Console" web tty to unlock paramiko key-auth from this machine. Avoids relying on root password (currently password auth fails — fail2ban or rotated). |
 
@@ -762,7 +765,7 @@ Per `document-ops-portal/CALLMEIE-DOCAI-V0.4-PRD.md` D-V0.4-06. Apache-2.0 revie
 2. Create Label Studio project; paste `infra/label-studio/label-config.xml` into Labeling Setup; save.
 3. Settings → Webhooks → Add webhook target `https://portal.callmeie.ie/api/corrections` with header `X-LS-Webhook-Secret: <LS_WEBHOOK_SECRET>` triggered on Annotation Created/Updated.
 
-**SSH key for AX52** — `~/.ssh/owl_deploy_ed25519` (referenced in vault as `OWL_DEPLOY_KEY`). Password auth FAILS (root password rotated and/or fail2ban-banned). Always prefer key auth via paramiko `Ed25519Key.from_private_key_file()`.
+**SSH key for cax21** — `~/.ssh/owl_deploy_ed25519` (referenced in vault as `OWL_DEPLOY_KEY`). Password auth FAILS (root password rotated and/or fail2ban-banned). Always prefer key auth via paramiko `Ed25519Key.from_private_key_file()`.
 
 **Compose-rewrite root cause (Coolify v4 known workaround)** — Coolify generates Traefik labels at service-create time using `SERVICE_FQDN_*` envs. Setting them AFTER create does NOT regenerate compose. Coolify dashboard "Save" calls `regenerate_compose_file()` but that path has no public API. Workaround: manual compose edit + `docker compose down/up -d`. New entry alongside #6281 cascade bug.
 
@@ -785,7 +788,7 @@ Per `document-ops-portal/CALLMEIE-DOCAI-V0.4-PRD.md` D-V0.4-07. Replaces Hugging
 | Endpoint | `https://nbg1.your-objectstorage.com` (Nuremberg — DPA v0.4 §8.1 residency. Earlier scaffold pointed at fsn1; corrected at bucket-create time) |
 | Access keys | `HETZNER_OBJECT_STORAGE_ACCESS_KEY_ID` + `HETZNER_OBJECT_STORAGE_SECRET_ACCESS_KEY` in vault (also written to `proof-fixtures/.dvc/config.local`, gitignored). Description tag: `callmeie-corpus-dvc-2026-05-04` |
 | Live test | `dvc push` 2 files OK (test artifact then `dvc gc -c -w` cleaned remote) |
-| Hetzner Cloud Console UI quirk | Servers/Buckets list filter shows 0 entries even when project has them — direct URL path works (`/servers/127171852` for AX52, `/buckets` for callmeie-corpus). Documented for future debug. |
+| Hetzner Cloud Console UI quirk | Servers/Buckets list filter shows 0 entries even when project has them — direct URL path works (`/servers/127171852` for cax21, `/buckets` for callmeie-corpus). Documented for future debug. |
 | Sub-processor status | Hetzner already DPA v0.4 §7.1 sub-processor for compute; Object Storage same vendor — no new entry needed |
 | Pipeline | `proof-fixtures/dvc.yaml` (stages: `shard_train` + `bench_holdout`) |
 | Push helper | `proof-fixtures/scripts/dvc_push.sh` (cron-friendly idempotent) |
@@ -802,43 +805,43 @@ Per `document-ops-portal/CALLMEIE-DOCAI-V0.4-PRD.md` D-V0.4-07. Replaces Hugging
 - ✓ S3 credentials generated + saved to vault + `proof-fixtures/.dvc/config.local`
 - ✓ DVC config endpoint corrected: fsn1 → nbg1
 - ✓ Live `dvc push` verified end-to-end (test file pushed + `dvc gc -c -w` cleanup confirmed bucket reachable + credentials valid)
-- ✓ AX52 server identity confirmed via Hetzner invoice: server-id `127171852`, primary-ip `126966475`, project `Default` 14229666 — same account as currently logged-in scruge@pm.me / K0405312326
+- ✓ cax21 server identity confirmed via Hetzner invoice: server-id `127171852`, primary-ip `126966475`, project `Default` 14229666 — same account as currently logged-in scruge@pm.me / K0405312326
 
 **Done by Claude 2026-05-04 (continuation):**
 - ✓ Label Studio API token (JWT refresh) generated + saved to vault as `LS_REFRESH_TOKEN` (user_id=1, exp +256y)
 - ✓ Label Studio project id=1 "Document Ops IE invoices" created via API with `infra/label-studio/label-config.xml` pasted (vendor / total / vat / date / line_items / reason)
 - ✓ Label Studio webhook id=1 created via API: target `https://portal.callmeie.ie/api/corrections`, header `X-LS-Webhook-Secret: <LS_WEBHOOK_SECRET>`, triggered on ANNOTATION_CREATED + ANNOTATION_UPDATED
-- ✓ `corrections-consumer` Docker container deployed on AX52 (coolify network, restart=unless-stopped, env DATABASE_URL = portal Postgres DSN, CORPUS_PATH = /app/corpus/corrections.jsonl). LISTEN/NOTIFY active.
-- ✓ `docops-rescue-daemon` Docker container deployed on AX52 2026-05-07 (coolify network, restart=unless-stopped, image `python:3.13-slim`, mounts `/opt/callmeie/proof-fixtures` + `/opt/callmeie/document-ops-portal`, env `DATABASE_URL` (postgresql+psycopg://) + `LABEL_STUDIO_URL=https://review.callmeie.ie` + `LS_REFRESH_TOKEN` + `SESSION_SIGNING_KEY` + `LS_WEBHOOK_SECRET` + SMTP/Resend trio). Cmd: `pip install psycopg[binary] requests sqlmodel sqlalchemy pydantic pydantic-settings python-dotenv itsdangerous stripe email-validator && python /app/proof-fixtures/scripts/push_rescues_to_label_studio.py --watch`. Polls every 60s, pushes `gate_passed=FALSE` extractions for tenants with `plan='rescue_export'` to their `docops-{slug}` Label Studio project. Idempotency via `AuditLog.action='rescue_pushed_to_label_studio'`.
+- ✓ `corrections-consumer` Docker container deployed on cax21 (coolify network, restart=unless-stopped, env DATABASE_URL = portal Postgres DSN, CORPUS_PATH = /app/corpus/corrections.jsonl). LISTEN/NOTIFY active.
+- ✓ `docops-rescue-daemon` Docker container deployed on cax21 2026-05-07 (coolify network, restart=unless-stopped, image `python:3.13-slim`, mounts `/opt/callmeie/proof-fixtures` + `/opt/callmeie/document-ops-portal`, env `DATABASE_URL` (postgresql+psycopg://) + `LABEL_STUDIO_URL=https://review.callmeie.ie` + `LS_REFRESH_TOKEN` + `SESSION_SIGNING_KEY` + `LS_WEBHOOK_SECRET` + SMTP/Resend trio). Cmd: `pip install psycopg[binary] requests sqlmodel sqlalchemy pydantic pydantic-settings python-dotenv itsdangerous stripe email-validator && python /app/proof-fixtures/scripts/push_rescues_to_label_studio.py --watch`. Polls every 60s, pushes `gate_passed=FALSE` extractions for tenants with `plan='rescue_export'` to their `docops-{slug}` Label Studio project. Idempotency via `AuditLog.action='rescue_pushed_to_label_studio'`.
 - ✓ Alembic migration `0003_security_hardening` applied 2026-05-07: `stripe_events` idempotency table (UNIQUE on event_id) + `tenants.suppressed_at` timestamp (backfilled now() for already-suppressed rows). Live `alembic current` reports `0003_security (head)`.
-- ✓ `document-ops-portal/{app,alembic,alembic.ini}` rsynced (tar+scp) to `/opt/callmeie/document-ops-portal` on AX52 (private repo, GitHub PAT clone refused; rsync is the deploy mechanism for now).
-- ✓ Cron entry on AX52 root: `0 9 * * * /usr/local/bin/docops-sla-check.sh >> /var/log/docops/sla-check.log 2>&1`. Wrapper script holds the env vars for the SLA-check Docker run; emails `adam@callmeie.ie` if any rescue >3 business days old. Silent on green days.
+- ✓ `document-ops-portal/{app,alembic,alembic.ini}` rsynced (tar+scp) to `/opt/callmeie/document-ops-portal` on cax21 (private repo, GitHub PAT clone refused; rsync is the deploy mechanism for now).
+- ✓ Cron entry on cax21 root: `0 9 * * * /usr/local/bin/docops-sla-check.sh >> /var/log/docops/sla-check.log 2>&1`. Wrapper script holds the env vars for the SLA-check Docker run; emails `adam@callmeie.ie` if any rescue >3 business days old. Silent on green days.
 - ✓ Vault additions 2026-05-07: `LABEL_STUDIO_URL=https://review.callmeie.ie` + `LABEL_STUDIO_TOKEN=ac2e65c5...` (legacy 40-hex; legacy auth returns 401 on this LS deploy — prefer `LS_REFRESH_TOKEN` Bearer JWT flow per `proof-fixtures/scripts/push_rescues_to_label_studio.py:_label_studio_token`).
-- ✓ DVC 3.67.1 installed in `/opt/callmeie/dvc-venv` on AX52 host (apt python3-venv installed alongside). Live `dvc push` from host: 1 file pushed + `dvc gc -c -w` cleanup confirmed remote reachable.
-- ✓ Crontab line installed on AX52 root: nightly 02:30 UTC `dvc_push.sh` execution. Logs to `/var/log/dvc-push.log`.
+- ✓ DVC 3.67.1 installed in `/opt/callmeie/dvc-venv` on cax21 host (apt python3-venv installed alongside). Live `dvc push` from host: 1 file pushed + `dvc gc -c -w` cleanup confirmed remote reachable.
+- ✓ Crontab line installed on cax21 root: nightly 02:30 UTC `dvc_push.sh` execution. Logs to `/var/log/dvc-push.log`.
 - ✓ `HCLOUD_TOKEN` generated via Hetzner Cloud Console (Read & Write scope, name `claude-automation-2026-05-04`). Saved to vault. Live API verified — returns server 127171852 in nbg1.
 
-**Coolify scheduled-task deviation (documented):** User requested Coolify scheduled task for dvc_push (#3). Coolify scheduled tasks require a Coolify-managed Application/Service container with `docker exec` semantics. The corrections-consumer is a raw `docker run` (not Coolify-managed) and portal app's container has no dvc binary. Used host crontab on AX52 root instead — same lifecycle outcome (nightly 02:30 UTC), Coolify-native scheduled task deferred to v0.4.2 architectural cleanup (would require corrections-consumer + dvc-pusher rebuilt as Coolify Application via dockercompose build pack with custom Dockerfile baking dvc).
+**Coolify scheduled-task deviation (documented):** User requested Coolify scheduled task for dvc_push (#3). Coolify scheduled tasks require a Coolify-managed Application/Service container with `docker exec` semantics. The corrections-consumer is a raw `docker run` (not Coolify-managed) and portal app's container has no dvc binary. Used host crontab on cax21 root instead — same lifecycle outcome (nightly 02:30 UTC), Coolify-native scheduled task deferred to v0.4.2 architectural cleanup (would require corrections-consumer + dvc-pusher rebuilt as Coolify Application via dockercompose build pack with custom Dockerfile baking dvc).
 
 **Adam-keyboard remaining: NONE for v0.4.1 corrections flywheel** — all four user-requested items (Label Studio config, consumer daemon, scheduled push, HCLOUD_TOKEN) shipped. First correction submitted via Label Studio UI will end-to-end verify webhook → INSERT → NOTIFY → consumer → JSONL → cron → bucket.
 
 ### 14.6 Tenant inbox-{slug}@callmeie.ie IMAP credentials (RESOLVED 2026-05-20 — path picked = Mailcow self-host)
 
-**Decision 2026-05-20:** Adam picked Path 2 (Mailcow on AX52) over Path 1 (CF Email Routing → Proton Bridge). Bridge requires a desktop Proton client running on the box — AX52 is a headless server, no Bridge home. Full deploy plan at `jake-van-clief-icm/workspaces/doc-ops-product/stages/02-customer-intake/output/2026-05-20-mailcow-deploy-plan.md`. See §14.7 below for the operational reference.
+**Decision 2026-05-20:** Adam picked Path 2 (Mailcow on cax21) over Path 1 (CF Email Routing → Proton Bridge). Bridge requires a desktop Proton client running on the box — cax21 is a headless server, no Bridge home. Full deploy plan at `jake-van-clief-icm/workspaces/doc-ops-product/stages/02-customer-intake/output/2026-05-20-mailcow-deploy-plan.md`. See §14.7 below for the operational reference.
 
-**Status as of 2026-05-20:** plan written; Adam-action items pending (Hetzner Robot rDNS, Mailcow `git clone` + install, mailbox + alias creation in admin UI, vault paste). Once those land, `INBOX_*` envs go into Coolify per §14.7 wiring section and daemon goes live.
+**Status as of 2026-05-20:** plan written; Adam-action items pending (Hetzner Cloud Console rDNS settings, Mailcow `git clone` + install, mailbox + alias creation in admin UI, vault paste). Once those land, `INBOX_*` envs go into Coolify per §14.7 wiring section and daemon goes live.
 
 **Customer-facing runbook stance until live:** welcome-email + onboarding runbook still say "browser upload at /portal/{slug}/extract" — flip to "forward to inbox-{slug}@callmeie.ie" only once smoke test in §14.7 passes.
 
-### 14.7 Mailcow Mail Stack (callmeie.ie self-host, AX52 — provisioned 2026-05-20)
+### 14.7 Mailcow Mail Stack (callmeie.ie self-host, cax21 — provisioned 2026-05-20)
 
 Mailcow Dockerized takes over `*@callmeie.ie` mail flow. Replaces Cloudflare Email Routing (§16.6 in canonical). One mailbox `inbox@callmeie.ie` + catch-all alias `*@callmeie.ie → inbox@callmeie.ie` collects all `inbox-{slug}@callmeie.ie` forwards; `inbox_poller.py` daemon polls + dispatches per-slug. `hello@callmeie.ie` becomes a Mailcow alias forwarding to `Scruge@pm.me` (preserves existing UX).
 
 | Field | Value |
 |---|---|
-| Host | AX52 (`178.104.205.255`), Hetzner Nuremberg |
+| Host | cax21 (`178.104.205.255`), Hetzner Cloud Nuremberg DE |
 | FQDN | `mail.callmeie.ie` |
-| rDNS | `mail.callmeie.ie` (Adam-action, Hetzner Robot panel) |
+| rDNS | `mail.callmeie.ie` (Adam-action, Hetzner Cloud Console rDNS settings) |
 | Software | Mailcow Dockerized (GPL-3.0; https://docs.mailcow.email) |
 | Install path | `/opt/mailcow-dockerized/` |
 | Data path | `/opt/mailcow-dockerized/data/` |
@@ -874,13 +877,13 @@ MX  callmeie.ie  route3.mx.cloudflare.net  prio 23
 
 **Coolify port collision (resolved at install):** Coolify Traefik holds 80 + 443. Mailcow set `HTTP_BIND=127.0.0.1`, `HTTP_PORT=8080`, `HTTPS_BIND=127.0.0.1`, `HTTPS_PORT=8443`, `SKIP_LETS_ENCRYPT=y` in `mailcow.conf` BEFORE first `docker compose up`. Traefik label override added per Label Studio §14.4 compose-rewrite pattern.
 
-**Hetzner port 25 outbound:** open Robot support ticket "Allow outbound SMTP for legitimate mail" if blocked. Inbound 25 is open by default. Until the ticket clears, queue outbound mail in Mailcow (Postfix retries with backoff).
+**Hetzner port 25 outbound:** open a Hetzner Cloud Console support ticket "Allow outbound SMTP for legitimate mail" if blocked. Inbound 25 is open by default. Until the ticket clears, queue outbound mail in Mailcow (Postfix retries with backoff).
 
 **§16.6 supersession:** Cloudflare Email Routing for `hello@callmeie.ie` is **REPLACED** by Mailcow alias `hello@callmeie.ie → Scruge@pm.me`. `hello@` UX unchanged from end-user perspective; mail path now flows Mailcow Postfix → Proton SMTP. CF Email Routing rule status set to OFF in dashboard once smoke test passes. Update §16.6 in tandem if reverting.
 
 **Rollback:** see deploy plan §"Rollback procedure". DNS-only revert; Mailcow stays running for diagnosis. CF MX records + SPF + email-routing rule can be re-added in <5 min via Cloudflare API.
 
-**Cost:** zero incremental (Mailcow GPL-3.0, runs on existing AX52 headroom).
+**Cost:** zero software-licence cost (Mailcow GPL-3.0). RAM: Mailcow needs a 6 GB floor; cax21 (8 GB) leaves ~2 GB headroom for OS + the portal app — consider cax31 (16 GB) if the portal app + Mailcow + corrections-consumer all want RAM at the same time.
 
 **Cross-link:** full deploy plan + claude-mem findings + runbooks at
 - `jake-van-clief-icm/workspaces/doc-ops-product/stages/02-customer-intake/output/2026-05-20-mailcow-deploy-plan.md` (canonical plan)
