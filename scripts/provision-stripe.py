@@ -98,6 +98,44 @@ CATALOGUE = [
             {"key": "site-pro-deposit", "amount": 79800, "interval": None},
         ],
     },
+    # P0-4 — Local SEO / GBP products. Amounts + copy match the live
+    # pricing block in `callmeie-hub/local-seo/index.html` (audit €99
+    # one-off · Essential €95/mo · Growth €245/mo · Concierge €495/mo).
+    # Concierge is capped at 4 active clients (waitlist) — its product +
+    # link are provisioned for manual use, but the local-seo page keeps
+    # the Concierge CTA as "Check availability", NOT an instant-buy link.
+    {
+        "key": "localseo-audit",
+        "name": "CallMeIE · Local SEO audit",
+        "description": "GBP audit + competitor map of your top 3 local rivals + first-month roadmap. Delivered as a 6-page PDF and a 30-min call. Fully credited toward month 1 of any Local SEO care tier.",
+        "prices": [
+            {"key": "localseo-audit-once", "amount": 9900, "interval": None},
+        ],
+    },
+    {
+        "key": "localseo-essential",
+        "name": "CallMeIE · Local SEO — Essential",
+        "description": "Google Business Profile claim + verify, full completeness pass, 4 posts/month, a fresh photo weekly, monthly Q&A pass, monthly 1-page insights report. Cancel any month.",
+        "prices": [
+            {"key": "localseo-essential-monthly", "amount": 9500, "interval": "month"},
+        ],
+    },
+    {
+        "key": "localseo-growth",
+        "name": "CallMeIE · Local SEO — Growth",
+        "description": "Everything in Essential + reviews engine, 12 posts/month, citations sweep across 12-15 IE directories, monthly NAP-consistency check, monthly 30-min strategy call. Cancel any month.",
+        "prices": [
+            {"key": "localseo-growth-monthly", "amount": 24500, "interval": "month"},
+        ],
+    },
+    {
+        "key": "localseo-concierge",
+        "name": "CallMeIE · Local SEO — Concierge",
+        "description": "Everything in Growth + weekly competitor monitoring, GBP-attribute experiments, 4-business-hour reply SLA, a monthly local blog post, and a quarterly on-site photo visit. Limited to 4 active clients.",
+        "prices": [
+            {"key": "localseo-concierge-monthly", "amount": 49500, "interval": "month"},
+        ],
+    },
 ]
 
 WEBHOOK_EVENTS = [
