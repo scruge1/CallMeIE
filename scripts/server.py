@@ -8302,6 +8302,396 @@ async def client_request_change(request: Request, token: str = Query("")):
     return {"sent": True}
 
 
+# --- BEGIN MVP customer Receptionist Today routes (client.callmeie.ie) ---
+# Added per MVP-CUSTOMER-DASHBOARDS-DRAFT.md §2 — receptionist "Today" pane.
+# Reuses check_admin(token) defined earlier in this file. PB1 default:
+# customer's token IS their admin_token (no new auth code).
+#
+# This block is ADDITIVE — it never touches /admin/* routes.
+# The §4 edit-budget meter ships as a separate commit on top of this base.
+
+from collections import Counter as _Counter  # local alias; outer scope free
+import json as _client_json
+
+
+def _check_client(token: str = Query("")):
+    """Customer-facing auth — same as check_admin (PB1 default).
+
+    If PB1 flips to a distinct client_token, swap this body to a new lookup
+    against a future client_tokens table.
+    """
+    check_admin(token)
+
+
+def _js_string_safe(s: str) -> str:
+    """Escape a Python string for embedding in a single-quoted JS literal.
+
+    Defense-in-depth — these routes are admin-token-gated so an attacker
+    cannot reach them with crafted tokens without already controlling the
+    env var. Even so, drop the dangerous chars before substitution.
+    """
+    return (
+        (s or "")
+        .replace("\\", "\\\\")
+        .replace("'", "")
+        .replace("\n", "")
+        .replace("\r", "")
+        .replace("<", "")
+        .replace(">", "")
+    )
+
+
+def _today_filter_clause() -> str:
+    """SQL fragment: rows whose created_at is on IE-local today.
+
+    Postgres branch uses `now() AT TIME ZONE 'Europe/Dublin'` for DST-safe
+    comparison. SQLite branch uses `datetime('now','localtime')`, which on
+    Render's UTC container resolves to UTC — accepted v1 imprecision since
+    the receptionist DB is wiped on redeploy and IE is +0/+1 from UTC.
+    """
+    if _USE_PG:
+        return ("date(created_at AT TIME ZONE 'Europe/Dublin') = "
+                "date(now() AT TIME ZONE 'Europe/Dublin')")
+    return ("date(created_at, 'localtime') = "
+            "date('now', 'localtime')")
+
+
+@app.get("/client/api/today")
+async def client_today_api(
+    assistant: str = Query(..., min_length=8),
+    token: str = Query(""),
+):
+    """JSON roll-up of today's calls for ONE assistant (=one client).
+
+    Customer scope = `assistant` (Vapi assistant_id). Per-call rows are
+    derived from `call_events` (existing schema). Status is rule-based:
+    booking | transfer | voicemail | answered | missed.
+    """
+    _check_client(token)
+    if not assistant.strip():
+        raise HTTPException(status_code=400, detail="assistant required")
+
+    sql = (
+        "SELECT call_id, event_type, assistant, summary, detail, created_at "
+        "FROM call_events "
+        f"WHERE assistant = ? AND {_today_filter_clause()} "
+        "ORDER BY created_at DESC LIMIT 500"
+    )
+    with get_db() as conn:
+        rows = conn.execute(sql, (assistant,)).fetchall()
+
+    by_call: dict[str, dict] = {}
+    for r in rows:
+        cid = r["call_id"] or ""
+        if not cid:
+            continue
+        rec = by_call.setdefault(cid, {
+            "call_id": cid,
+            "started_at": str(r["created_at"]),
+            "ended_at": str(r["created_at"]),
+            "events": [],
+            "caller_name": None,
+            "first_line": None,
+            "status": "unknown",
+        })
+        rec["started_at"] = str(r["created_at"])  # latest-DESC ⇒ first row
+        rec["events"].append({
+            "event_type": r["event_type"],
+            "summary": r["summary"],
+            "at": str(r["created_at"]),
+        })
+
+        detail_raw = r["detail"]
+        if detail_raw:
+            try:
+                d = (_client_json.loads(detail_raw)
+                     if isinstance(detail_raw, str) else detail_raw)
+                if isinstance(d, dict):
+                    if rec["caller_name"] is None:
+                        rec["caller_name"] = (
+                            d.get("caller_name") or d.get("name") or None
+                        )
+                    if rec["first_line"] is None:
+                        t = d.get("transcript")
+                        if isinstance(t, list):
+                            for turn in t:
+                                if (isinstance(turn, dict)
+                                    and turn.get("role") in ("user", "customer")):
+                                    txt = turn.get("text") or ""
+                                    rec["first_line"] = txt[:140]
+                                    break
+                        elif isinstance(t, str):
+                            rec["first_line"] = t[:140]
+            except Exception:
+                pass
+
+        et = (r["event_type"] or "").lower()
+        if et == "booking":
+            rec["status"] = "booked"
+        elif et in ("call-transferred", "transfer"):
+            if rec["status"] not in ("booked",):
+                rec["status"] = "transferred"
+        elif et in ("voicemail", "vm"):
+            if rec["status"] == "unknown":
+                rec["status"] = "voicemail"
+        elif et in ("missed", "no-answer"):
+            if rec["status"] == "unknown":
+                rec["status"] = "missed"
+        elif et == "call-ended":
+            if rec["status"] == "unknown":
+                rec["status"] = "answered"
+
+    calls = sorted(by_call.values(), key=lambda x: x["started_at"], reverse=True)
+    counts = _Counter(c["status"] for c in calls)
+    summary = {
+        "answered": counts.get("answered", 0),
+        "booked": counts.get("booked", 0),
+        "transferred": counts.get("transferred", 0),
+        "voicemail": counts.get("voicemail", 0),
+        "missed": counts.get("missed", 0),
+        "total": len(calls),
+    }
+    return JSONResponse({"summary": summary, "calls": calls})
+
+
+@app.get("/client/api/call/{call_id}")
+async def client_call_detail(
+    call_id: str,
+    assistant: str = Query(..., min_length=8),
+    token: str = Query(""),
+):
+    """Full event stream for one call. Customer-scoped via assistant."""
+    _check_client(token)
+    with get_db() as conn:
+        rows = conn.execute(
+            "SELECT created_at, event_type, assistant, summary, detail "
+            "FROM call_events WHERE call_id = ? AND assistant = ? "
+            "ORDER BY created_at ASC",
+            (call_id, assistant),
+        ).fetchall()
+    if not rows:
+        raise HTTPException(status_code=404, detail="call not found")
+    return JSONResponse({
+        "call_id": call_id,
+        "events": [
+            {
+                "at": str(r["created_at"]),
+                "event_type": r["event_type"],
+                "summary": r["summary"],
+                "detail": r["detail"],
+            }
+            for r in rows
+        ],
+    })
+
+
+def _client_today_html(assistant: str, token: str) -> str:
+    a = _js_string_safe(assistant)
+    t = _js_string_safe(token)
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Today &middot; CallMeIE</title>
+  <style>
+    :root {{ --ink:#0f172a; --muted:#64748b; --bg:#f8fafc; --line:#e2e8f0;
+            --green:#16a34a; --amber:#f59e0b; --red:#dc2626; --slate:#94a3b8;
+            --blue:#3b82f6; }}
+    body {{ margin:0; font:15px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+           color:var(--ink); background:var(--bg); }}
+    .wrap {{ max-width: 900px; margin: 0 auto; padding: 24px 16px; }}
+    h1 {{ font-size: 1.5rem; margin: 0 0 4px; font-weight: 600; }}
+    .muted {{ color: var(--muted); }}
+    .summary {{ display: grid; grid-template-columns: repeat(5, 1fr);
+               gap: 12px; margin: 20px 0; }}
+    .summary > div {{ background: white; border: 1px solid var(--line);
+                     border-radius: 8px; padding: 14px 12px; text-align: center; }}
+    .summary .n {{ font-size: 1.6rem; font-weight: 600; line-height: 1; }}
+    .summary .l {{ font-size: 0.78rem; color: var(--muted); margin-top: 4px;
+                  text-transform: uppercase; letter-spacing: 0.04em; }}
+    .calls {{ background: white; border: 1px solid var(--line); border-radius: 8px;
+             overflow: hidden; }}
+    .call-row {{ padding: 14px 16px; border-bottom: 1px solid var(--line);
+                cursor: pointer; display: grid;
+                grid-template-columns: 12px 1fr auto; gap: 12px; align-items: center; }}
+    .call-row:last-child {{ border-bottom: none; }}
+    .call-row:hover {{ background: #f1f5f9; }}
+    .dot {{ width: 10px; height: 10px; border-radius: 50%; }}
+    .dot.booked {{ background: var(--green); }}
+    .dot.answered {{ background: var(--blue); }}
+    .dot.transferred {{ background: var(--amber); }}
+    .dot.voicemail {{ background: var(--slate); }}
+    .dot.missed {{ background: var(--red); }}
+    .dot.unknown {{ background: var(--slate); }}
+    .caller {{ font-weight: 500; }}
+    .first-line {{ font-size: 0.88rem; color: var(--muted);
+                  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+                  max-width: 480px; }}
+    .time {{ font-size: 0.85rem; color: var(--muted); white-space: nowrap; }}
+    .detail {{ display: none; padding: 12px 16px 16px 40px;
+              background: #f1f5f9; font-size: 0.9rem;
+              border-bottom: 1px solid var(--line); }}
+    .detail.open {{ display: block; }}
+    .turn {{ margin: 6px 0; }}
+    .turn .who {{ font-weight: 600; color: var(--ink); }}
+    .actions {{ margin-top: 10px; }}
+    .btn {{ padding: 6px 12px; font-size: 0.85rem; border-radius: 6px;
+           border: 1px solid var(--line); background: white; cursor: pointer;
+           margin-right: 6px; }}
+    .btn-primary {{ background: var(--ink); color: white; border-color: var(--ink); }}
+    .empty {{ padding: 32px 16px; text-align: center; color: var(--muted); }}
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Today</h1>
+  <p class="muted">Your calls so far today. Click any row for the full transcript.</p>
+
+  <div id="page-body">
+    <div class="empty">Loading...</div>
+  </div>
+</div>
+<script>
+const ASSIST = '{a}';
+const TOKEN  = '{t}';
+
+function esc(s) {{
+  return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {{
+    return {{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":"&#39;"}}[c];
+  }});
+}}
+function cap(s) {{ return s ? s[0].toUpperCase() + s.slice(1) : ''; }}
+
+function renderSummary(s) {{
+  const answered = (s.answered || 0) + (s.booked || 0) + (s.transferred || 0);
+  return ''
+    + '<div class="summary">'
+    + '<div><div class="n">' + answered + '</div><div class="l">Answered</div></div>'
+    + '<div><div class="n">' + (s.booked || 0) + '</div><div class="l">Booked</div></div>'
+    + '<div><div class="n">' + (s.transferred || 0) + '</div><div class="l">Transferred</div></div>'
+    + '<div><div class="n">' + (s.voicemail || 0) + '</div><div class="l">Voicemail</div></div>'
+    + '<div><div class="n">' + (s.missed || 0) + '</div><div class="l">Missed</div></div>'
+    + '</div>';
+}}
+
+async function refresh() {{
+  const url = '/client/api/today?assistant=' + encodeURIComponent(ASSIST)
+              + '&token=' + encodeURIComponent(TOKEN);
+  try {{
+    const r = await fetch(url);
+    if (!r.ok) {{
+      document.getElementById('page-body').innerHTML =
+        '<div class="empty">Loading failed (' + r.status + '). Check your link.</div>';
+      return;
+    }}
+    const data = await r.json();
+    const root = document.getElementById('page-body');
+    if (!data.calls || data.calls.length === 0) {{
+      root.innerHTML = renderSummary(data.summary)
+        + '<div class="calls"><div class="empty">No calls yet today. Inbox zero.</div></div>';
+      return;
+    }}
+    let html = renderSummary(data.summary) + '<div class="calls">';
+    for (let i = 0; i < data.calls.length; i++) {{
+      const c = data.calls[i];
+      let t = '';
+      try {{ t = new Date(c.started_at.replace(' ', 'T') + 'Z')
+              .toLocaleTimeString('en-IE',
+                {{hour: '2-digit', minute: '2-digit'}}); }}
+      catch (_) {{ t = c.started_at || ''; }}
+      const name = c.caller_name || '(unknown caller)';
+      const line = c.first_line || '';
+      const status = c.status || 'unknown';
+      html += '<div class="call-row" data-call-id="' + esc(c.call_id) + '"'
+            + ' data-status="' + esc(status) + '"'
+            + ' onclick="toggleDetail(this)">'
+            + '<span class="dot ' + esc(status) + '"></span>'
+            + '<div><div class="caller">' + esc(name) + '</div>'
+            +   '<div class="first-line">' + esc(line) + '</div></div>'
+            + '<span class="time">' + t + ' &middot; ' + cap(status) + '</span>'
+            + '</div>'
+            + '<div class="detail" id="d-' + esc(c.call_id) + '"></div>';
+    }}
+    html += '</div>';
+    root.innerHTML = html;
+  }} catch (e) {{
+    console.error(e);
+  }}
+}}
+
+async function toggleDetail(row) {{
+  const cid = row.getAttribute('data-call-id');
+  const status = row.getAttribute('data-status');
+  const d = document.getElementById('d-' + cid);
+  if (d.classList.contains('open')) {{ d.classList.remove('open'); return; }}
+  if (!d.dataset.loaded) {{
+    const url = '/client/api/call/' + encodeURIComponent(cid)
+              + '?assistant=' + encodeURIComponent(ASSIST)
+              + '&token=' + encodeURIComponent(TOKEN);
+    try {{
+      const r = await fetch(url);
+      const data = await r.json();
+      let h = '';
+      for (let i = 0; i < (data.events || []).length; i++) {{
+        const ev = data.events[i];
+        let at = '';
+        try {{ at = new Date(ev.at.replace(' ', 'T') + 'Z')
+                  .toLocaleTimeString('en-IE',
+                    {{hour: '2-digit', minute: '2-digit', second: '2-digit'}}); }}
+        catch (_) {{ at = ev.at || ''; }}
+        h += '<div class="turn"><span class="who">' + at + ' '
+           + esc(ev.event_type || '') + '</span> '
+           + esc(ev.summary || '') + '</div>';
+      }}
+      if (status === 'missed') {{
+        h += '<div class="actions">'
+           + '<button class="btn btn-primary" onclick="alert(\\'SMS follow-up: queued (v2 wires Twilio).\\')">'
+           + 'Send SMS follow-up</button>'
+           + '<button class="btn" onclick="alert(\\'Added to callback queue (v2 wires queue table).\\')">'
+           + 'Add to callback queue</button>'
+           + '</div>';
+      }}
+      d.innerHTML = h || '<em class="muted">No events recorded yet.</em>';
+      d.dataset.loaded = '1';
+    }} catch (e) {{ console.error(e); }}
+  }}
+  d.classList.add('open');
+}}
+
+refresh();
+setInterval(refresh, 60000);
+</script>
+</body>
+</html>"""
+
+
+@app.get("/client/today", response_class=HTMLResponse)
+async def client_today_page(
+    assistant: str = Query(""),
+    token: str = Query(""),
+):
+    _check_client(token)
+    if not assistant:
+        raise HTTPException(status_code=400, detail="?assistant=<id> required")
+    return HTMLResponse(_client_today_html(assistant, token))
+
+
+@app.get("/client/")
+async def client_root(assistant: str = Query(""), token: str = Query("")):
+    """Convenience root for client.callmeie.ie. Redirects to /client/today."""
+    if token and assistant:
+        return await client_today_page(assistant=assistant, token=token)
+    raise HTTPException(
+        status_code=400,
+        detail="Pass ?assistant=<id>&token=<admin_token>. "
+               "Example: /client/today?assistant=...&token=...",
+    )
+
+
+# --- END MVP customer Receptionist Today routes --------------------------
+
+
 if __name__ == "__main__":
     import uvicorn
     port = int(os.environ.get("PORT", 8080))
