@@ -794,6 +794,50 @@ def init_db():
         conn.execute(_ddl_fix("""
             CREATE INDEX IF NOT EXISTS idx_call_notes_call_id ON call_notes(call_id)
         """))
+        # ----- pilots (2026-05-22) — 30-day free pilot tracker
+        # Stripe Checkout creates the subscription with trial_period_days=30;
+        # this table mirrors the operator-side view (who, what vertical, what
+        # DID was assigned, day-28 recommendation, day-31 conversion outcome).
+        # Pilots are NOT paying customers until status='converted' AND
+        # converted_at is set. See callmeie-hub/_internal/PILOT-PROGRAM.md.
+        conn.execute(_ddl_fix("""
+            CREATE TABLE IF NOT EXISTS pilots (
+                id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+                created_at           TEXT DEFAULT (datetime('now')),
+                business_name        TEXT NOT NULL,
+                contact_name         TEXT,
+                contact_email        TEXT NOT NULL,
+                contact_phone        TEXT,
+                vertical             TEXT NOT NULL,
+                stripe_session_id    TEXT,
+                stripe_subscription_id TEXT,
+                stripe_customer_id   TEXT,
+                checkout_url         TEXT,
+                vapi_assistant_id    TEXT,
+                twilio_phone_sid     TEXT,
+                twilio_phone_number  TEXT,
+                day_28_due_at        TEXT,
+                day_31_due_at        TEXT,
+                recommended_tier     TEXT,
+                day_28_minutes       INTEGER,
+                day_28_calls         INTEGER,
+                day_28_after_hours_pct INTEGER,
+                day_28_routes        INTEGER,
+                day_28_sent_at       TEXT,
+                converted_at         TEXT,
+                converted_tier       TEXT,
+                cancelled_at         TEXT,
+                cancel_reason        TEXT,
+                status               TEXT DEFAULT 'pending',
+                notes                TEXT
+            )
+        """))
+        conn.execute(_ddl_fix("""
+            CREATE INDEX IF NOT EXISTS idx_pilots_status ON pilots(status)
+        """))
+        conn.execute(_ddl_fix("""
+            CREATE INDEX IF NOT EXISTS idx_pilots_stripe_sub ON pilots(stripe_subscription_id)
+        """))
 
         conn.commit()
 
@@ -5872,6 +5916,7 @@ def owl_stripe_portal(request: Request, token: str = Query("")) -> JSONResponse:
 # (records the payment); no webhook changes needed.
 
 STRIPE_RECEPTIONIST_PRICES = {
+    "starter": os.environ.get("STRIPE_RECEPTIONIST_STARTER_MONTHLY", "").strip(),
     "professional": os.environ.get("STRIPE_RECEPTIONIST_PROFESSIONAL_MONTHLY", "").strip(),
     "growth": os.environ.get("STRIPE_RECEPTIONIST_GROWTH_MONTHLY", "").strip(),
 }
@@ -5987,6 +6032,209 @@ async def admin_send_setup_link(request: Request, token: str = Query("")) -> JSO
         "phone": phone,
         "tier": tier,
         "include_setup": include_setup,
+    })
+
+
+# --------------------------------------------------------------------------
+# Pilot Program (2026-05-22) — 30-day free pilot, card on file, usage-metered
+# tier recommendation on day 28, auto-convert day 31. Spec:
+# callmeie-hub/_internal/PILOT-PROGRAM.md
+#
+# Stripe Checkout with subscription_data[trial_period_days]=30 +
+# payment_method_collection=always means: card captured day 0, NO charge
+# until day 31, customer can cancel during trial with no payment.
+#
+# Default trial subscription = Starter (cheapest). Day-31 tier adjustment
+# happens via Stripe Subscriptions update API in a separate cron — billing
+# starts on whatever tier is set at trial end, so there's no proration
+# trap. See PILOT-PROGRAM.md §"Day-28 tier recommendation logic".
+# --------------------------------------------------------------------------
+
+PILOT_ALLOWED_VERTICALS = {
+    "dental", "cafe", "restaurant", "salon", "solicitor", "accounting",
+    "plumber", "electrician", "mechanic", "motor-factors", "other",
+}
+
+
+@app.post("/admin/api/pilot/signup")
+async def admin_pilot_signup(request: Request, token: str = Query("")) -> JSONResponse:
+    """Create a 30-day free pilot for an Irish SMB prospect.
+
+    Stripe Checkout session with trial_period_days=30 (no charge until day 31)
+    plus payment_method_collection=always (card captured at signup).
+
+    Body:
+      business_name: str       e.g. "O'Brien & Co Solicitors"
+      contact_name:  str       e.g. "Mairead O'Brien"
+      contact_email: str       e.g. "mairead@obrienco.ie"
+      contact_phone: str       E.164, e.g. "+353871234567"
+      vertical:      str       one of PILOT_ALLOWED_VERTICALS
+      notes:         str       optional free-form (services offered, hours, etc.)
+
+    Auth: ADMIN_TOKEN or OWL_OWNER_TOKEN (admin-mediated; no public form yet).
+
+    Response:
+      ok, pilot_id, checkout_url, day_28_due, day_31_due
+    """
+    # ---- auth (same pattern as send-setup-link)
+    bearer = ""
+    auth_hdr = request.headers.get("authorization", "")
+    if auth_hdr.lower().startswith("bearer "):
+        bearer = auth_hdr.split(None, 1)[1].strip()
+    effective = token or bearer
+    is_admin = bool(ADMIN_TOKEN) and _secrets.compare_digest(effective, ADMIN_TOKEN)
+    is_owner = _owl_check_owner(effective)
+    if not (is_admin or is_owner):
+        raise HTTPException(status_code=401, detail="ADMIN_TOKEN or OWL_OWNER_TOKEN required")
+
+    if not OWL_STRIPE_API_KEY:
+        raise HTTPException(status_code=500, detail="STRIPE_API_KEY not configured")
+
+    starter_price = STRIPE_RECEPTIONIST_PRICES.get("starter", "")
+    if not starter_price:
+        raise HTTPException(
+            status_code=500,
+            detail="STRIPE_RECEPTIONIST_STARTER_MONTHLY env var not set on Render",
+        )
+
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="invalid JSON")
+
+    business_name = str(body.get("business_name", "")).strip()
+    contact_name = str(body.get("contact_name", "")).strip()
+    contact_email = str(body.get("contact_email", "")).strip().lower()
+    contact_phone = str(body.get("contact_phone", "")).strip()
+    vertical = str(body.get("vertical", "")).strip().lower()
+    notes = str(body.get("notes", "")).strip()[:2000]
+
+    if not business_name:
+        raise HTTPException(status_code=400, detail="business_name required")
+    if "@" not in contact_email or "." not in contact_email:
+        raise HTTPException(status_code=400, detail="valid contact_email required")
+    if vertical not in PILOT_ALLOWED_VERTICALS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"vertical must be one of: {sorted(PILOT_ALLOWED_VERTICALS)}",
+        )
+    if contact_phone and not contact_phone.startswith("+"):
+        raise HTTPException(status_code=400, detail="contact_phone must be E.164 (start with +) or empty")
+
+    # ---- Create Stripe Checkout: trial subscription on Starter, card required
+    data = {
+        "mode": "subscription",
+        "success_url": "https://callmeie.ie/receptionist/?pilot=signed&sid={CHECKOUT_SESSION_ID}",
+        "cancel_url": "https://callmeie.ie/receptionist/?pilot=cancelled",
+        "customer_email": contact_email,
+        "payment_method_collection": "always",
+        "billing_address_collection": "required",
+        "automatic_tax[enabled]": "true",
+        "tax_id_collection[enabled]": "true",
+        "allow_promotion_codes": "false",
+        "line_items[0][price]": starter_price,
+        "line_items[0][quantity]": 1,
+        "subscription_data[trial_period_days]": "30",
+        "subscription_data[trial_settings][end_behavior][missing_payment_method]": "cancel",
+        "subscription_data[metadata][owl_tag]": "callmeie",
+        "subscription_data[metadata][product]": "receptionist-pilot",
+        "subscription_data[metadata][vertical]": vertical,
+        "subscription_data[metadata][business_name]": business_name[:500],
+        "metadata[owl_tag]": "callmeie",
+        "metadata[product]": "receptionist-pilot",
+        "metadata[vertical]": vertical,
+        "metadata[business_name]": business_name[:500],
+        "metadata[via]": "admin-pilot-signup",
+    }
+    if contact_phone:
+        data["metadata[contact_phone]"] = contact_phone
+
+    try:
+        async with httpx.AsyncClient(timeout=20.0) as client:
+            r = await client.post(
+                "https://api.stripe.com/v1/checkout/sessions",
+                data=data,
+                headers={"Authorization": f"Bearer {OWL_STRIPE_API_KEY}"},
+            )
+        if r.status_code >= 400:
+            raise HTTPException(
+                status_code=502,
+                detail=f"Stripe checkout-session create failed: HTTP {r.status_code} {r.text[:400]}",
+            )
+        session = r.json()
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Stripe API unreachable: {e}")
+
+    checkout_url = session.get("url", "")
+    session_id = session.get("id", "")
+
+    # ---- Record pilot in DB
+    import datetime as _dt
+    now = _dt.datetime.utcnow()
+    day_28 = (now + _dt.timedelta(days=28)).isoformat()
+    day_31 = (now + _dt.timedelta(days=31)).isoformat()
+
+    with get_db() as conn:
+        cur = conn.execute(
+            """INSERT INTO pilots (business_name, contact_name, contact_email, contact_phone,
+               vertical, stripe_session_id, checkout_url, day_28_due_at, day_31_due_at,
+               status, notes)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+            (business_name, contact_name, contact_email, contact_phone, vertical,
+             session_id, checkout_url, day_28, day_31, "pending", notes),
+        )
+        pilot_id = cur.lastrowid
+        conn.commit()
+
+    log_event(
+        call_id=f"pilot-{pilot_id}",
+        event_type="pilot-signup-created",
+        assistant="admin",
+        summary=f"Pilot signup created for {business_name} ({vertical})",
+        detail={
+            "pilot_id": pilot_id,
+            "vertical": vertical,
+            "stripe_session_id": session_id,
+        },
+    )
+
+    return JSONResponse({
+        "ok": True,
+        "pilot_id": pilot_id,
+        "checkout_url": checkout_url,
+        "stripe_session_id": session_id,
+        "day_28_due": day_28,
+        "day_31_due": day_31,
+        "instructions": "Email or SMS the checkout_url to the prospect. They complete card capture; trial starts day 1 of access (no charge until day 31).",
+    })
+
+
+@app.get("/admin/api/pilots")
+async def admin_list_pilots(request: Request, token: str = Query("")) -> JSONResponse:
+    """List all pilots. Auth: ADMIN_TOKEN or OWL_OWNER_TOKEN."""
+    bearer = ""
+    auth_hdr = request.headers.get("authorization", "")
+    if auth_hdr.lower().startswith("bearer "):
+        bearer = auth_hdr.split(None, 1)[1].strip()
+    effective = token or bearer
+    is_admin = bool(ADMIN_TOKEN) and _secrets.compare_digest(effective, ADMIN_TOKEN)
+    is_owner = _owl_check_owner(effective)
+    if not (is_admin or is_owner):
+        raise HTTPException(status_code=401, detail="ADMIN_TOKEN or OWL_OWNER_TOKEN required")
+    with get_db() as conn:
+        rows = conn.execute(
+            """SELECT id, created_at, business_name, contact_name, contact_email,
+               vertical, status, stripe_subscription_id, vapi_assistant_id,
+               twilio_phone_number, day_28_due_at, day_31_due_at,
+               recommended_tier, converted_tier, converted_at, cancelled_at
+               FROM pilots ORDER BY created_at DESC"""
+        ).fetchall()
+    return JSONResponse({
+        "ok": True,
+        "count": len(rows),
+        "pilots": [dict(r) for r in rows],
     })
 
 
