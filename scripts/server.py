@@ -6185,15 +6185,19 @@ async def admin_pilot_signup(request: Request, token: str = Query("")) -> JSONRe
 
     try:
         with get_db() as conn:
+            # RETURNING id = cross-DB safe (SQLite 3.35+, Postgres native).
+            # cur.lastrowid is SQLite-only and breaks on psycopg.
             cur = conn.execute(
                 """INSERT INTO pilots (business_name, contact_name, contact_email, contact_phone,
                    vertical, stripe_session_id, checkout_url, day_28_due_at, day_31_due_at,
                    status, notes)
-                   VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?)
+                   RETURNING id""",
                 (business_name, contact_name, contact_email, contact_phone, vertical,
                  session_id, checkout_url, day_28, day_31, "pending", notes),
             )
-            pilot_id = cur.lastrowid
+            row = cur.fetchone()
+            pilot_id = row[0] if row else None
             conn.commit()
     except Exception as _dbexc:
         raise HTTPException(
