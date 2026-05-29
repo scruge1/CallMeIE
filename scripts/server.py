@@ -5915,10 +5915,17 @@ def owl_stripe_portal(request: Request, token: str = Query("")) -> JSONResponse:
 # Existing webhook /owl/stripe/webhook handles checkout.session.completed
 # (records the payment); no webhook changes needed.
 
+# Fallback defaults match PRICING-SSOT §2 canonical values. Render env vars
+# take precedence when set; defaults exist because Render exhibited a
+# single-key-PUT propagation bug 2026-05-29 where new STARTER key was
+# accepted by API + present in env-vars list but never injected into the
+# running container despite 5 redeploys (clear-cache + full PUT array +
+# suspend/resume). Sibling Pro/Growth keys load fine. Defaults guarantee
+# pilot signup works even if Render env loading regresses again.
 STRIPE_RECEPTIONIST_PRICES = {
-    "starter": os.environ.get("STRIPE_RECEPTIONIST_STARTER_MONTHLY", "").strip(),
-    "professional": os.environ.get("STRIPE_RECEPTIONIST_PROFESSIONAL_MONTHLY", "").strip(),
-    "growth": os.environ.get("STRIPE_RECEPTIONIST_GROWTH_MONTHLY", "").strip(),
+    "starter": os.environ.get("STRIPE_RECEPTIONIST_STARTER_MONTHLY", "price_1TXOiVCEqG2AuI1zGWDwhEJG").strip(),
+    "professional": os.environ.get("STRIPE_RECEPTIONIST_PROFESSIONAL_MONTHLY", "price_1TVxwgCEqG2AuI1zPZzlP7q3").strip(),
+    "growth": os.environ.get("STRIPE_RECEPTIONIST_GROWTH_MONTHLY", "price_1TVxwgCEqG2AuI1zzsCH9YG1").strip(),
 }
 STRIPE_RECEPTIONIST_SETUP_PRICE = os.environ.get("STRIPE_RECEPTIONIST_SETUP_ONCE", "").strip()
 
