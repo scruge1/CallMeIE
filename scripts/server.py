@@ -6177,23 +6177,29 @@ async def admin_pilot_signup(request: Request, token: str = Query("")) -> JSONRe
     checkout_url = session.get("url", "")
     session_id = session.get("id", "")
 
-    # ---- Record pilot in DB
-    import datetime as _dt
+    # ---- Record pilot in DB (diagnostic: surface real exception)
+    import datetime as _dt, traceback as _tb
     now = _dt.datetime.utcnow()
     day_28 = (now + _dt.timedelta(days=28)).isoformat()
     day_31 = (now + _dt.timedelta(days=31)).isoformat()
 
-    with get_db() as conn:
-        cur = conn.execute(
-            """INSERT INTO pilots (business_name, contact_name, contact_email, contact_phone,
-               vertical, stripe_session_id, checkout_url, day_28_due_at, day_31_due_at,
-               status, notes)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
-            (business_name, contact_name, contact_email, contact_phone, vertical,
-             session_id, checkout_url, day_28, day_31, "pending", notes),
+    try:
+        with get_db() as conn:
+            cur = conn.execute(
+                """INSERT INTO pilots (business_name, contact_name, contact_email, contact_phone,
+                   vertical, stripe_session_id, checkout_url, day_28_due_at, day_31_due_at,
+                   status, notes)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+                (business_name, contact_name, contact_email, contact_phone, vertical,
+                 session_id, checkout_url, day_28, day_31, "pending", notes),
+            )
+            pilot_id = cur.lastrowid
+            conn.commit()
+    except Exception as _dbexc:
+        raise HTTPException(
+            status_code=500,
+            detail=f"DB insert failed: {type(_dbexc).__name__}: {str(_dbexc)[:300]}",
         )
-        pilot_id = cur.lastrowid
-        conn.commit()
 
     log_event(
         call_id=f"pilot-{pilot_id}",
