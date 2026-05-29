@@ -6197,7 +6197,13 @@ async def admin_pilot_signup(request: Request, token: str = Query("")) -> JSONRe
                  session_id, checkout_url, day_28, day_31, "pending", notes),
             )
             row = cur.fetchone()
-            pilot_id = row[0] if row else None
+            # Defensive: psycopg may return dict_row, SQLite returns tuple.
+            if row is None:
+                pilot_id = None
+            elif hasattr(row, "get") and not isinstance(row, tuple):
+                pilot_id = row.get("id")
+            else:
+                pilot_id = row[0]
             conn.commit()
     except Exception as _dbexc:
         raise HTTPException(
