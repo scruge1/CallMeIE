@@ -106,7 +106,9 @@ The table is `service_applications` (NOT `services_applications`). `custom_label
 
 ---
 
-## 3 · Render (cloud runtime — to migrate to Coolify later)
+## 3 · Render (cloud runtime)
+
+> **CANONICAL BACKEND IS NOW `https://admin.callmeie.ie` (Hetzner/Coolify, `178.104.205.255`) — NOT this Render service.** Verified 2026-05-30: the migration happened. The live receptionist admin (recordings, SMS, call-flag, `/admin/api/*`) runs on Coolify; its DB is current (idmax 1587, live calls). **`callmeie.onrender.com` is a STALE secondary deploy** — separate DB frozen at id≤45 / 2026-04-26, but still answers and still accepts admin writes with the same `ADMIN_TOKEN` (a real hazard — ops hitting it silently no-op). Vapi webhooks + Twilio voice now flow to the Coolify deploy. Treat Render as non-authoritative pending retire/decommission. See `callmeie-fix/KNOWN-ISSUES.md` BUG-06/BUG-07. The Render facts below are retained for the decommission task.
 
 | Field | Value |
 |---|---|
@@ -133,6 +135,14 @@ The table is `service_applications` (NOT `services_applications`). `custom_label
 - `GET /admin?token=` — CallMeIE admin portal
 - `GET /admin/api/events`, `GET /admin/api/diagnoses`, `GET /admin/api/submissions`
 - `POST /admin/api/provision/{id}` — one-click client provisioning
+
+**Inbound call screen (Twilio Serverless, added 2026-05-30):**
+- Demo line `+35361788120` (Twilio `PNfa6047f8f4dc100a5c64b28638f547e4`, Limerick) VoiceUrl now points to a Twilio Function **in front of** Vapi, not directly to Vapi.
+- Function: `https://callmeie-call-screen-1962-scr.twil.io/screen` (Serverless service `callmeie-call-screen`, env `prod`). Denylisted `From` → `<Reject>`; all others → `<Redirect>` to `https://api.vapi.ai/twilio/inbound_call`.
+- **VoiceFallbackUrl → `https://api.vapi.ai/twilio/inbound_call`** — if the Function ever errors, Twilio falls back to Vapi so the demo line cannot break from this layer.
+- Deploy/edit denylist: `callmeie-fix/scripts/deploy_call_screen.py` (idempotent; edit `DENYLIST`, re-run). Currently blocks `+353852345595` (troll, 2026-05-30).
+- Revert: set VoiceUrl back to `https://api.vapi.ai/twilio/inbound_call`.
+- NOTE: Vapi has NO serverUrl set on number/squad/assistants → end-of-call webhooks not landing (`/admin/api/events` frozen 2026-04-26, leads-unified=0). Lead-loss bug, separate from the screen. See `callmeie-fix/KNOWN-ISSUES.md` BUG-04.
 
 **Owl Studio (added 2026-04-21):**
 - `POST /owl/submit` — public form endpoint for every client site
