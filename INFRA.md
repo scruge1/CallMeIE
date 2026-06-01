@@ -87,6 +87,11 @@ curl -X PATCH -H "Authorization: Bearer $TOK" -H "Content-Type: application/json
 | owl-uptime-kuma | service (uptime-kuma) | `t10jb009nm5e36oy1n8bki97` | running:healthy | `http://uptimekuma-t10jb009nm5e36oy1n8bki97.178.104.205.255.sslip.io` | `https://uptime.owlzone.trade` (same) |
 | owl-umami | service (umami) | `txd1tt0zup0yckhlfojdf301` | running:healthy | `http://umami-txd1tt0zup0yckhlfojdf301.178.104.205.255.sslip.io` | `https://analytics.owlzone.trade` (same) |
 
+**Umami analytics — LIVE + receiving data (verified 2026-06-01).** Self-hosted Umami v3.0.3 @ `https://analytics.owlzone.trade` (Postgres-backed, EU-only Hetzner; NO ClickHouse — lighter than Plausible). The cookieless/GDPR-clean analytics path for all owl/CallMeIE sites. Plausible was a ledger adopt-candidate but Umami already fills the role (2026-06-01 decision: keep Umami, do NOT add a 2nd heavier stack to the no-swap box).
+- **callmeie.ie site** registered 2026-05-10, website-id `UMAMI_WEBSITE_ID_CALLMEIE` in `~/.claude/routes/.env` (`29c5ad13-…`). 20pv/11vis last 30d (consent-gated = accept-clickers only).
+- **Snippet deploy mechanism (callmeie-hub):** consent-gated loader lives in `_partials/cohesion-consent-banner.html` (source of truth, carries the website-id + `cmt-consent` localStorage banner). `scripts/inject-cohesion.py` fills any `<!-- COHESION:CONSENT-BANNER-START/END -->` sentinel pair in a page. To track a NEW page: add the empty sentinel pair before `</body>` → run `python scripts/inject-cohesion.py --page <rel>` → push (CF Pages auto-deploy). 90/91 customer pages tracked; accounting.html gap closed 2026-06-01.
+- **Admin/API:** creds `UMAMI_ADMIN_USER`/`UMAMI_ADMIN_PASSWORD` in vault; `POST /api/auth/login` → Bearer → `GET /api/websites/<id>/stats?startAt=&endAt=` (ms epochs).
+
 **Solved workaround (2026-04-21) — documented Coolify v4 bug [coollabsio/coolify#6281](https://github.com/coollabsio/coolify/issues/6281):** the API's env-var endpoint updates `SERVICE_FQDN_*` but does NOT cascade to `service_applications.fqdn` in the DB, so Traefik keeps routing only the original sslip.io hostname. Running this recipe gets all custom domains live with Let's Encrypt SSL:
 
 ```bash
@@ -1074,5 +1079,25 @@ TXT   callmeie.ie  google-site-verification=YdiX8OOpq1...
 **Token scope used:** `CLOUDFLARE_ZONE_CALLMEIE_TOKEN` (Zone DNS:Edit + Zone Settings:Edit) handled DNS records + zone-level routing enable. Account-scope endpoints (Account:Email Routing Addresses + Zone:Email Routing Rules) needed dashboard-driven setup — Claude in Chrome automated.
 
 **Verification ritual:** Cloudflare sends one-click link to destination address; recipient must click within ~24h for routing rule save to succeed. Re-trying save before verify yields "Verification email has been sent too recently" banner.
+
+## 17 · Cal.com (lab rig + Cloudflare Tunnel — LIVE 2026-06-01)
+
+Self-hosted Cal.com booking on the **lab rig** (`pop-os`, Tailscale `100.78.148.106`, amd64, 24/7) — NOT the Hetzner box. Public at **https://cal.callmeie.ie** via Cloudflare Tunnel (rig has no public IP; tunnel is outbound).
+
+| Item | Value |
+|---|---|
+| Public URL | https://cal.callmeie.ie — HTTP 200, CF edge SSL, served page 100% cal.callmeie.ie (no localhost leak) — verified 2026-06-01 |
+| Host | lab rig `pop-os`, dir `~/calcom/` — `docker compose` (`calcom-calcom-1` + `calcom-db-1`, healthy) |
+| Image | `calcom/cal.com:latest` prebuilt. Build-time `NEXT_PUBLIC_WEBAPP_URL` gotcha handled by image's runtime placeholder-replace (verified). |
+| DB | Postgres 16, **internal to compose network** (host :5432 already bound on rig). Creds in `~/calcom/.env` (chmod 600, secrets generated on-rig). |
+| App port | published `127.0.0.1:3000` (tunnel connects locally) |
+| Tunnel | cloudflared named tunnel `cal-callmeie`, id `bba50ca4-c316-489a-bf77-03a5937c149a`. systemd service `cloudflared` enabled (reboot-safe). config `/etc/cloudflared/config.yml` + creds `/etc/cloudflared/<uuid>.json`. origin cert `~/.cloudflared/cert.pem`. |
+| DNS | CNAME `cal.callmeie.ie` → `bba50ca4-...cfargotunnel.com` (proxied), via `cloudflared tunnel route dns`. CF zone callmeie.ie id `0ed441de9cda4746aa4bbc3c46532c81`, account `7cc2ab3455c4547401123e9c97baf077`. |
+| Env keys | `NEXT_PUBLIC_WEBAPP_URL=https://cal.callmeie.ie`, `NEXTAUTH_URL`, `NEXTAUTH_SECRET`, `CALENDSO_ENCRYPTION_KEY`, `DATABASE_URL` (all in `~/calcom/.env`) |
+| Setup script | `callmeie-fix/scripts/calcom_rig_setup.sh` (compose + env gen). Tunnel built via `/tmp/calcom_tunnel.sh` + `/tmp/calcom_svc.sh` (create → config → route dns → service install). |
+
+**Onboarding DONE 2026-06-01:** admin user (`scruge@pm.me`), plan=free, profile "adam vaughan", **username `adam`** → public booking page LIVE at **https://cal.callmeie.ie/adam** (default 15+30-min event types, smoke-tested). Calendar SKIPPED (connect later). **GOTCHA:** profile-page username save reverts on self-host — set via DB: `docker exec calcom-db-1 psql -U calcom -d calcom -c "UPDATE users SET username='adam' WHERE username='claude';"`. **Admin gate:** set ≥15-char admin password + 2FA for `/settings/admin`. **NEXT:** Cal.com + Vapi voice-to-calendar (receptionist loop). Multi-customer = users/teams/embeds/webhooks (free core); white-label sub-domains/Organizations/Platform API = paid EE.
+
+**Ops:** rig SSH over Tailscale (tag:server, key-expiry disabled). Restart Cal.com: `cd ~/calcom && docker compose restart`. Update: `docker compose pull && docker compose up -d`. Tunnel restart: `sudo systemctl restart cloudflared`.
 
 **Recovery recipe (if mail stops landing):** check zone status `GET /client/v4/zones/<zone>/email/routing` returns `enabled=true status=ready`; verify destination not deleted from `/accounts/<acct>/email/routing/addresses`; verify routing rule still active in `/zones/<zone>/email/routing/rules`. If MX records missing, re-create from §16.6 list.
