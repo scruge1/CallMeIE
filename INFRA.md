@@ -149,6 +149,12 @@ The table is `service_applications` (NOT `services_applications`). `custom_label
 - Revert: set VoiceUrl back to `https://api.vapi.ai/twilio/inbound_call`.
 - NOTE: Vapi has NO serverUrl set on number/squad/assistants → end-of-call webhooks not landing (`/admin/api/events` frozen 2026-04-26, leads-unified=0). Lead-loss bug, separate from the screen. See `callmeie-fix/KNOWN-ISSUES.md` BUG-04.
 
+**Outbound SMS to Ireland — alpha sender status (verified 2026-06-02, ticket #27259801):**
+- IE Local numbers (`+35361788870`, `+35361788120`) are **voice-only** (sms=False). IE SMS only via alphanumeric sender ID.
+- Alpha sender `CALLMEIE` is **configured** on Messaging Service `MG5773dd9d6b3b577d9517361ebcb758d0` ("CallMeIE Ireland Outbound") but **NOT regulatory-registered** → carrier overstamps "Likely Scam" (confirmed on a live message).
+- **Not self-serve:** REST `messaging/v1/AlphaSenderRegistrations` → 404; the Trust-Hub "Registrations > Alphanumeric Sender IDs" console flow is NOT present in this US1 account (Senders = Short codes/WhatsApp only; Reg-Compliance = A2P-10DLC/US). Path = Twilio support (ticket #27259801) submits to ComReg as Participating Aggregator, OR register direct at comreg.ie/senderid. Proof doc = **CRO 816273** cert (NOT DUNS — DUNS is the separate A2P-10DLC blocker).
+- **Interim outbound SMS** = US `TWILIO_FROM_NUMBER +16624397271` (Likely-Scam risk on Three IE), or prefer email via Resend `hello@callmeie.ie`. See MEMORY.md `project_ie-alpha-sender-not-registered` + `callmeie-hub/_internal/PILOT-PROGRAM.md` SMS section.
+
 **Owl Studio (added 2026-04-21):**
 - `POST /owl/submit` — public form endpoint for every client site
 - `POST /owl/care/ticket` — care-plan edit intake
@@ -1100,4 +1106,50 @@ Self-hosted Cal.com booking on the **lab rig** (`pop-os`, Tailscale `100.78.148.
 
 **Ops:** rig SSH over Tailscale (tag:server, key-expiry disabled). Restart Cal.com: `cd ~/calcom && docker compose restart`. Update: `docker compose pull && docker compose up -d`. Tunnel restart: `sudo systemctl restart cloudflared`.
 
-**Recovery recipe (if mail stops landing):** check zone status `GET /client/v4/zones/<zone>/email/routing` returns `enabled=true status=ready`; verify destination not deleted from `/accounts/<acct>/email/routing/addresses`; verify routing rule still active in `/zones/<zone>/email/routing/rules`. If MX records missing, re-create from §16.6 list.
+**INCIDENT 2026-06-01 — rig auto-suspended, took Cal.com (and the pending Tina editor) offline ~2h45m.** Rig unreachable ~18:59:40 IST; cal.callmeie.ie = CF 530. Diagnosis (`journalctl -b -1`/`last -x`): NOT crash/power-loss/OOM/update-reboot (no clean shutdown record). Box attempted **hybrid-sleep** ~18:58; **NVIDIA GPU failed to suspend** (`nv_pmops_suspend returns -5`) → stuck half-suspend until power-on 21:41. Root cause = **auto-suspend on a 24/7 server**. **FIX (reversible):** `sudo systemctl mask sleep.target suspend.target hibernate.target hybrid-sleep.target` (all `masked`) + logind `IdleAction/HandleLidSwitch/HandleLidSwitchExternalPower/HandleSuspendKey=ignore` + restart logind. Can't auto-sleep now. (Revert: `systemctl unmask`.) **Rig has NO Node.js** (Docker only) — host services run as containers.
+
+**Recovery recipe (if mail stops landing):** check zone status `GET /client/v4/zones/<zone>/email/routing` returns `enabled=true status=ready`; verify destination not deleted from `/accounts/<acct>/email/routing/addresses`; verify routing rule still active in `/zones/<zone>/email/routing/rules`. If MX records missing, re-create from §16.6 list.## 18 · truthchristianclothing.com (Truth brand store — Cloudflare, setup 2026-06-01)
+
+New brand-store domain for the **Truth** brand (faith apparel + journals; founder Kate). Registrar **GoDaddy** (same account as callmeie.ie). HTTPS/encrypt set up via the standard pipeline (domain -> Cloudflare -> SSL -> deploy later to CF Pages).
+
+| Item | Value |
+|---|---|
+| Registrar | GoDaddy (creds `GODADDY_KEY`/`GODADDY_SECRET` in `~/.claude/routes/.env`) |
+| Cloudflare zone id | `0757a414d2509ba5799d3b5a5a7ce9b1` (account `7cc2ab3455c4547401123e9c97baf077`, Scruge@pm.me, Free plan) |
+| Zone status | active (2026-06-01) |
+| Nameservers | `arely.ns.cloudflare.com`, `bjorn.ns.cloudflare.com` — swapped at GoDaddy via API (`PATCH /v1/domains/{domain}` body `{"nameServers":[...]}`; note PUT returns 404, must use PATCH; NS reflects in ~20-60s) |
+| SSL mode | `strict` (Full(strict)) — set 2026-06-01 once Pages origin cert served |
+| Always Use HTTPS | on · Automatic HTTPS Rewrites on · Min TLS 1.2 |
+| Universal SSL | active (edge cert = Google Trust Services WE1) |
+| DNS now | **repointed to CF Pages 2026-06-01.** apex `truthchristianclothing.com` CNAME→`truth-store.pages.dev` (proxied, flattened); `www` CNAME→`truth-store.pages.dev` (proxied); parking A records (×2) + `_domainconnect` CNAME DELETED; `_dmarc` TXT kept. |
+| Token note | `CLOUDFLARE_ZONE_CALLMEIE_TOKEN` does DNS/settings edit only — **no Pages perm (403) and no zone.create**. CF **Pages** project create + deploy + custom-domain add were done via **`wrangler login` OAuth** (one-time browser Allow; token stored `~/AppData/Roaming/xdg.config/.wrangler/config/default.toml`). To fully API-automate future brand domains, mint an account token with Zone:Edit + Pages:Edit. |
+
+### 18.1 · Deploy state — LIVE 2026-06-01
+
+Site **deployed + live**: https://truthchristianclothing.com (+ www, +https redirect 301) returns 200 serving the Truth homepage.
+
+| Item | Value |
+|---|---|
+| Host | Cloudflare Pages, project `truth-store` (account `7cc2ab3455c4547401123e9c97baf077`) |
+| Pages URL | https://truth-store.pages.dev (direct-upload, production branch `main`) |
+| Source repo | **`github.com/scruge1/truth-store`** (PRIVATE) = `truth-brand/website/site/` as repo root (nested git, since parent monorepo is local-only). Content source-of-truth (Tina commits here) + build source. |
+| Build | Astro static, `npm run build:site` → `dist/`. Published site imports content directly (no Tina at build). |
+| Publish path | **git push → GitHub Action auto-deploys** (`.github/workflows/deploy.yml`: build:site + `wrangler pages deploy dist --project-name=truth-store --branch=main`). Repo secrets `CLOUDFLARE_API_TOKEN` (= user token `truth-store-pages-deploy`, Account·Cloudflare Pages·Edit; also vaulted as `CLOUDFLARE_PAGES_TOKEN`) + `CLOUDFLARE_ACCOUNT_ID`. Verified green 2026-06-01. |
+| Custom domains | `truthchristianclothing.com` + `www.truthchristianclothing.com` (attached via Pages API, active) |
+| TinaCMS editor | NOT live yet — `/admin` needs the self-host backend (lab-rig, INFRA §17 tunnel pattern; decided 2026-06-01). Published site is creds-independent. |
+
+**Redeploy:** just `git push` to `scruge1/truth-store` main → Action rebuilds + republishes production (~4½ min). Manual fallback from this machine: `cd truth-brand/website/site && npm run build:site && npx wrangler pages deploy dist --project-name=truth-store --branch=main --commit-dirty=true` (needs `npx wrangler login` if OAuth expired). Node-20 actions deprecate 2026-09-16 → workflow already on node24. Custom-domain re-add (if ever): `POST /accounts/<acct>/pages/projects/truth-store/domains {"name":"<domain>"}` with the wrangler OAuth bearer (zone token is 403 on Pages).
+
+### 18.2 · Truth CMS editor — self-hosted TinaCMS on the lab rig (LIVE 2026-06-01; live-preview + font picker 2026-06-02)
+
+Kate self-edits at **https://cms.callmeie.ie/admin** (cookie-login: password = vault `TRUTH_EDITOR_PASS`). Edits commit to `scruge1/truth-store` → the GitHub Action republishes the live site. As of 2026-06-02 the editor ALSO serves a **live preview pane** (Tina contextual editing, updates as she types) + a **live font picker** (27 fonts, each rendered in its own typeface).
+
+- **Host:** lab rig `~/truth-editor/` docker compose — `truth-editor-mongo-1` (mongo:7 index) + `truth-editor-editor-1` (node:22, express+Tina, `npm ci && build:editor && start:editor`, :8080). `build:editor` now also runs `build:preview` (@astrojs/node SSR preview app → `dist-preview/`).
+- **Live preview:** Tina contextual editing. Published CF build stays Tina-free; preview wiring under `site/src-preview/` (separate srcDir, OUTSIDE the CF route graph) + rig-only `astro.config.preview.mjs`; `server.ts` mounts it same-origin as a catch-all (`/` + `/tina-island/[name]`). Server-side gql passes the gate via internal `X-API-KEY` secret (`TINA_INTERNAL_TOKEN`, .env only; public gql without it = 401). New env: `TINA_INTERNAL_TOKEN`, `TINA_GQL_URL`.
+- **Auth:** cookie-session login in `server.ts` (`/login` form → httpOnly cookie `truth_editor`; password `EDITOR_PASS`, secret=NEXTAUTH_SECRET). Basic-auth re-challenged the admin's fetches in a loop → switched to cookie. Tina frontend = no-op `BasicGateAuthProvider` (HOSTED/git mode), backend = `LocalBackendAuthProvider`; NO tinacms-authjs/next-auth (Next-bundler-only; see `_dep_notes/tinacms-self-host.md`).
+- **Data:** Git=truth-of-source, Mongo=index; commits via GitHubProvider + PAT `GITHUB_TRUTH_STORE_TOKEN`. `tina/database.ts` loads CJS adapters via aliased `_createRequire` (avoids the tinacms-build banner collision).
+- **Tunnel:** `cms.callmeie.ie` ingress on the EXISTING Cal.com tunnel `bba50ca4…` (`/etc/cloudflared/config.yml`→localhost:8080), CNAME via `tunnel route dns`.
+- **Reindex:** Tina-editor edits auto-index; for out-of-Tina pushes run `docker compose run --rm editor npm run reindex` on the rig.
+- **Ops:** `cd ~/truth-editor && docker compose restart editor`; rebuild after repo change `bash ~/truth-editor/setup.sh && docker compose up -d --force-recreate editor`; auto-starts on boot (restart: unless-stopped + §17 no-sleep).
+
+Setup method: zone created in CF dashboard via Claude-in-Chrome (logged-in Scruge@pm.me); NS swap + SSL/HTTPS settings applied via Cloudflare + GoDaddy APIs. Site not yet built — see `truth-brand/website/PRD-TRUTH-WEBSITE.md`. At deploy: create CF Pages project -> add custom domain truthchristianclothing.com -> repoint DNS -> bump SSL to Full(strict) -> cert serves.
