@@ -100,6 +100,22 @@ def _interval(days: int) -> str:
     return f"datetime('now', '-{days} days')"
 
 
+def _ts(col: str) -> str:
+    """Timestamp-comparison-safe reference to a datetime column.
+
+    Several columns in the live Postgres (e.g. discovery_submissions.created_at)
+    are stored as TEXT (ISO-8601 strings), not timestamptz. A bare `col < NOW()`
+    then raises `operator does not exist: text < timestamp with time zone`. Cast
+    to timestamptz so the `<` compares as time. The cast is a no-op on columns
+    that are already timestamptz, and parses ISO-8601 text — so it is safe to
+    apply uniformly without auditing each column's declared type first.
+
+    SQLite has no timestamptz; ISO-8601 text compares lexically = chronologically
+    against datetime('now', ...), so leave the column bare there.
+    """
+    return f"{col}::timestamptz" if _USE_PG else col
+
+
 def _execute(conn, sql: str, params: tuple = (), apply: bool = False) -> int:
     """Run an UPDATE/DELETE; return rowcount. No-op + scan when apply=False."""
     if not apply:
@@ -146,7 +162,7 @@ def purge(apply: bool = False) -> dict[str, Any]:
     conn = _connect()
     try:
         # --- 1. discovery_submissions: hard delete >90 days ---
-        sql = f"DELETE FROM discovery_submissions WHERE created_at < {_interval(90)}"
+        sql = f"DELETE FROM discovery_submissions WHERE {_ts('created_at')} < {_interval(90)}"
         n = _execute(conn, sql, (), apply)
         summary["discovery_submissions"] = {"hard_deleted": n}
         _print_row("discovery_submissions (>90d)", n, "hard-deleted", apply)
@@ -156,13 +172,13 @@ def purge(apply: bool = False) -> dict[str, Any]:
         # provisioned (vapi_assistant_id is NULL = never converted to client).
         soft_sql = (
             f"UPDATE submissions SET suppressed_at = {now_expr} "
-            f"WHERE created_at < {_interval(180)} "
+            f"WHERE {_ts('created_at')} < {_interval(180)} "
             f"AND vapi_assistant_id IS NULL "
             f"AND suppressed_at IS NULL"
         )
         n_soft = _execute(conn, soft_sql, (), apply)
         # Hard: delete rows where suppressed_at is >30d old.
-        hard_sql = f"DELETE FROM submissions WHERE suppressed_at IS NOT NULL AND suppressed_at < {_interval(30)}"
+        hard_sql = f"DELETE FROM submissions WHERE suppressed_at IS NOT NULL AND {_ts('suppressed_at')} < {_interval(30)}"
         n_hard = _execute(conn, hard_sql, (), apply)
         summary["submissions"] = {"soft_deleted": n_soft, "hard_purged": n_hard}
         _print_row("submissions (>180d, unprovisioned)", n_soft, "soft-deleted (suppressed_at set)", apply)
@@ -171,11 +187,11 @@ def purge(apply: bool = False) -> dict[str, Any]:
         # --- 3. owl_leads: 90d soft, 30d hard ---
         soft_sql = (
             f"UPDATE owl_leads SET suppressed_at = {now_expr} "
-            f"WHERE ts < {_interval(90)} "
+            f"WHERE {_ts('ts')} < {_interval(90)} "
             f"AND suppressed_at IS NULL"
         )
         n_soft = _execute(conn, soft_sql, (), apply)
-        hard_sql = f"DELETE FROM owl_leads WHERE suppressed_at IS NOT NULL AND suppressed_at < {_interval(30)}"
+        hard_sql = f"DELETE FROM owl_leads WHERE suppressed_at IS NOT NULL AND {_ts('suppressed_at')} < {_interval(30)}"
         n_hard = _execute(conn, hard_sql, (), apply)
         summary["owl_leads"] = {"soft_deleted": n_soft, "hard_purged": n_hard}
         _print_row("owl_leads (>90d)", n_soft, "soft-deleted", apply)
@@ -187,16 +203,16 @@ def purge(apply: bool = False) -> dict[str, Any]:
         # status='closed', so the close-event is necessarily older than
         # the row creation - 0d). 30d window respected via the longer
         # 90-day fallback.
-        sql_a = f"DELETE FROM owl_tickets WHERE status = 'closed' AND closed_at IS NOT NULL AND closed_at < {_interval(30)}"
+        sql_a = f"DELETE FROM owl_tickets WHERE status = 'closed' AND closed_at IS NOT NULL AND {_ts('closed_at')} < {_interval(30)}"
         n_a = _execute(conn, sql_a, (), apply)
-        sql_b = f"DELETE FROM owl_tickets WHERE status = 'closed' AND closed_at IS NULL AND ts < {_interval(90)}"
+        sql_b = f"DELETE FROM owl_tickets WHERE status = 'closed' AND closed_at IS NULL AND {_ts('ts')} < {_interval(90)}"
         n_b = _execute(conn, sql_b, (), apply)
         summary["owl_tickets"] = {"hard_deleted_via_closed_at": n_a, "hard_deleted_legacy": n_b}
         _print_row("owl_tickets (closed_at >30d)", n_a, "hard-deleted", apply)
         _print_row("owl_tickets (legacy closed >90d)", n_b, "hard-deleted (no closed_at)", apply)
 
         # --- 5. leads (Vapi-captured): 365d hard delete ---
-        sql = f"DELETE FROM leads WHERE created_at < {_interval(365)}"
+        sql = f"DELETE FROM leads WHERE {_ts('created_at')} < {_interval(365)}"
         n = _execute(conn, sql, (), apply)
         summary["leads"] = {"hard_deleted": n}
         _print_row("leads (>365d)", n, "hard-deleted", apply)
@@ -206,7 +222,7 @@ def purge(apply: bool = False) -> dict[str, Any]:
         # for rows the /admin/api/erase route marked. (submissions + owl_leads
         # already covered above.)
         for tbl in ("owl_tickets", "discovery_submissions"):
-            sql = f"DELETE FROM {tbl} WHERE suppressed_at IS NOT NULL AND suppressed_at < {_interval(30)}"
+            sql = f"DELETE FROM {tbl} WHERE suppressed_at IS NOT NULL AND {_ts('suppressed_at')} < {_interval(30)}"
             n = _execute(conn, sql, (), apply)
             summary.setdefault(tbl, {})["sar_hard_purged"] = n
             _print_row(f"{tbl} (SAR-suppressed >30d)", n, "hard-purged", apply)

@@ -58,8 +58,11 @@ def _check_cooldown(conn) -> bool:
     """Return True if we should run; False if cooled down."""
     if FORCE:
         return True
+    # ::timestamptz — cron_runs.last_run_at may be stored as TEXT in the live
+    # DB; cast so psycopg returns a datetime (the `now - last_run_at` math below
+    # would TypeError on a str). No-op if the column is already timestamptz.
     cur = conn.execute(
-        "SELECT last_run_at FROM cron_runs WHERE job_name = 'morning_rollup'"
+        "SELECT last_run_at::timestamptz AS last_run_at FROM cron_runs WHERE job_name = 'morning_rollup'"
     )
     row = cur.fetchone()
     if not row or not row.get("last_run_at"):
@@ -79,8 +82,8 @@ def _gather(conn) -> dict:
     last_24h = conn.execute("""
         SELECT primary_channel, status, count(*) AS n
         FROM unified_leads
-        WHERE created_at >= NOW() - INTERVAL '24 hours'
-          AND status_changed_at >= NOW() - INTERVAL '24 hours'
+        WHERE created_at::timestamptz >= NOW() - INTERVAL '24 hours'
+          AND status_changed_at::timestamptz >= NOW() - INTERVAL '24 hours'
         GROUP BY primary_channel, status
     """).fetchall()
     out["last_24h"] = list(last_24h)
@@ -89,7 +92,7 @@ def _gather(conn) -> dict:
     by_status_24h = conn.execute("""
         SELECT to_status AS status, count(*) AS n
         FROM lead_status_log
-        WHERE created_at >= NOW() - INTERVAL '24 hours'
+        WHERE created_at::timestamptz >= NOW() - INTERVAL '24 hours'
         GROUP BY to_status
     """).fetchall()
     out["status_changes_24h"] = {r["status"]: int(r["n"]) for r in by_status_24h}
@@ -106,11 +109,11 @@ def _gather(conn) -> dict:
     # Top 3 untouched (status=new, oldest first, oldest >48h prioritised)
     untouched = conn.execute("""
         SELECT id::text AS id, primary_channel, contact_email, contact_phone,
-               contact_name, business_name, created_at, last_touch_at
+               contact_name, business_name, created_at::timestamptz AS created_at, last_touch_at
         FROM unified_leads
         WHERE status = 'new'
-          AND created_at < NOW() - INTERVAL '48 hours'
-        ORDER BY created_at ASC
+          AND created_at::timestamptz < NOW() - INTERVAL '48 hours'
+        ORDER BY created_at::timestamptz ASC
         LIMIT 3
     """).fetchall()
     out["untouched_top3"] = list(untouched)
@@ -120,7 +123,7 @@ def _gather(conn) -> dict:
         SELECT count(*) AS n
         FROM unified_leads
         WHERE status = 'contacted'
-          AND status_changed_at < NOW() - INTERVAL '5 days'
+          AND status_changed_at::timestamptz < NOW() - INTERVAL '5 days'
     """).fetchone()
     out["stale_contacted"] = int(stale_contacted["n"]) if stale_contacted else 0
 
@@ -128,8 +131,8 @@ def _gather(conn) -> dict:
     qualified_24h = conn.execute("""
         SELECT contact_email, business_name, primary_channel, qualified_at
         FROM unified_leads
-        WHERE qualified_at >= NOW() - INTERVAL '24 hours'
-        ORDER BY qualified_at DESC
+        WHERE qualified_at::timestamptz >= NOW() - INTERVAL '24 hours'
+        ORDER BY qualified_at::timestamptz DESC
         LIMIT 5
     """).fetchall()
     out["qualified_24h"] = list(qualified_24h)
