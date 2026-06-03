@@ -116,6 +116,11 @@ def mirror_one(call_id: str, api_key: str, bucket: str) -> dict:
     s3 = hetzner_s3()
     result = {"call_id": call_id, "assistant_id": assistant_id, "channels": {}}
 
+    # Vapi 2026-07-15: public recordingUrl/stereoRecordingUrl become
+    # non-fetchable without auth. Download via the authenticated artifact
+    # endpoint (302 → short-lived signed URL; requests follows redirects).
+    # mono_url/stereo_url remain only as the "channel exists" signal.
+    endpoint_for = {"mono": "mono-recording", "stereo": "stereo-recording"}
     for label, url in [("mono", mono_url), ("stereo", stereo_url)]:
         if not url:
             continue
@@ -123,7 +128,11 @@ def mirror_one(call_id: str, api_key: str, bucket: str) -> dict:
         if key_exists(s3, bucket, key):
             result["channels"][label] = {"key": key, "status": "already_exists"}
             continue
-        resp = requests.get(url, timeout=60, stream=True)
+        resp = requests.get(
+            f"https://api.vapi.ai/call/{call_id}/{endpoint_for[label]}",
+            headers={"Authorization": f"Bearer {api_key}"},
+            timeout=60, stream=True,
+        )
         resp.raise_for_status()
         content = resp.content
         ctype = resp.headers.get("content-type", "audio/wav")

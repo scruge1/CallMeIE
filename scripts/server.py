@@ -928,12 +928,28 @@ def _mirror_recording_to_hetzner(call_id: str, assistant_id: str,
                   "HETZNER_OBJECT_STORAGE_BUCKET env missing", {})
         return
     import requests as _rq
+    api_key = os.environ.get("VAPI_API_KEY", "").strip()
+    if not api_key:
+        log_event(call_id, "recording-archive-failed", assistant_id,
+                  "VAPI_API_KEY missing for authenticated recording download",
+                  {"reason": "missing_api_key"})
+        return
     archived = {}
+    # Vapi 2026-07-15: public recordingUrl/stereoRecordingUrl stop being
+    # fetchable without auth (existing public URLs die 2026-07-25). Download
+    # via the authenticated artifact endpoint, which 302-redirects to a
+    # short-lived signed URL (requests follows redirects by default). The
+    # recording_url/stereo_url args are kept only as the "channel exists" signal.
+    endpoint_for = {"mono": "mono-recording", "stereo": "stereo-recording"}
     for label, url in [("mono", recording_url), ("stereo", stereo_url)]:
         if not url:
             continue
         try:
-            resp = _rq.get(url, timeout=60, stream=True)
+            resp = _rq.get(
+                f"https://api.vapi.ai/call/{call_id}/{endpoint_for[label]}",
+                headers={"Authorization": f"Bearer {api_key}"},
+                timeout=60, stream=True,
+            )
             resp.raise_for_status()
             ext = ".wav"
             ctype = resp.headers.get("content-type", "audio/wav")
