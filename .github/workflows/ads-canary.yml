@@ -1,9 +1,10 @@
 name: Meta Ads canary (hourly auto-pause at 80% cap)
 
 on:
-  schedule:
-    # Every hour at :15 — offset to avoid colliding with 00:00 batch jobs
-    - cron: '15 * * * *'
+  # schedule disabled 2026-06-03: ads not live (pre-revenue). Re-add cron in the PR that ships live Meta campaigns.
+  # schedule:
+  #   # Every hour at :15 — offset to avoid colliding with 00:00 batch jobs
+  #   - cron: '15 * * * *'
   workflow_dispatch:
 
 permissions:

@@ -13,8 +13,9 @@ name: Daily GDPR retention purge
 # use input `mode: apply` for a one-off committed purge.
 
 on:
-  schedule:
-    - cron: "0 3 * * *"
+  # schedule disabled 2026-06-03: destructive GDPR purge must NOT run from cloud runner w/ prod creds. TODO re-home to Coolify/host cron. Legal obligation (privacy.html §4) — relocate, do not delete.
+  # schedule:
+  #   - cron: "0 3 * * *"
   workflow_dispatch:
     inputs:
       mode:

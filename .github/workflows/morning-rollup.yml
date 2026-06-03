@@ -8,8 +8,9 @@ name: Daily lead pipeline roll-up
 # If two of three fire same day, the cooldown guard skips duplicates.
 
 on:
-  schedule:
-    - cron: "30 6 * * *"
+  # schedule disabled 2026-06-03: fails on missing DATABASE_URL. TODO re-home to Coolify/host cron next to DB (do NOT add prod-DB creds to Actions).
+  # schedule:
+  #   - cron: "30 6 * * *"
   workflow_dispatch:
     inputs:
       mode:
