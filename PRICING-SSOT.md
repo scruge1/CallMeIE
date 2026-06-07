@@ -63,7 +63,9 @@ Sales flow is `onboard.html` (form → per-client Vapi provisioning), so per-tie
 
 ## 3. Document Ops
 
-Source: `callmeie-hub/docs/index.html` §`#pricing` (line 1618 — a full, explicit pricing section with price cards; this is firm advertised pricing, not illustrative).
+> **WITHDRAWN FROM SALE 2026-06-07 (Adam, REPOSITION-PDR-IRISH-ACCOUNTANTS).** Document Ops is no longer a sold/advertised product. The `/docs/` product page + `#pricing` cards were removed from the live site (callmeie-hub, 301 `/docs/* → /`), nav/footer/strip references stripped, sitemap entry dropped. **Stripe products left LIVE but de-listed** (no site CTA reaches them). Reason: standalone DocOps-OCR is commoditised (free Xero/QB capture; Dext/AutoEntry/Datamolino own the paid lane) and the live page oversold (98%-auto-post claim vs 65–89%/field engine reality; medical-exempt + intra-EU-FX correctness unvalidated) — integrity exposure to LEO/bank assessors (anti-priority-9355572e). OCR retained as an **internal ingestion arm**, not a product. The advertised pricing below is **historical** (annotation-in-place, not deleted, per staleness discipline). Do NOT re-advertise without the accountant interruption-reduction reframe (v2 PDR) + dropping the 98%/medical/FX overclaims.
+
+Source (historical): `callmeie-hub/docs/index.html` §`#pricing` (page removed 2026-06-07; was a full pricing section with price cards).
 
 | Tier | Advertised price | Includes | On-site CTA link |
 |---|---|---|---|

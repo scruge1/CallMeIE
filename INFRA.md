@@ -574,7 +574,9 @@ All 14 provisioning/patching scripts idempotent, documented in .9 runbooks.
 
 Next session loads this file via CLAUDE.md chain routing -- no user instruction required.
 
-## 14 · Document Ops Portal (Coolify on Hetzner — LIVE)
+## 14 · Document Ops Portal (Coolify on Hetzner — LIVE; product WITHDRAWN FROM SALE 2026-06-07)
+
+> **WITHDRAWN FROM SALE 2026-06-07 (Adam, REPOSITION-PDR-IRISH-ACCOUNTANTS).** Document Ops is no longer advertised or sold as a product. The `/docs/` sales page + `#pricing` cards were removed from callmeie.ie (301 `/docs/* → /`); nav/footer/strip refs stripped; sitemap entry dropped; PRICING-SSOT §3 marked historical. **The portal + backend below stay LIVE** (the OCR is retained as an internal ingestion arm) and **Stripe products stay LIVE but de-listed** (no site CTA reaches them — see §15.3, links not removed). Do NOT re-advertise without the accountant interruption-reduction reframe (v2 PDR) + dropping the 98%/medical-exempt/intra-EU-FX overclaims. Infra unchanged — this is a sales/marketing withdrawal, not a teardown.
 
 | Field | Value |
 |---|---|
