@@ -726,7 +726,8 @@ ssh -i ~/.ssh/owl_deploy_ed25519 root@178.104.205.255 \
 
 Webhook: we_1TSPoBCEqG2AuI1zWijrXFhI -> https://portal.owlzone.trade/webhooks/stripe
 Events: checkout.session.completed, customer.subscription.created, customer.subscription.deleted, invoice.payment_failed
-Secret stored in outes/.env as DOPS_STRIPE_WEBHOOK_SECRET. All Document Ops Stripe IDs saved under DOPS_STRIPE_* keys.
+Secret stored in 
+outes/.env as DOPS_STRIPE_WEBHOOK_SECRET. All Document Ops Stripe IDs saved under DOPS_STRIPE_* keys.
 
 ### 14.1b Document Ops Re-spec — D22 LOCKED (provisioned 2026-05-04 via Stripe API)
 
@@ -1177,7 +1178,7 @@ Magic-link-gated public viewer for the Gold Cartel copier dashboard. Lets Adam s
 | Deploy script | `/opt/cartel-dash/run.sh` on the box (build + run with Traefik labels). Re-run after `scp` of new app.py to redeploy. |
 | TLS | Let's Encrypt via Traefik `certresolver=letsencrypt` (same as other owl subdomains) |
 | Auth | Email-allowlist magic link. `ALLOWLIST` env = `Scruge@pm.me,z.mihail569@gmail.com`. Link valid 15 min → signed session cookie 30 days. Removing an email from ALLOWLIST revokes on next request. |
-| Email send | Brevo (`BREVO_API_KEY`), sender `hello@owlzone.trade` / "Cartel Dashboard" |
+| Email send | Brevo (`BREVO_API_KEY`), sender **`swarm.agent.2026@gmail.com`** / "Cartel Dashboard". GOTCHA: this account's ONLY verified Brevo sender is the swarm gmail — `hello@owlzone.trade` is NOT validated, so Brevo accepts the API call (HTTP 201) then silently rejects the mail (`error: sender not valid`, never delivered). Use the verified sender, or domain-authenticate owlzone.trade in Brevo first. |
 | Secrets | container env on the box: `SECRET_KEY` (cookie/token signing), `INGEST_SECRET`. Laptop copy: `CARTEL_INGEST_SECRET` + `CARTEL_DASH_URL` in `~/.claude/routes/.env`. Local dev copies in `cartel-dash/.secret_key.local` + `.ingest_secret.local` (gitignore). |
 | Data | Docker volume `cartel-data` → `/data` (aurum-live.json + dashboard.html snapshots) |
 
