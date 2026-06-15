@@ -292,6 +292,7 @@ STRIPE_RECEPTIONIST_LINK_SETUP_ONCE=https://buy.stripe.com/14A9AS6in6CGenO0zraIM
 | `uptime` | A | 178.104.205.255 | Uptime Kuma (added 2026-04-21) |
 | `analytics` | A | 178.104.205.255 | Umami (added 2026-04-21) |
 | `*.websites` | A | 178.104.205.255 | Lead sites wildcard — `{slug}.websites.owlzone.trade` → VPS nginx container (added 2026-04-25) |
+| `cartel` | A | 178.104.205.255 | Cartel Dashboard (magic-link gated copier viewer; added 2026-06-15) — see §18 |
 
 ### 5.2 Porkbun API reference
 
@@ -1155,3 +1156,33 @@ Kate self-edits at **https://cms.callmeie.ie/admin** (cookie-login: password = v
 - **Ops:** `cd ~/truth-editor && docker compose restart editor`; rebuild after repo change `bash ~/truth-editor/setup.sh && docker compose up -d --force-recreate editor`; auto-starts on boot (restart: unless-stopped + §17 no-sleep).
 
 Setup method: zone created in CF dashboard via Claude-in-Chrome (logged-in Scruge@pm.me); NS swap + SSL/HTTPS settings applied via Cloudflare + GoDaddy APIs. Site not yet built — see `truth-brand/website/PRD-TRUTH-WEBSITE.md`. At deploy: create CF Pages project -> add custom domain truthchristianclothing.com -> repoint DNS -> bump SSL to Full(strict) -> cert serves.
+
+---
+
+## 18 · Cartel Dashboard (cartel.owlzone.trade — LIVE 2026-06-15)
+
+Magic-link-gated public viewer for the Gold Cartel copier dashboard. Lets Adam share the live bot view with a friend without exposing the laptop or running an open page.
+
+**Architecture (decoupled snapshot-push — the laptop is NEVER exposed):**
+- The dashboard reads live MT5 on the LAPTOP (MetaTrader5 lib → running terminals); it CANNOT run on the VPS.
+- Laptop writes `telegram-mt5-copier/aurum-live.json` + `dashboard.html` (the persistent `dashboard_aurum.py` server).
+- `telegram-mt5-copier/cartel_push.py --loop` POSTs that snapshot to the VPS `/ingest` every 8s (html every 60s). Persistent via `CartelPush.vbs` (crash-loop + Startup), launcher `run_cartel_push.bat`, log `cartel_push.out`.
+- VPS app stores the snapshot and serves it ONLY to a valid session cookie. **The data JSON (`/aurum-live.json`) is itself cookie-gated — never public.**
+
+| Field | Value |
+|---|---|
+| Public URL | `https://cartel.owlzone.trade` |
+| Host | Hetzner VPS `178.104.205.255`, Docker container `cartel-dash` on the `coolify` network (Traefik-routed, NOT a Coolify-managed app — labeled container) |
+| Source | `New repos/telegram-mt5-copier/cartel-dash/` (app.py FastAPI + Dockerfile + requirements.txt) |
+| Deploy script | `/opt/cartel-dash/run.sh` on the box (build + run with Traefik labels). Re-run after `scp` of new app.py to redeploy. |
+| TLS | Let's Encrypt via Traefik `certresolver=letsencrypt` (same as other owl subdomains) |
+| Auth | Email-allowlist magic link. `ALLOWLIST` env = `Scruge@pm.me,z.mihail569@gmail.com`. Link valid 15 min → signed session cookie 30 days. Removing an email from ALLOWLIST revokes on next request. |
+| Email send | Brevo (`BREVO_API_KEY`), sender `hello@owlzone.trade` / "Cartel Dashboard" |
+| Secrets | container env on the box: `SECRET_KEY` (cookie/token signing), `INGEST_SECRET`. Laptop copy: `CARTEL_INGEST_SECRET` + `CARTEL_DASH_URL` in `~/.claude/routes/.env`. Local dev copies in `cartel-dash/.secret_key.local` + `.ingest_secret.local` (gitignore). |
+| Data | Docker volume `cartel-data` → `/data` (aurum-live.json + dashboard.html snapshots) |
+
+**Routes:** `GET /` (cookie-gated dashboard), `GET /login` + `POST /login` (email → magic link), `GET /auth?token=` (set session cookie), `GET /aurum-live.json` (cookie-gated live snapshot the page polls), `POST /ingest` (laptop push, `X-Ingest-Token`), `GET /logout`, `GET /healthz`.
+
+**Runbook — add/remove a guest:** edit `ALLOWLIST` in `/opt/cartel-dash/run.sh` (or `docker rm -f cartel-dash` + re-run with new `-e ALLOWLIST=`), then `bash /opt/cartel-dash/run.sh`. **Redeploy app:** `scp cartel-dash/app.py root@178.104.205.255:/opt/cartel-dash/ && ssh ... 'bash /opt/cartel-dash/run.sh'`. **Logs:** `docker logs --tail 50 cartel-dash`. **Restart pusher (laptop):** kill the `cartel_push.py` python proc — `CartelPush.vbs` relaunches in 8s.
+
+**Verified live 2026-06-15:** healthz 200, valid LE cert, `/login` serves, `/aurum-live.json` 401 unauthed, authed (session cookie) returns real snapshot + full dashboard, `/ingest` 200 from the laptop loop, magic-link email dispatched via Brevo. Pending: Adam/friend visual click-through of the emailed link.
