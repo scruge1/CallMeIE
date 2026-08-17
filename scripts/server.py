@@ -8478,6 +8478,7 @@ async def client_call_detail(call_id: str, token: str = Query("")):
         raise HTTPException(status_code=403, detail="cross_tenant_access_denied")
 
     out_events = []
+    job = {}
     caller_name = caller_phone = ""
     # 2026-05-13 — dedupe transcript. Handoff attribution writes mirror
     # call-ended rows per call, each with the same transcript. Pick the LONGEST
@@ -8490,6 +8491,8 @@ async def client_call_detail(call_id: str, token: str = Query("")):
             d = json.loads(r["detail"]) if isinstance(r["detail"], str) else (r["detail"] or {})
         except Exception:
             d = {}
+        if isinstance(d.get("structured_data"), dict) and not job:
+            job = d["structured_data"]
         if r["event_type"] == "lead-captured":
             caller_name = d.get("name") or caller_name
             caller_phone = d.get("contact_phone") or d.get("phone") or caller_phone
@@ -8543,6 +8546,7 @@ async def client_call_detail(call_id: str, token: str = Query("")):
         "notes": notes_out,
         # 1h-TTL Hetzner pre-signed URL; None if the recording isn't mirrored
         # yet (e.g. call still in progress, or recording disabled per call).
+        "job": job,
         "recording_url": _hetzner_presigned_for_call(call_id, expires=3600),
     }
 

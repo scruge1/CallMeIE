@@ -399,7 +399,7 @@
         <div class="panel-header">
           <div>
             <h2 class="panel-title">Settings</h2>
-            <p class="panel-subtitle">Read-only summary. Anything you want changed, just ask.</p>
+            <p class="panel-subtitle">Read-only summary. Anything you want changed, just ask CallMeIE support.</p>
           </div>
         </div>
         <div class="panel-body" id="settingsBody">
@@ -429,7 +429,7 @@
             <label class="form-label" for="reqDetails" style="margin-top: 12px;">Details</label>
             <textarea id="reqDetails" class="textarea" rows="4" placeholder="What you'd like changed, plus any context that helps." required></textarea>
             <div style="margin-top: 12px; display: flex; gap: 8px; align-items: center;">
-              <button class="btn primary" type="submit">Send to Adam</button>
+              <button class="btn primary" type="submit">Send to CallMeIE support</button>
               <span id="reqResult" class="muted" style="font-size: 12px;"></span>
             </div>
           </form>
@@ -459,11 +459,18 @@
             <p class="panel-subtitle">Preview a voice, tune the tone, then set it live on your line.</p></div>
             <div style="display:flex;gap:8px;"><button class="btn" type="button" onclick="revertVoice()">Revert to default</button><button class="btn" type="button" onclick="loadVoices()">Refresh</button></div>
           </div>
-          <div id="voiceTuner" style="padding:10px 6px;border-bottom:1px solid var(--border);font-size:12px;color:var(--muted);">
-            Fine-tune tone (applies to preview + when you set a voice):
-            <label style="margin-left:10px;">Stability <input id="vStab" type="range" min="0" max="1" step="0.05" value="0.5"></label>
-            <label style="margin-left:10px;">Expressiveness <input id="vStyle" type="range" min="0" max="1" step="0.05" value="0.45"></label>
-            <label style="margin-left:10px;">Clarity <input id="vSim" type="range" min="0" max="1" step="0.05" value="0.75"></label>
+          <div id="voiceTuner" style="padding:10px 6px;border-bottom:1px solid var(--border);font-size:13px;">
+            <span class="muted" style="margin-right:8px;">Tone:</span>
+            <button class="btn btn-primary" type="button" id="preset-recommended" onclick="setVoicePreset('recommended',this)">Recommended</button>
+            <button class="btn" type="button" id="preset-warmer" onclick="setVoicePreset('warmer',this)">Warmer</button>
+            <button class="btn" type="button" id="preset-clearer" onclick="setVoicePreset('clearer',this)">Clearer</button>
+            <a href="#" onclick="toggleVoiceAdvanced(event)" class="muted" style="margin-left:10px;font-size:12px;">Advanced</a>
+            <div id="voiceAdvanced" style="display:none;margin-top:8px;font-size:12px;color:var(--muted);">
+              <label style="margin-right:10px;">Stability <input id="vStab" type="range" min="0.45" max="0.7" step="0.05" value="0.5"></label>
+              <label style="margin-right:10px;">Expressiveness <input id="vStyle" type="range" min="0" max="0.7" step="0.05" value="0.45"></label>
+              <label style="margin-right:10px;">Clarity <input id="vSim" type="range" min="0.5" max="1" step="0.05" value="0.75"></label>
+              <div class="muted" style="font-size:11px;margin-top:4px;">Presets keep the voice clear on a phone line. Extreme settings can distort calls.</div>
+            </div>
           </div>
           <div class="panel-body"><div id="voiceList" class="empty">Loading voices…</div></div>
         </div>
@@ -738,18 +745,31 @@ async function loadInbox() {
 async function loadInsights() {
   qs("#insightsBody").innerHTML = '<div class="empty">Loading…</div>';
   try {
-    const days = qs("#insightsRange").value;
-    const data = await api("/client/api/insights", { params: { days } });
-    state.insights = data;
+    const days = qs("#insightsRange") ? qs("#insightsRange").value : 30;
+    const data = await api("/client/api/calls", { params: { days, limit: 200 } });
+    const calls = (data && data.calls) || [];
+    const isUrgent = c => c.gas_emergency || c.urgency==='urgent' || c.urgency==='priority';
+    const m = {
+      captured: calls.length,
+      urgent: calls.filter(isUrgent).length,
+      gas: calls.filter(c=>c.gas_emergency).length,
+      newq: calls.filter(c=>c.new_or_existing==='new').length,
+      existing: calls.filter(c=>c.new_or_existing==='existing').length,
+      callback: calls.filter(c=>!c.actioned).length,
+      done: calls.filter(c=>c.actioned).length,
+    };
+    const tile=(n,l,col)=>`<div><div style="font-size:24px;font-weight:700;${col?'color:'+col+';':''}">${esc(n)}</div><div class="muted" style="font-size:12px;">${esc(l)}</div></div>`;
     qs("#insightsBody").innerHTML = `
-      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 16px;">
-        <div><div style="font-size: 24px; font-weight: 700;">${esc(data.total_calls || 0)}</div><div class="muted" style="font-size:12px;">Total calls</div></div>
-        <div><div style="font-size: 24px; font-weight: 700;">${esc(data.qualified || 0)}</div><div class="muted" style="font-size:12px;">Qualified leads</div></div>
-        <div><div style="font-size: 24px; font-weight: 700;">${esc(data.messages_taken || 0)}</div><div class="muted" style="font-size:12px;">Messages taken</div></div>
-        <div><div style="font-size: 24px; font-weight: 700;">${esc(data.bookings || 0)}</div><div class="muted" style="font-size:12px;">Bookings</div></div>
-        <div><div style="font-size: 24px; font-weight: 700;">${esc(data.short_drops || 0)}</div><div class="muted" style="font-size:12px;">Short hang-ups</div></div>
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 16px;">
+        ${tile(m.captured,'Missed calls captured')}
+        ${tile(m.callback,'Still need a callback','#c0261b')}
+        ${tile(m.urgent,'Urgent calls','#c0261b')}
+        ${tile(m.gas,'Gas / safety escalations','#c0261b')}
+        ${tile(m.newq,'New enquiries')}
+        ${tile(m.existing,'Existing customer updates')}
+        ${tile(m.done,'Called back / done')}
       </div>
-      <p class="muted" style="margin-top: 16px; font-size: 12px;">Counts are unique calls in the last ${esc(data.days)} days. Short hang-ups = caller dropped before the AI captured any info.</p>`;
+      <p class="muted" style="margin-top: 16px; font-size: 12px;">Unique calls in the last ${esc(days)} days. Every captured call is a lead you can ring back.</p>`;
   } catch (err) {
     qs("#insightsBody").innerHTML = `<div class="empty">Could not load insights. ${esc(err.message)}</div>`;
   }
@@ -761,13 +781,17 @@ async function loadSettings() {
     const data = await api("/client/api/settings");
     state.settings = data;
     qs("#settingsBody").innerHTML = `
-      <dl style="display: grid; grid-template-columns: 160px 1fr; gap: 8px 16px; margin: 0;">
-        <dt class="muted">Assistant voice</dt><dd>${esc(voiceName(data.voice))}</dd>
+      <dl style="display: grid; grid-template-columns: 170px 1fr; gap: 8px 16px; margin: 0;">
+        <dt class="muted">What callers hear</dt><dd>${esc(voiceName(data.voice))}</dd>
         <dt class="muted">Greeting</dt><dd>${esc(data.greeting || "—")}</dd>
-        <dt class="muted">Recording</dt><dd>${esc(data.recording_on ? "On" : "Off")}</dd>
-        <dt class="muted">Retention</dt><dd>${esc(data.retention || "30 days audio / 90 days transcripts")}</dd>
-        <dt class="muted">Sub-processors</dt><dd>Twilio · Vapi · ElevenLabs · Deepgram · Hetzner (full chain in <a href="https://callmeie.ie/legal/dpa.html" target="_blank" rel="noopener">DPA</a>)</dd>
-      </dl>`;
+        <dt class="muted">Call recording</dt><dd>${esc(data.recording_on ? "On" : "Off")}</dd>
+        <dt class="muted">How long calls are kept</dt><dd>${esc(data.retention || "30 days audio / 90 days transcripts")}</dd>
+        <dt class="muted">Emergency handling</dt><dd>Enabled — gas & major-leak safety scripts</dd>
+      </dl>
+      <details style="margin-top:14px;">
+        <summary class="muted" style="cursor:pointer;font-size:12px;">Data processing details</summary>
+        <div class="muted" style="font-size:12px;margin-top:6px;">Calls are handled through vetted infrastructure providers. Full sub-processor chain in the <a href="https://callmeie.ie/legal/dpa.html" target="_blank" rel="noopener">DPA</a>.</div>
+      </details>`;
   } catch (err) {
     qs("#settingsBody").innerHTML = `<div class="empty">Could not load settings. ${esc(err.message)}</div>`;
   }
@@ -784,7 +808,7 @@ async function submitRequest(event) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ topic, details }),
     });
-    qs("#reqResult").textContent = "Sent. Adam will follow up by email.";
+    qs("#reqResult").textContent = "Sent. CallMeIE support will follow up by email.";
     qs("#reqTopic").value = "";
     qs("#reqDetails").value = "";
   } catch (err) {
@@ -817,20 +841,41 @@ function searchCalls(event) {
 }
 
 // --- Drawer ---
+function jobDetailsBlock(data){
+  const j=data.job||{};
+  const phone=j.phone||data.caller_phone||"";
+  const rows=[
+    ["Callback number", formatPhone(phone)||phone],
+    ["Area", j.location||""],
+    ["Eircode", j.eircode||""],
+    ["Issue", j.issue_description||""],
+    ["Urgency", j.urgency?(j.gas_emergency?"URGENT — suspected gas":j.urgency):""],
+    ["Customer", j.new_or_existing==='existing'?'Existing customer':(j.new_or_existing==='new'?'New customer':"")],
+    ["Preferred callback", j.preferred_callback||""],
+    ["Has heating", j.has_heating&&j.has_heating!=='unknown'?j.has_heating:""],
+    ["Has hot water", j.has_hot_water&&j.has_hot_water!=='unknown'?j.has_hot_water:""],
+  ].filter(r=>r[1]);
+  const body = rows.length
+    ? rows.map(r=>`<dt class="muted">${esc(r[0])}</dt><dd>${esc(r[1])}</dd>`).join("")
+    : `<dd style="grid-column:1/3;color:var(--muted);">Details weren't captured on this call — see the summary below.</dd>`;
+  const gas = j.gas_emergency ? `<div style="background:#c0261b;color:#fff;font-weight:700;padding:6px 10px;border-radius:6px;margin-bottom:10px;">\u26A0 SUSPECTED GAS — safety script given, ring back now</div>` : "";
+  return `${gas}<h4 style="margin:0 0 8px;">Job details</h4><dl style="display:grid;grid-template-columns:140px 1fr;gap:6px 14px;margin:0 0 16px;font-size:13px;">${body}</dl>`;
+}
 async function openDrawer(callId) {
   qs("#drawerBackdrop").classList.add("open");
   qs("#drawerContent").innerHTML = '<div class="empty">Loading call…</div>';
   try {
     const data = await api(`/client/api/calls/${encodeURIComponent(callId)}`);
     qs("#drawerContent").innerHTML = `
-      <div style="display:flex; justify-content: space-between; align-items: flex-start; margin-bottom: 16px;">
+      <div style="display:flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px;">
         <div>
-          <h3 style="margin: 0;">${esc(data.caller_name || data.caller_phone || "Unknown caller")}</h3>
-          <div class="muted" style="font-size: 12px;">${(data.business||data.caller_phone)?esc([data.business,data.caller_phone].filter(Boolean).join(" · ")):""}</div>
+          <h3 style="margin: 0;">${esc((data.job&&data.job.customer_name) || data.caller_name || data.caller_phone || "Unknown caller")}</h3>
+          <div class="muted" style="font-size: 12px;">${esc((data.job&&data.job.location)||"")}</div>
         </div>
         <button class="btn ghost" type="button" onclick="closeDrawer()">Close</button>
       </div>
-      <h4 style="margin: 0 0 8px;">Timeline</h4>
+      ${jobDetailsBlock(data)}
+      <h4 style="margin: 0 0 8px;">Call timeline</h4>
       <ol style="margin: 0 0 16px 18px; padding: 0; font-size: 13px;">
         ${(data.events || []).map((e) => `<li><span class="mono" style="color: var(--muted);">${esc(e.ts || "")}</span> · ${esc(prettyEvent(e))}</li>`).join("")}
       </ol>
@@ -960,6 +1005,14 @@ function voiceTone(){
   const g=(id,d)=>{const e=document.getElementById(id);return e?parseFloat(e.value):d;};
   return {stability:g('vStab',0.5),style:g('vStyle',0.45),similarity:g('vSim',0.75)};
 }
+const _VOICE_PRESETS={recommended:{stability:0.5,style:0.45,similarity:0.75},warmer:{stability:0.45,style:0.6,similarity:0.75},clearer:{stability:0.6,style:0.3,similarity:0.85}};
+function setVoicePreset(name,btn){
+  const p=_VOICE_PRESETS[name]||_VOICE_PRESETS.recommended;
+  const set=(id,v)=>{const e=document.getElementById(id); if(e) e.value=v;};
+  set('vStab',p.stability); set('vStyle',p.style); set('vSim',p.similarity);
+  if(btn){['preset-recommended','preset-warmer','preset-clearer'].forEach(id=>{const e=document.getElementById(id); if(e)e.classList.remove('btn-primary');}); btn.classList.add('btn-primary');}
+}
+function toggleVoiceAdvanced(e){ if(e)e.preventDefault(); const a=document.getElementById('voiceAdvanced'); if(a) a.style.display=a.style.display==='none'?'block':'none'; }
 async function loadVoices(){
   const el=qs("#voiceList"); el.innerHTML='<div class="empty">Loading voices…</div>';
   try{
@@ -1030,6 +1083,8 @@ window.setTheme = setTheme;
 window.loadCalls = loadCalls;
 window.setCallFilter = setCallFilter;
 window.markDone = markDone;  // obrien-board
+window.setVoicePreset = setVoicePreset;
+window.toggleVoiceAdvanced = toggleVoiceAdvanced;
 window.loadInbox = loadInbox;
 window.loadInsights = loadInsights;
 window.loadSettings = loadSettings;
