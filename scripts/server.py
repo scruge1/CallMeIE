@@ -8405,8 +8405,12 @@ async def client_calls(
 
     # Group by call_id, take latest row per call as the "summary line"
     grouped: dict[str, dict] = {}
+    actioned_ids = set()
     for r in rows:
         cid = r["call_id"]
+        if r["event_type"] == "inbox-actioned":
+            actioned_ids.add(cid)
+            continue
         if cid in grouped:
             continue
         try:
@@ -8425,6 +8429,7 @@ async def client_calls(
             "new_or_existing": sd.get("new_or_existing") or "",
             "location": sd.get("location") or "",
             "eircode": sd.get("eircode") or "",
+            "issue": sd.get("issue_description") or "",
             "summary": r["summary"] or "",
             "outcome": r["event_type"] or "",
             # 2026-05-13 — expose more fields so client UI can render proper row
@@ -8434,6 +8439,8 @@ async def client_calls(
             "assistant_id": r["assistant_id"] or "",
             "summary_text": d.get("summary") or "",
         }
+    for _v in grouped.values():
+        _v["actioned"] = _v["call_id"] in actioned_ids
     return {"calls": list(grouped.values()), "count": len(grouped),
             "tenant_slug": c["tenant_slug"]}
 

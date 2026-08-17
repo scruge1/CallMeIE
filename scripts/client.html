@@ -334,8 +334,8 @@
       <div class="panel">
         <div class="panel-header">
           <div>
-            <h2 class="panel-title">Your call log</h2>
-            <p class="panel-subtitle">Every call your AI receptionist handles, newest first.</p>
+            <h2 class="panel-title">Callbacks</h2>
+            <p class="panel-subtitle">Missed calls to return — most urgent first. Tap a caller for full details.</p>
           </div>
           <div class="panel-controls">
             <input id="callSearch" class="input" placeholder="Search transcripts…" onkeyup="searchCalls(event)">
@@ -345,9 +345,11 @@
         </div>
         <div id="callFilters" style="display:flex;gap:6px;flex-wrap:wrap;padding:0 6px 10px;">
           <button class="btn btn-primary" type="button" onclick="setCallFilter('all',this)">All</button>
+          <button class="btn" type="button" onclick="setCallFilter('callback',this)">Needs callback</button>
           <button class="btn" type="button" onclick="setCallFilter('urgent',this)">Urgent</button>
           <button class="btn" type="button" onclick="setCallFilter('new',this)">New enquiries</button>
           <button class="btn" type="button" onclick="setCallFilter('existing',this)">Existing</button>
+          <button class="btn" type="button" onclick="setCallFilter('done',this)">Done</button>
         </div>
         <div class="panel-body" id="callsList">
           <div class="empty">Loading…</div>
@@ -659,47 +661,58 @@ function urgencyChip(c){
   if(u==='priority') return '<span class="badge" style="background:#e08a00;color:#fff;font-weight:700;font-size:11px;padding:3px 9px;border-radius:10px;">PRIORITY</span>';
   return '';
 }
+function timeAgo(ts){
+  if(!ts) return "";
+  let iso=String(ts).replace(" ","T"); if(!/[Z+]/.test(iso)) iso+="Z";
+  const sec=(Date.now()-new Date(iso).getTime())/1000;
+  if(isNaN(sec)) return "";
+  if(sec<60) return "just now";
+  if(sec<3600) return Math.floor(sec/60)+" min ago";
+  if(sec<86400) return Math.floor(sec/3600)+" hr ago";
+  return Math.floor(sec/86400)+" days ago";
+}
+async function markDone(callId,e){
+  if(e){e.stopPropagation();}
+  try{
+    await api('/client/api/inbox/'+encodeURIComponent(callId)+'/actioned',{method:"POST"});
+    const c=(state.calls||[]).find(x=>x.call_id===callId); if(c)c.actioned=true;
+    toast("Marked as called back."); renderCalls();
+  }catch(err){ toast("Couldn't update: "+err.message); }
+}
+function _callRank(c){ if(c.gas_emergency||c.urgency==='urgent') return 0; if(c.urgency==='priority') return 1; return 2; }
 function renderCalls(){
   const f=state.callFilter||'all';
-  let rows=state.calls||[];
+  let rows=(state.calls||[]).slice();
   if(f==='urgent') rows=rows.filter(c=>c.gas_emergency||c.urgency==='urgent'||c.urgency==='priority');
   else if(f==='new') rows=rows.filter(c=>(c.new_or_existing||'')==='new');
   else if(f==='existing') rows=rows.filter(c=>(c.new_or_existing||'')==='existing');
+  else if(f==='callback') rows=rows.filter(c=>!c.actioned);
+  else if(f==='done') rows=rows.filter(c=>c.actioned);
+  rows.sort((a,b)=>((a.actioned?1:0)-(b.actioned?1:0))||(_callRank(a)-_callRank(b))||(new Date(String(b.ts).replace(" ","T"))-new Date(String(a.ts).replace(" ","T"))));
   const el=document.querySelector('#callsList');
   el.innerHTML = rows.length ? rows.map(renderCallRow).join("") : '<div class="empty">No calls match this filter.</div>';
 }
 function setCallFilter(f,btn){state.callFilter=f; if(btn){[...btn.parentElement.children].forEach(b=>b.classList.remove('btn-primary')); btn.classList.add('btn-primary');} renderCalls();}
-function renderCallRow(c) {
-  const phone = c.caller_phone || "";
-  const name = c.caller_name || "";
-  const title = name || formatPhone(phone) || "Unknown caller";
-  const sub = (name && phone) ? formatPhone(phone) : "";
-  const time = formatCallTime(c.ts);
-  const dur = c.duration ? formatDuration(c.duration) : "";
-  const badge = statusBadge(c);
-  const transcriptIcon = c.has_transcript ? '<span title="Transcript available" style="font-size:11px;color:var(--muted);margin-left:6px;">📄</span>' : "";
-  const sumPreview = cleanSummary(c.summary_text, 90);
+function renderCallRow(c){
+  const phone=c.caller_phone||"";
+  const title=c.caller_name||formatPhone(phone)||"Unknown caller";
+  const area=c.location||"";
+  const issue=(c.issue||prettyCat(c.category)||cleanSummary(c.summary_text,70)||"Enquiry");
+  const ne=c.new_or_existing==='existing'?'Existing customer':(c.new_or_existing==='new'?'New customer':'');
+  const ago=timeAgo(c.ts);
+  const done=!!c.actioned;
+  const accent=(c.gas_emergency||c.urgency==='urgent')?'#c0261b':(c.urgency==='priority'?'#e08a00':'transparent');
+  const action=done
+    ? `<span class="badge ok" style="font-size:11px;padding:4px 10px;border-radius:10px;">\u2713 Called back</span>`
+    : `<button class="btn btn-primary" type="button" onclick="markDone('${esc(c.call_id)}',event)">Mark done</button>`;
   return `
-    <div class="call-row" onclick="openDrawer('${esc(c.call_id)}')"
-         style="display:grid;grid-template-columns:auto 1fr auto;gap:14px;padding:14px 6px;border-bottom:1px solid var(--border);cursor:pointer;align-items:center;">
-      <div style="width:42px;height:42px;border-radius:50%;background:rgba(80,140,200,0.12);display:flex;align-items:center;justify-content:center;font-weight:700;color:var(--text-soft);font-size:14px;">
-        ${esc((title[0] || "?").toUpperCase())}
-      </div>
+    <div class="call-row" onclick="openDrawer('${esc(c.call_id)}')" style="border-left:4px solid ${accent};${done?'opacity:.55;':''}display:grid;grid-template-columns:1fr auto;gap:12px;padding:13px 12px;border-bottom:1px solid var(--border);cursor:pointer;align-items:center;">
       <div style="min-width:0;">
-        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
-          <strong style="font-size:14px;">${esc(title)}</strong>
-          ${sub ? '<span class="muted" style="font-size:12px;">· ' + esc(sub) + '</span>' : ""}
-          ${transcriptIcon}
-        </div>
-        <div class="muted" style="font-size:12px;margin-top:3px;">
-          <span>${esc(time)}</span>${dur ? " · <span>" + esc(dur) + "</span>" : ""}${sumPreview ? ' · <span style="opacity:0.8;">' + esc(sumPreview) + '</span>' : ""}
-        </div>
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">${urgencyChip(c)}<strong style="font-size:15px;">${esc(title)}</strong>${area?`<span class="muted" style="font-size:13px;">${esc(area)}</span>`:''}${ne?`<span class="badge" style="font-size:10px;padding:2px 8px;border-radius:9px;background:var(--border);color:var(--text-soft);">${esc(ne)}</span>`:''}</div>
+        <div style="font-size:13px;color:var(--text-soft);margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(issue)}</div>
+        <div class="muted" style="font-size:12px;margin-top:2px;">${esc(formatPhone(phone)||"")}${ago?` \u00b7 ${esc(ago)}`:''}</div>
       </div>
-      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;">
-        ${urgencyChip(c)}
-        <span class="badge ${badge.cls}" style="font-size:11px;padding:3px 8px;border-radius:10px;">${esc(badge.label)}</span>
-        ${c.category ? '<span class="muted" style="font-size:10px;">'+esc(prettyCat(c.category))+(c.new_or_existing?' \u00B7 '+esc(c.new_or_existing):'')+'</span>' : ''}
-      </div>
+      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;" onclick="event.stopPropagation()">${action}</div>
     </div>`;
 }
 
@@ -1015,7 +1028,8 @@ window.logout = logout;
 window.navigate = navigate;
 window.setTheme = setTheme;
 window.loadCalls = loadCalls;
-window.setCallFilter = setCallFilter;  // obrien-dash
+window.setCallFilter = setCallFilter;
+window.markDone = markDone;  // obrien-board
 window.loadInbox = loadInbox;
 window.loadInsights = loadInsights;
 window.loadSettings = loadSettings;
