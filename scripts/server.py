@@ -8244,6 +8244,127 @@ async def client_me(token: str = Query("")):
     }
 
 
+# --- obrien-voice: client-facing voice picker ---
+OBRIEN_IRISH_VOICES = [
+    {"id": "eyuCA3LWMylRajljTeOo", "name": "Gerry", "tagline": "Warm Derry tradesman", "accent": "Irish", "gender": "male"},
+    {"id": "LhG6Tsjmn5tklSCyReiu", "name": "Conor", "tagline": "Warm, grounded Irish", "accent": "Irish", "gender": "male"},
+    {"id": "U3AWuAe8WcVA50PuDMrY", "name": "Cillian", "tagline": "Deep, warm, calm", "accent": "Irish", "gender": "male"},
+    {"id": "kOvUpYLYS0rKGldsKcD1", "name": "Maeve", "tagline": "Soft Irish female", "accent": "Irish", "gender": "female"},
+]
+_OBRIEN_GREETING = "Hi, you've reached K O'Brien Heating and Plumbing. How can I help you today?"
+
+
+def _client_assistant_ids(c):
+    raw = c.get("assistant_ids") or []
+    if isinstance(raw, str):
+        raw = [s.strip() for s in raw.strip("{}").split(",") if s.strip()]
+    return list(raw)
+
+
+@app.get("/client/api/voices")
+async def client_voices(token: str = Query("")):
+    c = check_client(token)
+    vk = os.environ.get("VAPI_API_KEY", "").strip()
+    el = os.environ.get("ELEVENLABS_API_KEY", "").strip()
+    voices = []
+    try:
+        async with httpx.AsyncClient(timeout=20) as h:
+            r = await h.get("https://api.vapi.ai/voice-library/11labs",
+                            headers={"Authorization": f"Bearer {vk}"})
+        for v in (r.json() if r.status_code == 200 else []):
+            voices.append({"id": v.get("providerId") or v.get("slug"), "name": v.get("name"),
+                           "tagline": (v.get("description") or "")[:60],
+                           "accent": (v.get("accent") or "").title(), "gender": v.get("gender") or "",
+                           "preview": v.get("previewUrl") or ""})
+    except Exception:
+        pass
+    have = {v["id"] for v in voices}
+    for iv in reversed(OBRIEN_IRISH_VOICES):  # Irish voices to the front
+        if iv["id"] in have:
+            continue
+        prev = ""
+        if el:
+            try:
+                async with httpx.AsyncClient(timeout=15) as h:
+                    rr = await h.get(f"https://api.elevenlabs.io/v1/voices/{iv['id']}",
+                                     headers={"xi-api-key": el})
+                prev = rr.json().get("preview_url", "") if rr.status_code == 200 else ""
+            except Exception:
+                pass
+        voices.insert(0, {**iv, "preview": prev})
+    current = ""
+    ids = _client_assistant_ids(c)
+    if ids:
+        try:
+            async with httpx.AsyncClient(timeout=15) as h:
+                ar = await h.get(f"https://api.vapi.ai/assistant/{ids[0]}",
+                                 headers={"Authorization": f"Bearer {vk}"})
+            current = (ar.json().get("voice") or {}).get("voiceId", "")
+        except Exception:
+            pass
+    for v in voices:
+        v["current"] = (v["id"] == current)
+    return {"voices": voices, "current": current}
+
+
+@app.get("/client/api/voice-preview")
+async def client_voice_preview(token: str = Query(""), voice_id: str = Query(""),
+                               stability: float = Query(0.5), similarity: float = Query(0.75),
+                               style: float = Query(0.45), text: str = Query("")):
+    check_client(token)
+    el = os.environ.get("ELEVENLABS_API_KEY", "").strip()
+    if not voice_id or not el:
+        raise HTTPException(status_code=400, detail="voice_id and eleven key required")
+    say = (text or _OBRIEN_GREETING)[:300]
+    body = json.dumps({"text": say, "model_id": "eleven_flash_v2_5",
+                       "voice_settings": {"stability": stability, "similarity_boost": similarity,
+                                          "style": style, "use_speaker_boost": True}}).encode()
+    async with httpx.AsyncClient(timeout=60) as h:
+        r = await h.post(f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}", content=body,
+                         headers={"xi-api-key": el, "Content-Type": "application/json",
+                                  "Accept": "audio/mpeg"})
+    if r.status_code != 200:
+        raise HTTPException(status_code=502, detail=f"tts failed {r.status_code}")
+    return Response(content=r.content, media_type="audio/mpeg")
+
+
+@app.post("/client/api/voice")
+async def client_set_voice(request: Request, token: str = Query("")):
+    c = check_client(token)
+    ids = _client_assistant_ids(c)
+    if not ids:
+        raise HTTPException(status_code=400, detail="no assistant for tenant")
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="invalid JSON")
+    voice_id = (body.get("voice_id") or "").strip()
+    if not voice_id:
+        raise HTTPException(status_code=400, detail="voice_id required")
+    voice_patch = {"provider": "11labs", "voiceId": voice_id, "model": "eleven_flash_v2_5",
+                   "stability": float(body.get("stability", 0.5)),
+                   "similarityBoost": float(body.get("similarity", 0.75)),
+                   "style": float(body.get("style", 0.45)),
+                   "useSpeakerBoost": True, "cachingEnabled": False}
+    vk = os.environ.get("VAPI_API_KEY", "").strip()
+    applied = []
+    for aid in ids:
+        try:
+            async with httpx.AsyncClient(timeout=20) as h:
+                r = await h.get(f"https://api.vapi.ai/assistant/{aid}",
+                                headers={"Authorization": f"Bearer {vk}"})
+            cur = (r.json().get("voice") or {})
+            await _vapi_safe_patch(aid, {"voice": {**cur, **voice_patch}})
+            applied.append(aid)
+        except Exception as e:
+            raise HTTPException(status_code=502, detail=f"voice set failed: {str(e)[:120]}")
+    try:
+        await send_telegram(f"🎙 {c.get('tenant_slug')} set voice {voice_id} on {len(applied)} assistant(s)")
+    except Exception:
+        pass
+    return {"ok": True, "voice_id": voice_id, "assistants": applied}
+
+
 @app.get("/client/api/calls")
 async def client_calls(
     token: str = Query(""),
