@@ -2051,7 +2051,23 @@ async def demo_complete(request: Request):
         f"Next action: {next_action or 'n/a'}\n"
         f"{'Callback calendar event created.' if callback_event else ('Callback calendar not configured.' if not callback_error and should_create_callback else 'No callback created.')}"
     )
-    await send_sms(OWNER_NUMBER, sms)
+    _client = get_client(assistant_id)
+    _owner = _client.get("owner") or OWNER_NUMBER
+    _cname = _client.get("name") or ""
+    if _owner and _owner != OWNER_NUMBER:
+        # real client (e.g. K O'Brien): send THEM a plain callback alert
+        sms = ("New call for " + (_cname or "your business") + "\n"
+               + (name or "Caller") + " - " + (phone or "no number given") + "\n"
+               + (topics or business_type or "enquiry")
+               + (("\nUrgency: " + interest) if interest else "")
+               + "\nRing them back.")
+    await send_sms(_owner, sms)
+    try:
+        await send_telegram("[" + (_cname or demo_type or "lead") + "] "
+                            + (name or "caller") + " " + (phone or "")
+                            + "\n" + (topics or business_type or ""))
+    except Exception:
+        pass
     log_event(
         call_id,
         "callback-calendar",
@@ -8100,6 +8116,42 @@ async def client_portal():
 
 
 # --- Admin endpoints for managing client_tokens (operator-only) ---
+
+@app.post("/admin/api/assistant-owner")
+async def admin_set_assistant_owner(request: Request, token: str = Query("")):
+    """Set (upsert) the owner_phone that lead alerts SMS for one assistant, and
+    fire a sample notification so we can confirm delivery. Operator-only."""
+    check_admin(token)
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="invalid_json")
+    aid = (body.get("assistant_id") or "").strip()
+    owner = (body.get("owner_phone") or "").strip()
+    name = (body.get("name") or "").strip()
+    if not aid or not owner:
+        raise HTTPException(status_code=422, detail="assistant_id + owner_phone required")
+    try:
+        with get_db() as conn:
+            conn.execute(
+                "INSERT INTO assistants (assistant_id, name, owner_phone, from_number, status) "
+                "VALUES (?, ?, ?, ?, 'active') "
+                "ON CONFLICT (assistant_id) DO UPDATE SET owner_phone = EXCLUDED.owner_phone, "
+                "name = COALESCE(NULLIF(EXCLUDED.name, ''), assistants.name)",
+                (aid, name or aid, owner, TWILIO_FROM),
+            )
+            conn.commit()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"upsert_failed: {e}")
+    sample = ("New call for " + (name or "your business") + "\n"
+              "John Murphy - 087 123 4567\n"
+              "Boiler not working, no heat\n"
+              "Ring them back.\n\n(CallMeIE test \u2014 this is how your lead alerts will look.)")
+    sms_res = await send_sms(owner, sample)
+    return JSONResponse({"ok": True, "assistant_id": aid, "owner_phone": owner,
+                         "sms": {"ok": sms_res.get("ok"), "status": sms_res.get("status"),
+                                 "http": sms_res.get("http_status")}})
+
 
 @app.post("/admin/api/clients/issue-token")
 async def admin_issue_client_token(request: Request, token: str = Query("")):
