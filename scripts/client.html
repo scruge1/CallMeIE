@@ -342,6 +342,12 @@
             <button class="btn" type="button" id="exportCsvBtn" onclick="exportCsv()">Export CSV</button>
           </div>
         </div>
+        <div id="callFilters" style="display:flex;gap:6px;flex-wrap:wrap;padding:0 6px 10px;">
+          <button class="btn btn-primary" type="button" onclick="setCallFilter('all',this)">All</button>
+          <button class="btn" type="button" onclick="setCallFilter('urgent',this)">Urgent</button>
+          <button class="btn" type="button" onclick="setCallFilter('new',this)">New enquiries</button>
+          <button class="btn" type="button" onclick="setCallFilter('existing',this)">Existing</button>
+        </div>
         <div class="panel-body" id="callsList">
           <div class="empty">Loading…</div>
         </div>
@@ -576,7 +582,7 @@ async function loadCalls() {
     const data = await api("/client/api/calls", { params: { days: 14, limit: 50 } });
     state.calls = (data && data.calls) || [];
     if (!state.calls.length) { qs("#callsList").innerHTML = '<div class="empty">No calls yet. When the first one comes in, it appears here.</div>'; return; }
-    qs("#callsList").innerHTML = state.calls.map(renderCallRow).join("");
+    renderCalls();  // obrien-dash
   } catch (err) {
     qs("#callsList").innerHTML = `<div class="empty">Could not load calls. ${esc(err.message)}</div>`;
   }
@@ -625,6 +631,25 @@ function statusBadge(c) {
   return { label: "Completed", cls: "ok" };
 }
 
+// obrien-dash helpers
+function prettyCat(c){const m={emergency_gas:'Gas emergency',boiler_heating_breakdown:'Boiler/heating',plumbing_problem:'Plumbing',boiler_service_maintenance:'Service',installation_new_work:'Installation',quote_request:'Quote',existing_customer_job:'Existing job',general_enquiry:'Enquiry',other:'Other'};return m[c]||c;}
+function urgencyChip(c){
+  if(c.gas_emergency) return '<span class="badge" style="background:#c0261b;color:#fff;font-weight:800;font-size:11px;padding:3px 9px;border-radius:10px;letter-spacing:.3px;">\u26A0 SUSPECTED GAS</span>';
+  const u=(c.urgency||'');
+  if(u==='urgent') return '<span class="badge" style="background:#c0261b;color:#fff;font-weight:800;font-size:11px;padding:3px 9px;border-radius:10px;">URGENT</span>';
+  if(u==='priority') return '<span class="badge" style="background:#e08a00;color:#fff;font-weight:700;font-size:11px;padding:3px 9px;border-radius:10px;">PRIORITY</span>';
+  return '';
+}
+function renderCalls(){
+  const f=state.callFilter||'all';
+  let rows=state.calls||[];
+  if(f==='urgent') rows=rows.filter(c=>c.gas_emergency||c.urgency==='urgent'||c.urgency==='priority');
+  else if(f==='new') rows=rows.filter(c=>(c.new_or_existing||'')==='new');
+  else if(f==='existing') rows=rows.filter(c=>(c.new_or_existing||'')==='existing');
+  const el=document.querySelector('#callsList');
+  el.innerHTML = rows.length ? rows.map(renderCallRow).join("") : '<div class="empty">No calls match this filter.</div>';
+}
+function setCallFilter(f,btn){state.callFilter=f; if(btn){[...btn.parentElement.children].forEach(b=>b.classList.remove('btn-primary')); btn.classList.add('btn-primary');} renderCalls();}
 function renderCallRow(c) {
   const phone = c.caller_phone || "";
   const name = c.caller_name || "";
@@ -652,7 +677,9 @@ function renderCallRow(c) {
         </div>
       </div>
       <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;">
+        ${urgencyChip(c)}
         <span class="badge ${badge.cls}" style="font-size:11px;padding:3px 8px;border-radius:10px;">${esc(badge.label)}</span>
+        ${c.category ? '<span class="muted" style="font-size:10px;">'+esc(prettyCat(c.category))+(c.new_or_existing?' \u00B7 '+esc(c.new_or_existing):'')+'</span>' : ''}
       </div>
     </div>`;
 }
@@ -752,9 +779,7 @@ function searchCalls(event) {
   api("/client/api/calls", { params: { q, days: 30, limit: 100 } })
     .then((data) => {
       state.calls = data.calls || [];
-      qs("#callsList").innerHTML = state.calls.length
-        ? state.calls.map(renderCallRow).join("")
-        : '<div class="empty">No calls match that search.</div>';
+      renderCalls();  // obrien-dash
     })
     .catch((err) => { qs("#callsList").innerHTML = `<div class="empty">${esc(err.message)}</div>`; });
 }
@@ -903,6 +928,7 @@ window.logout = logout;
 window.navigate = navigate;
 window.setTheme = setTheme;
 window.loadCalls = loadCalls;
+window.setCallFilter = setCallFilter;  // obrien-dash
 window.loadInbox = loadInbox;
 window.loadInsights = loadInsights;
 window.loadSettings = loadSettings;
