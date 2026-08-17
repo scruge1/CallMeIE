@@ -8294,11 +8294,18 @@ async def client_calls(
             d = json.loads(r["detail"]) if isinstance(r["detail"], str) else (r["detail"] or {})
         except Exception:
             d = {}
+        sd = d.get("structured_data") or {}  # obrien-dash
         grouped[cid] = {
             "call_id": cid,
             "ts": str(r["ts"]),
-            "caller_name": d.get("name") or d.get("caller_name") or "",
-            "caller_phone": d.get("contact_phone") or d.get("phone") or d.get("caller") or "",
+            "caller_name": d.get("name") or d.get("caller_name") or sd.get("customer_name") or "",
+            "caller_phone": d.get("contact_phone") or d.get("phone") or d.get("caller") or sd.get("phone") or "",
+            "urgency": (sd.get("urgency") or "").lower(),
+            "category": sd.get("category") or "",
+            "gas_emergency": bool(sd.get("gas_emergency")),
+            "new_or_existing": sd.get("new_or_existing") or "",
+            "location": sd.get("location") or "",
+            "eircode": sd.get("eircode") or "",
             "summary": r["summary"] or "",
             "outcome": r["event_type"] or "",
             # 2026-05-13 — expose more fields so client UI can render proper row
