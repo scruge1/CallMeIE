@@ -8143,11 +8143,13 @@ async def admin_set_assistant_owner(request: Request, token: str = Query("")):
             conn.commit()
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"upsert_failed: {e}")
-    sample = ("New call for " + (name or "your business") + "\n"
-              "John Murphy - 087 123 4567\n"
-              "Boiler not working, no heat\n"
-              "Ring them back.\n\n(CallMeIE test \u2014 this is how your lead alerts will look.)")
-    sms_res = await send_sms(owner, sample)
+    sms_res = {"ok": None, "status": "skipped"}
+    if body.get("notify", True):
+        sample = ("New call for " + (name or "your business") + "\n"
+                  "John Murphy - 087 123 4567\n"
+                  "Boiler not working, no heat\n"
+                  "Ring them back.\n\n(CallMeIE test \u2014 this is how your lead alerts will look.)")
+        sms_res = await send_sms(owner, sample)
     return JSONResponse({"ok": True, "assistant_id": aid, "owner_phone": owner,
                          "sms": {"ok": sms_res.get("ok"), "status": sms_res.get("status"),
                                  "http": sms_res.get("http_status")}})
