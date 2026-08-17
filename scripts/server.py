@@ -8246,12 +8246,15 @@ async def client_me(token: str = Query("")):
 
 # --- obrien-voice: client-facing voice picker ---
 OBRIEN_IRISH_VOICES = [
-    {"id": "eyuCA3LWMylRajljTeOo", "name": "Gerry", "tagline": "Warm Derry tradesman", "accent": "Irish", "gender": "male"},
-    {"id": "LhG6Tsjmn5tklSCyReiu", "name": "Conor", "tagline": "Warm, grounded Irish", "accent": "Irish", "gender": "male"},
-    {"id": "U3AWuAe8WcVA50PuDMrY", "name": "Cillian", "tagline": "Deep, warm, calm", "accent": "Irish", "gender": "male"},
-    {"id": "kOvUpYLYS0rKGldsKcD1", "name": "Maeve", "tagline": "Soft Irish female", "accent": "Irish", "gender": "female"},
+    {"id": "eyuCA3LWMylRajljTeOo", "name": "Gerry", "tagline": "Warm Derry tradesman", "accent": "Irish", "gender": "male", "preview": "https://storage.googleapis.com/eleven-public-prod/database/workspace/0d2c9dea9c984c50bb7196eea7ac879f/voices/eyuCA3LWMylRajljTeOo/FBOVy8RFVApGKtLEuepZ.mp3"},
+    {"id": "LhG6Tsjmn5tklSCyReiu", "name": "Conor", "tagline": "Warm, grounded Irish", "accent": "Irish", "gender": "male", "preview": "https://storage.googleapis.com/eleven-public-prod/database/workspace/6292dd9f8dfb4981bda0a84f9efc75a9/voices/LhG6Tsjmn5tklSCyReiu/09459812-5433-495a-b7a0-61f0ee1770d3.mp3"},
+    {"id": "U3AWuAe8WcVA50PuDMrY", "name": "Cillian", "tagline": "Deep, warm, calm", "accent": "Irish", "gender": "male", "preview": "https://storage.googleapis.com/eleven-public-prod/database/workspace/be31379da71146eb9a7fcac89c0cd021/voices/U3AWuAe8WcVA50PuDMrY/dfc13e3e-9712-42b0-8fad-b3ed0a81a6c9.mp3"},
+    {"id": "kOvUpYLYS0rKGldsKcD1", "name": "Maeve", "tagline": "Soft Irish female", "accent": "Irish", "gender": "female", "preview": "https://storage.googleapis.com/eleven-public-prod/database/workspace/baeca79b83bc48c6a4bc3caf3b8e165f/voices/kOvUpYLYS0rKGldsKcD1/BHhq7ThFF1G2uRvUYIV1.mp3"},
 ]
 _OBRIEN_GREETING = "Hi, you've reached K O'Brien Heating and Plumbing. How can I help you today?"
+OBRIEN_DEFAULT_VOICE = {"provider": "11labs", "voiceId": "eyuCA3LWMylRajljTeOo", "model": "eleven_flash_v2_5",
+                        "stability": 0.5, "similarityBoost": 0.75, "style": 0.45,
+                        "useSpeakerBoost": True, "cachingEnabled": False}
 
 
 def _client_assistant_ids(c):
@@ -8282,16 +8285,7 @@ async def client_voices(token: str = Query("")):
     for iv in reversed(OBRIEN_IRISH_VOICES):  # Irish voices to the front
         if iv["id"] in have:
             continue
-        prev = ""
-        if el:
-            try:
-                async with httpx.AsyncClient(timeout=15) as h:
-                    rr = await h.get(f"https://api.elevenlabs.io/v1/voices/{iv['id']}",
-                                     headers={"xi-api-key": el})
-                prev = rr.json().get("preview_url", "") if rr.status_code == 200 else ""
-            except Exception:
-                pass
-        voices.insert(0, {**iv, "preview": prev})
+        voices.insert(0, dict(iv))
     current = ""
     ids = _client_assistant_ids(c)
     if ids:
@@ -8338,14 +8332,18 @@ async def client_set_voice(request: Request, token: str = Query("")):
         body = await request.json()
     except Exception:
         raise HTTPException(status_code=400, detail="invalid JSON")
-    voice_id = (body.get("voice_id") or "").strip()
-    if not voice_id:
-        raise HTTPException(status_code=400, detail="voice_id required")
-    voice_patch = {"provider": "11labs", "voiceId": voice_id, "model": "eleven_flash_v2_5",
-                   "stability": float(body.get("stability", 0.5)),
-                   "similarityBoost": float(body.get("similarity", 0.75)),
-                   "style": float(body.get("style", 0.45)),
-                   "useSpeakerBoost": True, "cachingEnabled": False}
+    if body.get("reset"):
+        voice_patch = dict(OBRIEN_DEFAULT_VOICE)
+        voice_id = voice_patch["voiceId"]
+    else:
+        voice_id = (body.get("voice_id") or "").strip()
+        if not voice_id:
+            raise HTTPException(status_code=400, detail="voice_id required")
+        voice_patch = {"provider": "11labs", "voiceId": voice_id, "model": "eleven_flash_v2_5",
+                       "stability": float(body.get("stability", 0.5)),
+                       "similarityBoost": float(body.get("similarity", 0.75)),
+                       "style": float(body.get("style", 0.45)),
+                       "useSpeakerBoost": True, "cachingEnabled": False}
     vk = os.environ.get("VAPI_API_KEY", "").strip()
     applied = []
     for aid in ids:

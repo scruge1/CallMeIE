@@ -455,7 +455,7 @@
           <div class="panel-header">
             <div><h2 class="panel-title">Choose your voice</h2>
             <p class="panel-subtitle">Preview a voice, tune the tone, then set it live on your line.</p></div>
-            <button class="btn" type="button" onclick="loadVoices()">Refresh</button>
+            <div style="display:flex;gap:8px;"><button class="btn" type="button" onclick="revertVoice()">Revert to default</button><button class="btn" type="button" onclick="loadVoices()">Refresh</button></div>
           </div>
           <div id="voiceTuner" style="padding:10px 6px;border-bottom:1px solid var(--border);font-size:12px;color:var(--muted);">
             Fine-tune tone (applies to preview + when you set a voice):
@@ -962,7 +962,7 @@ function renderVoiceCard(v){
   return '<div style="display:grid;grid-template-columns:1fr auto auto;gap:10px;align-items:center;padding:12px 6px;border-bottom:1px solid var(--border);">'
     +'<div><strong>'+esc(v.name||v.id)+'</strong>'+cur+'<div class="muted" style="font-size:12px;margin-top:2px;">'+meta+'</div></div>'
     +'<button class="btn" type="button" onclick="previewVoice(\''+esc(v.id)+'\')">▶ Preview</button>'
-    +'<button class="btn btn-primary" type="button" onclick="applyVoice(\''+esc(v.id)+'\',\''+esc((v.name||v.id).replace(/'/g,"")) +'\')">Use this voice</button>'
+    +'<button class="btn btn-primary" type="button" onclick="applyVoice(\''+esc(v.id)+'\',\''+esc((v.name||v.id).replace(/'/g,"")) +'\')">Set live</button>'
     +'</div>';
 }
 let _voicePrev=null;
@@ -975,6 +975,7 @@ function previewVoice(id){
   _voicePrev.play().catch(()=>{ const v=(state.voices||[]).find(x=>x.id===id); if(v&&v.preview){_voicePrev=new Audio(v.preview);_voicePrev.play();} });
 }
 async function applyVoice(id,name){
+  if(!confirm("Set your LIVE phone line to "+name+" now? Callers will hear this voice on the next call.")) return;
   const t=voiceTone();
   try{
     await api("/client/api/voice",{method:"POST",headers:{"Content-Type":"application/json"},
@@ -983,6 +984,12 @@ async function applyVoice(id,name){
     loadVoices();
   }catch(e){alert("Could not set that voice: "+e.message);}
 }
+async function revertVoice(){
+  if(!confirm("Revert your live line back to the default Owl Studio voice?")) return;
+  try{ await api("/client/api/voice",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({reset:true})}); alert("Your line is back on the default voice."); loadVoices(); }
+  catch(e){ alert("Could not revert: "+e.message); }
+}
+window.revertVoice = revertVoice;
 window.loadVoices = loadVoices;
 window.previewVoice = previewVoice;
 window.applyVoice = applyVoice;
