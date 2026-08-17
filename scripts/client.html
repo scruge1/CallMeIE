@@ -324,6 +324,7 @@
     <button class="tab" data-tab="inbox" aria-selected="false" onclick="navigate('inbox')">Inbox</button>
     <button class="tab" data-tab="insights" aria-selected="false" onclick="navigate('insights')">Insights</button>
     <button class="tab" data-tab="settings" aria-selected="false" onclick="navigate('settings')">Settings</button>
+    <button class="tab" data-tab="voice" aria-selected="false" onclick="navigate('voice')">Voice</button>
   </nav>
 
   <main class="main">
@@ -448,6 +449,23 @@
       </div>
     </section>
 
+      <!-- Voice view (obrien-voice) -->
+      <section id="voiceView" class="view">
+        <div class="panel">
+          <div class="panel-header">
+            <div><h2 class="panel-title">Choose your voice</h2>
+            <p class="panel-subtitle">Preview a voice, tune the tone, then set it live on your line.</p></div>
+            <button class="btn" type="button" onclick="loadVoices()">Refresh</button>
+          </div>
+          <div id="voiceTuner" style="padding:10px 6px;border-bottom:1px solid var(--border);font-size:12px;color:var(--muted);">
+            Fine-tune tone (applies to preview + when you set a voice):
+            <label style="margin-left:10px;">Stability <input id="vStab" type="range" min="0" max="1" step="0.05" value="0.5"></label>
+            <label style="margin-left:10px;">Expressiveness <input id="vStyle" type="range" min="0" max="1" step="0.05" value="0.45"></label>
+            <label style="margin-left:10px;">Clarity <input id="vSim" type="range" min="0" max="1" step="0.05" value="0.75"></label>
+          </div>
+          <div class="panel-body"><div id="voiceList" class="empty">Loading voices…</div></div>
+        </div>
+      </section>
   </main>
 
   <div id="drawerBackdrop" class="drawer-backdrop" onclick="closeDrawer()">
@@ -554,6 +572,7 @@ function navigate(tab) {
   if (tab === "inbox") loadInbox();
   if (tab === "insights") loadInsights();
   if (tab === "settings") loadSettings();
+  if (tab === "voice") loadVoices();  // obrien-voice
 }
 
 // --- Boot ---
@@ -923,6 +942,50 @@ function init() {
 window.addEventListener("DOMContentLoaded", init);
 
 // Public globals (for inline onclick)
+// --- obrien-voice: client voice picker ---
+function voiceTone(){
+  const g=(id,d)=>{const e=document.getElementById(id);return e?parseFloat(e.value):d;};
+  return {stability:g('vStab',0.5),style:g('vStyle',0.45),similarity:g('vSim',0.75)};
+}
+async function loadVoices(){
+  const el=qs("#voiceList"); el.innerHTML='<div class="empty">Loading voices…</div>';
+  try{
+    const d=await api("/client/api/voices");
+    state.voices=(d&&d.voices)||[];
+    if(!state.voices.length){el.innerHTML='<div class="empty">No voices available.</div>';return;}
+    el.innerHTML=state.voices.map(renderVoiceCard).join("");
+  }catch(e){el.innerHTML='<div class="empty">'+esc(e.message)+'</div>';}
+}
+function renderVoiceCard(v){
+  const cur=v.current?' <span class="badge ok" style="font-size:10px;padding:2px 7px;border-radius:9px;">current</span>':'';
+  const meta=[v.accent,v.gender,v.tagline].filter(Boolean).map(esc).join(' · ');
+  return '<div style="display:grid;grid-template-columns:1fr auto auto;gap:10px;align-items:center;padding:12px 6px;border-bottom:1px solid var(--border);">'
+    +'<div><strong>'+esc(v.name||v.id)+'</strong>'+cur+'<div class="muted" style="font-size:12px;margin-top:2px;">'+meta+'</div></div>'
+    +'<button class="btn" type="button" onclick="previewVoice(\''+esc(v.id)+'\')">▶ Preview</button>'
+    +'<button class="btn btn-primary" type="button" onclick="applyVoice(\''+esc(v.id)+'\',\''+esc((v.name||v.id).replace(/'/g,"")) +'\')">Use this voice</button>'
+    +'</div>';
+}
+let _voicePrev=null;
+function previewVoice(id){
+  if(_voicePrev){try{_voicePrev.pause();}catch(_){}}
+  const t=voiceTone();
+  const url='/client/api/voice-preview?token='+encodeURIComponent(state.token)+'&voice_id='+encodeURIComponent(id)
+           +'&stability='+t.stability+'&similarity='+t.similarity+'&style='+t.style;
+  _voicePrev=new Audio(url);
+  _voicePrev.play().catch(()=>{ const v=(state.voices||[]).find(x=>x.id===id); if(v&&v.preview){_voicePrev=new Audio(v.preview);_voicePrev.play();} });
+}
+async function applyVoice(id,name){
+  const t=voiceTone();
+  try{
+    await api("/client/api/voice",{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({voice_id:id,stability:t.stability,similarity:t.similarity,style:t.style})});
+    alert("Your line now uses "+name+".");
+    loadVoices();
+  }catch(e){alert("Could not set that voice: "+e.message);}
+}
+window.loadVoices = loadVoices;
+window.previewVoice = previewVoice;
+window.applyVoice = applyVoice;
 window.login = login;
 window.logout = logout;
 window.navigate = navigate;
