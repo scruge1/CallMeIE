@@ -678,7 +678,7 @@ function renderCallRow(c) {
   const dur = c.duration ? formatDuration(c.duration) : "";
   const badge = statusBadge(c);
   const transcriptIcon = c.has_transcript ? '<span title="Transcript available" style="font-size:11px;color:var(--muted);margin-left:6px;">📄</span>' : "";
-  const sumPreview = (c.summary_text || "").slice(0, 90);
+  const sumPreview = cleanSummary(c.summary_text, 90);
   return `
     <div class="call-row" onclick="openDrawer('${esc(c.call_id)}')"
          style="display:grid;grid-template-columns:auto 1fr auto;gap:14px;padding:14px 6px;border-bottom:1px solid var(--border);cursor:pointer;align-items:center;">
@@ -749,7 +749,7 @@ async function loadSettings() {
     state.settings = data;
     qs("#settingsBody").innerHTML = `
       <dl style="display: grid; grid-template-columns: 160px 1fr; gap: 8px 16px; margin: 0;">
-        <dt class="muted">Assistant voice</dt><dd>${esc(data.voice || "—")}</dd>
+        <dt class="muted">Assistant voice</dt><dd>${esc(voiceName(data.voice))}</dd>
         <dt class="muted">Greeting</dt><dd>${esc(data.greeting || "—")}</dd>
         <dt class="muted">Recording</dt><dd>${esc(data.recording_on ? "On" : "Off")}</dd>
         <dt class="muted">Retention</dt><dd>${esc(data.retention || "30 days audio / 90 days transcripts")}</dd>
@@ -813,13 +813,13 @@ async function openDrawer(callId) {
       <div style="display:flex; justify-content: space-between; align-items: flex-start; margin-bottom: 16px;">
         <div>
           <h3 style="margin: 0;">${esc(data.caller_name || data.caller_phone || "Unknown caller")}</h3>
-          <div class="muted" style="font-size: 12px;">${esc(data.business || "")} · ${esc(data.caller_phone || "")}</div>
+          <div class="muted" style="font-size: 12px;">${(data.business||data.caller_phone)?esc([data.business,data.caller_phone].filter(Boolean).join(" · ")):""}</div>
         </div>
         <button class="btn ghost" type="button" onclick="closeDrawer()">Close</button>
       </div>
       <h4 style="margin: 0 0 8px;">Timeline</h4>
       <ol style="margin: 0 0 16px 18px; padding: 0; font-size: 13px;">
-        ${(data.events || []).map((e) => `<li><span class="mono" style="color: var(--muted);">${esc(e.ts || "")}</span> · ${esc(e.event_type || "")} ${esc(e.summary ? "— " + e.summary : "")}</li>`).join("")}
+        ${(data.events || []).map((e) => `<li><span class="mono" style="color: var(--muted);">${esc(e.ts || "")}</span> · ${esc(prettyEvent(e))}</li>`).join("")}
       </ol>
       ${data.recording_url ? `<h4 style="margin: 0 0 8px;">Recording</h4><audio controls src="${esc(data.recording_url)}" style="width: 100%; margin-bottom: 16px;"></audio>` : ""}
       ${data.transcript ? `
@@ -829,7 +829,7 @@ async function openDrawer(callId) {
         </div>
         <div style="white-space: pre-wrap; font-size: 13px; color: var(--text-soft); margin-bottom: 16px;">${esc(data.transcript)}</div>
       ` : ""}
-      ${data.analysis_summary ? `<h4 style="margin: 0 0 8px;">Summary</h4><div style="font-size: 13px; color: var(--text-soft); margin-bottom: 16px;">${esc(data.analysis_summary)}</div>` : ""}
+      ${data.analysis_summary ? `<h4 style="margin: 0 0 8px;">Summary</h4><div style="font-size: 13px; color: var(--text-soft); margin-bottom: 16px;">${esc(cleanSummary(data.analysis_summary))}</div>` : ""}
       <h4 style="margin: 0 0 8px;">Notes</h4>
       <div id="drawerNotesList" style="margin-bottom:10px;">${
         (data.notes && data.notes.length) ?
@@ -966,13 +966,30 @@ function renderVoiceCard(v){
     +'</div>';
 }
 let _voicePrev=null;
+function cleanSummary(txt,n){
+  let x=(txt||"").replace(/\*\*/g,"").replace(/\s+/g," ").trim();
+  if(n && x.length>n){ x=x.slice(0,n); const sp=x.lastIndexOf(" "); if(sp>n*0.6) x=x.slice(0,sp); x=x.replace(/[\s,;:.\-]+$/,"")+"…"; }
+  return x;
+}
+const _EVENT_LABELS={"call-ended":"Call ended","recording-archived":"Recording saved","recording-mirror":"Recording saved","lead-captured":"Details captured","lead-error":"Details not captured","inbox-actioned":"Marked done","call-started":"Call started","demo-complete":"Call summary ready"};
+function prettyEvent(e){
+  const lbl=_EVENT_LABELS[e.event_type]||String(e.event_type||"").replace(/[-_]/g," ");
+  let sm=String(e.summary||"").replace(/(Hetzner|Vapi|Twilio|Deepgram|ElevenLabs|R2|S3|boto3|mirror)/gi,"").replace(/\s{2,}/g," ").replace(/^[\s\-:]+/,"").trim();
+  return lbl+(sm?" — "+sm:"");
+}
+const _VOICE_NAMES={"eyuCA3LWMylRajljTeOo":"Gerry (Irish male)","LhG6Tsjmn5tklSCyReiu":"Conor (Irish male)","U3AWuAe8WcVA50PuDMrY":"Cillian (Irish male)","kOvUpYLYS0rKGldsKcD1":"Maeve (Irish female)"};
+function voiceName(raw){ raw=String(raw||""); for(const id in _VOICE_NAMES){ if(raw.includes(id)) return _VOICE_NAMES[id]; } return raw||"Default"; }
+function toast(msg){ let t=document.getElementById("_toast"); if(!t){t=document.createElement("div");t.id="_toast";t.style.cssText="position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#222;color:#fff;padding:10px 16px;border-radius:8px;z-index:9999;font-size:14px;box-shadow:0 4px 16px rgba(0,0,0,.3);transition:opacity .3s;";document.body.appendChild(t);} t.textContent=msg; t.style.opacity="1"; clearTimeout(t._h); t._h=setTimeout(()=>{t.style.opacity="0";},2600); }
 function previewVoice(id){
   if(_voicePrev){try{_voicePrev.pause();}catch(_){}}
   const t=voiceTone();
   const url='/client/api/voice-preview?token='+encodeURIComponent(state.token)+'&voice_id='+encodeURIComponent(id)
            +'&stability='+t.stability+'&similarity='+t.similarity+'&style='+t.style;
+  toast("Loading preview…");
   _voicePrev=new Audio(url);
-  _voicePrev.play().catch(()=>{ const v=(state.voices||[]).find(x=>x.id===id); if(v&&v.preview){_voicePrev=new Audio(v.preview);_voicePrev.play();} });
+  _voicePrev.addEventListener("playing",()=>toast("Playing…"),{once:true});
+  _voicePrev.addEventListener("error",()=>toast("Couldn't play that preview — try again."));
+  _voicePrev.play().catch(()=>toast("Tap Preview again to play."));
 }
 async function applyVoice(id,name){
   if(!confirm("Set your LIVE phone line to "+name+" now? Callers will hear this voice on the next call.")) return;

@@ -177,7 +177,7 @@ ANALYSIS_PLAN = {
         "messages": [
             {"role": "system", "content":
                 "You write the one-glance call summary a busy plumbing/heating owner reads to decide who to ring back. "
-                "Format: a short bold-style headline line 'Issue — New/Existing Customer', then 2-3 plain sentences: "
+                "Format: a short PLAIN-TEXT headline line 'Issue - New/Existing Customer' (NO asterisks, NO markdown, no bold syntax), then 2-3 plain sentences: "
                 "who called and where, the problem, whether they reported a gas smell, availability/callback preference, "
                 "and what they want. If it was a suspected gas emergency, START the summary with 'URGENT — SUSPECTED GAS ISSUE'. "
                 "No preamble, no transcript, under 70 words."},
