@@ -2054,18 +2054,26 @@ async def demo_complete(request: Request):
     _client = get_client(assistant_id)
     _owner = _client.get("owner") or OWNER_NUMBER
     _cname = _client.get("name") or ""
+    _jn = (args.get("customer_name") or (name if name and name != "Unknown" else "") or "Caller").strip()
+    _jnum = (args.get("contact_number") or (phone if phone and phone != "Unknown" else "") or "(on caller ID)").strip()
+    _jarea = (args.get("area") or "").strip()
+    _jissue = (args.get("issue") or topics or business_type or "enquiry").strip()
+    _jurg = (args.get("urgency") or interest or "").strip()
+    _jne = (args.get("new_or_existing") or "").strip()
     if _owner and _owner != OWNER_NUMBER:
-        # real client (e.g. K O'Brien): send THEM a plain callback alert
+        # real client (e.g. K O'Brien): send THEM a plain callback alert with real content
         sms = ("New call for " + (_cname or "your business") + "\n"
-               + (name or "Caller") + " - " + (phone or "no number given") + "\n"
-               + (topics or business_type or "enquiry")
-               + (("\nUrgency: " + interest) if interest else "")
+               + _jn + " - " + _jnum + "\n"
+               + _jissue
+               + ((" (" + _jarea + ")") if _jarea else "")
+               + (("\nUrgency: " + _jurg) if _jurg else "")
+               + (("\n" + _jne + " customer") if _jne else "")
                + "\nRing them back.")
     await send_sms(_owner, sms)
     try:
         await send_telegram("[" + (_cname or demo_type or "lead") + "] "
-                            + (name or "caller") + " " + (phone or "")
-                            + "\n" + (topics or business_type or ""))
+                            + _jn + " " + _jnum
+                            + "\n" + _jissue + ((" (" + _jarea + ")") if _jarea else ""))
     except Exception:
         pass
     log_event(
