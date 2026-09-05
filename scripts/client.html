@@ -182,8 +182,6 @@
   .btn:hover { background: var(--surface-muted); }
   .btn.primary { background: var(--accent); color: white; border-color: var(--accent); }
   .btn.primary:hover { background: var(--accent); opacity: .9; }
-  .btn.danger { background: var(--fail); color: white; border-color: var(--fail); }
-  .btn.danger:hover { background: var(--fail); opacity: .9; }
   .btn.ghost { border-color: transparent; background: transparent; color: var(--muted); }
   .btn.ghost:hover { background: var(--surface-muted); color: var(--text); }
 
@@ -233,56 +231,6 @@
   }
   .footer a { color: var(--muted); text-decoration: none; }
   .footer a:hover { color: var(--accent); }
-
-  /* Private rig view — mobile-first operator surface */
-  .rig-hero {
-    padding: 18px var(--space-5);
-    background: linear-gradient(135deg, var(--surface) 0%, var(--surface-soft) 100%);
-  }
-  .rig-status-line { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-  .rig-status-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 0 4px var(--ok-soft); flex: 0 0 auto; }
-  .rig-status-dot.degraded { background: var(--warn); box-shadow: 0 0 0 4px var(--warn-soft); }
-  .rig-status-dot.unavailable { background: var(--fail); box-shadow: 0 0 0 4px var(--fail-soft); }
-  .rig-status-title { font-size: 20px; font-weight: 750; letter-spacing: -.02em; }
-  .rig-status-copy { color: var(--muted); font-size: 12px; margin-top: 3px; }
-  .rig-kpis { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; padding: 12px var(--space-5) var(--space-5); }
-  .rig-kpi { min-width: 0; padding: 12px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface); }
-  .rig-kpi-value { font-size: 19px; font-weight: 750; line-height: 1.2; font-variant-numeric: tabular-nums; }
-  .rig-kpi-label { color: var(--muted); font-size: 11px; margin-top: 4px; }
-  .rig-section { border-top: 1px solid var(--border); padding: 16px var(--space-5); }
-  .rig-section-title { margin: 0 0 10px; font-size: 13px; font-weight: 750; }
-  .rig-section-subtitle { color: var(--muted); font-size: 11px; margin: -5px 0 10px; }
-  .rig-gpu-row { padding: 12px 0; border-bottom: 1px solid var(--border); }
-  .rig-gpu-row:last-child { border-bottom: 0; padding-bottom: 0; }
-  .rig-gpu-head, .rig-detail-row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
-  .rig-gpu-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 700; }
-  .rig-gpu-id { color: var(--muted); font: 11px/1.2 "JetBrains Mono", ui-monospace, monospace; }
-  .rig-gpu-metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-top: 10px; }
-  .rig-gpu-metric { min-width: 0; }
-  .rig-gpu-metric-value { display: block; font-weight: 700; font-variant-numeric: tabular-nums; }
-  .rig-gpu-metric-label { display: block; color: var(--muted); font-size: 10px; margin-top: 2px; }
-  .rig-bar { height: 5px; margin-top: 8px; border-radius: 99px; background: var(--surface-muted); overflow: hidden; }
-  .rig-bar > i { display: block; height: 100%; border-radius: inherit; background: var(--accent); }
-  .rig-alert { margin: 0 0 8px; padding: 10px 12px; border: 1px solid color-mix(in srgb, var(--fail) 35%, var(--border)); border-radius: var(--radius-sm); background: var(--fail-soft); }
-  .rig-alert:last-child { margin-bottom: 0; }
-  .rig-alert strong { display: block; font-size: 12px; }
-  .rig-alert span { display: block; color: var(--text-soft); font-size: 11px; margin-top: 2px; }
-  .rig-detail-list { display: grid; gap: 8px; }
-  .rig-detail-row { font-size: 12px; }
-  .rig-detail-row > span:first-child { color: var(--muted); }
-  .rig-detail-row > span:last-child { text-align: right; font-weight: 650; font-variant-numeric: tabular-nums; }
-  .rig-ok { color: var(--ok); }
-  .rig-warn { color: var(--warn); }
-  .rig-fail { color: var(--fail); }
-  .rig-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px; }
-  .rig-footnote { color: var(--dim); font-size: 11px; line-height: 1.45; margin: 12px 0 0; }
-  @media (min-width: 720px) {
-    .rig-kpis { grid-template-columns: repeat(4, minmax(0, 1fr)); }
-    .rig-gpu-metrics { grid-template-columns: repeat(4, minmax(0, 1fr)); }
-  }
-  @media (prefers-reduced-motion: reduce) {
-    .btn { transition: none; }
-  }
 
   /* Drawer */
   .drawer-backdrop {
@@ -375,7 +323,6 @@
     <button class="tab" data-tab="calls" aria-selected="true" onclick="navigate('calls')">Calls</button>
     <button class="tab" data-tab="inbox" aria-selected="false" onclick="navigate('inbox')">Inbox</button>
     <button class="tab" data-tab="insights" aria-selected="false" onclick="navigate('insights')">Insights</button>
-    <button class="tab" data-tab="rig" aria-selected="false" onclick="navigate('rig')" hidden>Rig</button>
     <button class="tab" data-tab="settings" aria-selected="false" onclick="navigate('settings')">Settings</button>
     <button class="tab" data-tab="voice" aria-selected="false" onclick="navigate('voice')">Voice</button>
   </nav>
@@ -442,15 +389,6 @@
         </div>
         <div class="panel-body" id="insightsBody">
           <div class="empty">Loading…</div>
-        </div>
-      </div>
-    </section>
-
-    <!-- Private rig view -->
-    <section id="rigView" class="view">
-      <div class="panel">
-        <div id="rigBody">
-          <div class="empty">Loading rig telemetry…</div>
         </div>
       </div>
     </section>
@@ -560,7 +498,7 @@ const STORAGE_TOKEN = "client_token";
 const STORAGE_THEME = "client_theme";
 const STORAGE_TOUR  = "client_tour_completed";
 
-const state = { token: "", tenant: null, currentTab: "calls", calls: [], inbox: [], insights: null, settings: null, rig: null, rigTimer: null };
+const state = { token: "", tenant: null, currentTab: "calls", calls: [], inbox: [], insights: null, settings: null };
 
 const qs = (s, root = document) => root.querySelector(s);
 const qsa = (s, root = document) => Array.from(root.querySelectorAll(s));
@@ -626,8 +564,6 @@ function login(event) {
   return false;
 }
 function logout() {
-  if (state.rigTimer) clearTimeout(state.rigTimer);
-  state.rigTimer = null;
   localStorage.removeItem(STORAGE_TOKEN);
   state.token = "";
   state.tenant = null;
@@ -637,9 +573,6 @@ function logout() {
 
 // --- Navigation ---
 function navigate(tab) {
-  if (tab === "rig" && !state.tenant?.rig_access) return;
-  if (state.rigTimer) clearTimeout(state.rigTimer);
-  state.rigTimer = null;
   state.currentTab = tab;
   qsa(".tab").forEach((b) => b.setAttribute("aria-selected", b.dataset.tab === tab ? "true" : "false"));
   qsa(".view").forEach((v) => v.setAttribute("aria-current", "false"));
@@ -649,7 +582,6 @@ function navigate(tab) {
   if (tab === "insights") loadInsights();
   if (tab === "settings") loadSettings();
   if (tab === "voice") loadVoices();  // obrien-voice
-  if (tab === "rig") loadRig();
 }
 
 // --- Boot ---
@@ -660,195 +592,14 @@ async function startApp() {
     const me = await api("/client/api/me");
     state.tenant = me;
     qs("#tenantName").textContent = me.tenant_display_name || me.tenant_slug || "Your dashboard";
-    const rigTab = qs('[data-tab="rig"]');
-    if (rigTab) rigTab.hidden = !me.rig_access;
-    if (me.rig_access) {
-      navigate("rig");
-    } else {
-      navigate("calls");
-    }
-    if (!me.rig_access && !localStorage.getItem(STORAGE_TOUR)) {
+    await loadCalls();
+    if (!localStorage.getItem(STORAGE_TOUR)) {
       // Defer tour to next paint so target elements exist
       setTimeout(() => startTour(), 200);
     }
   } catch (err) {
     qs("#tenantName").textContent = "Unable to load your account";
     qs("#callsList").innerHTML = `<div class="empty">Sign-in failed — token may be expired. ${esc(err.message)}</div>`;
-  }
-}
-
-// --- Private rig view -------------------------------------------------------
-function rigNum(value, digits = 0) {
-  if (value == null || !Number.isFinite(Number(value))) return "—";
-  return Number(value).toLocaleString(undefined, { maximumFractionDigits: digits });
-}
-function rigTemp(value) { return value == null ? "—" : `${rigNum(value, 1)}°C`; }
-function rigBytes(value) {
-  if (value == null || !Number.isFinite(Number(value))) return "—";
-  const units = ["B", "GB", "TB", "PB"]; let n = Number(value); let i = 0;
-  while (n >= 1000 && i < units.length - 1) { n /= 1000; i++; }
-  return `${n.toFixed(i ? 1 : 0)} ${units[i]}`;
-}
-function rigAgo(ts) {
-  if (ts == null) return "no recent sample";
-  const seconds = Math.max(0, Math.round(Date.now() / 1000 - Number(ts)));
-  if (seconds < 60) return `${seconds}s ago`;
-  if (seconds < 3600) return `${Math.round(seconds / 60)}m ago`;
-  return `${Math.round(seconds / 3600)}h ago`;
-}
-function rigStateClass(status) { return status === "operational" ? "" : status === "degraded" ? "degraded" : "unavailable"; }
-function rigStateLabel(status) { return ({ operational: "Operational", degraded: "Needs attention", unavailable: "Telemetry unavailable" })[status] || "Unknown state"; }
-function rigMetricClass(value, warnAt, failAt) {
-  if (value == null) return "";
-  return value >= failAt ? "rig-fail" : value >= warnAt ? "rig-warn" : "";
-}
-function rigGpuRow(gpu) {
-  const used = Number(gpu.memory_used_bytes || 0);
-  const free = Number(gpu.memory_free_bytes || 0);
-  const memoryPercent = used + free > 0 ? Math.min(100, used / (used + free) * 100) : null;
-  const label = gpu.name || `GPU ${gpu.id}`;
-  return `<div class="rig-gpu-row">
-    <div class="rig-gpu-head"><span class="rig-gpu-name">${esc(label)}</span><span class="rig-gpu-id">#${esc(gpu.id)}</span></div>
-    <div class="rig-gpu-metrics">
-      <div class="rig-gpu-metric"><span class="rig-gpu-metric-value ${rigMetricClass(gpu.core_temp_celsius, 75, 85)}">${rigTemp(gpu.core_temp_celsius)}</span><span class="rig-gpu-metric-label">core</span></div>
-      <div class="rig-gpu-metric"><span class="rig-gpu-metric-value ${rigMetricClass(gpu.vram_temp_celsius, 90, 100)}">${rigTemp(gpu.vram_temp_celsius)}</span><span class="rig-gpu-metric-label">VRAM junction</span></div>
-      <div class="rig-gpu-metric"><span class="rig-gpu-metric-value">${gpu.utilization_percent == null ? "—" : rigNum(gpu.utilization_percent, 0) + "%"}</span><span class="rig-gpu-metric-label">utilisation</span></div>
-      <div class="rig-gpu-metric"><span class="rig-gpu-metric-value">${gpu.power_watts == null ? "—" : rigNum(gpu.power_watts, 0) + "W"}</span><span class="rig-gpu-metric-label">power</span></div>
-    </div>
-    ${memoryPercent == null ? "" : `<div class="rig-bar" aria-label="${rigNum(memoryPercent)} percent VRAM used"><i style="width:${memoryPercent.toFixed(1)}%"></i></div>`}
-    <div class="rig-detail-row" style="margin-top:6px;"><span>VRAM used</span><span>${rigBytes(used)} / ${rigBytes(used + free)}</span></div>
-  </div>`;
-}
-function rigNormalise(data) {
-  if (!data || !data.snapshot) return data;
-  const metrics = data.snapshot.metrics || {};
-  const rows = name => Array.isArray(metrics[name]) ? metrics[name] : [];
-  const gpuMaps = {};
-  const fields = {
-    gpu_core_temperature_celsius: "core_temp_celsius",
-    gpu_vram_temperature_celsius: "vram_temp_celsius",
-    gpu_utilization_percent: "utilization_percent",
-    gpu_power_watts: "power_watts",
-    gpu_memory_used_bytes: "memory_used_bytes",
-    gpu_memory_free_bytes: "memory_free_bytes",
-  };
-  Object.entries(fields).forEach(([metric, field]) => rows(metric).forEach((sample, index) => {
-    const labels = sample.labels || {};
-    const id = String(labels.gpu ?? labels.GPU ?? labels.index ?? labels.device ?? index);
-    const gpu = gpuMaps[id] || (gpuMaps[id] = { id, name: "" });
-    gpu[field] = Number(sample.value);
-    gpu.name = labels.modelName || labels.model_name || labels.product_name || gpu.name || "";
-  }));
-  const thresholds = {};
-  rows("bmc_temperature_threshold_celsius").forEach(sample => {
-    const l = sample.labels || {}; thresholds[l.name || ""] = thresholds[l.name || ""] || {};
-    thresholds[l.name || ""][l.threshold || ""] = Number(sample.value);
-  });
-  const bmc = rows("bmc_temperature_celsius").map(sample => {
-    const l = sample.labels || {}; const t = thresholds[l.name || ""] || {};
-    return { name: l.name || "Sensor", value_celsius: Number(sample.value), upper_noncritical_celsius: t.upper_noncritical, upper_critical_celsius: t.upper_critical };
-  }).sort((a, b) => b.value_celsius - a.value_celsius);
-  const alertRows = rows("active_alerts");
-  const alerts = alertRows.map(sample => {
-    const l = sample.labels || {};
-    return { name: l.alertname || "Alert", severity: l.severity || "warning", summary: l.alertname || "Alert firing", description: l.description || "" };
-  });
-  const fan = rows("fan_speed_rpm").find(sample => (sample.labels || {}).name === "FAN1") || rows("fan_speed_rpm")[0];
-  const vllm = rows("vllm_up");
-  const vllmStatus = vllm.some(sample => Number(sample.value) === 1) ? "running" : (vllm.length ? "down" : "not_instrumented");
-  const total = rows("node_memory_total_bytes")[0];
-  const available = rows("node_memory_available_bytes")[0];
-  const load = rows("node_load1")[0];
-  const storage = rows("storage_free_bytes")[0];
-  const collectors = rows("collector_up");
-  const smart = rows("smart_status");
-  return {
-    ...data,
-    alerts,
-    gpus: Object.values(gpuMaps),
-    fan: { name: "FAN1", rpm: fan ? Number(fan.value) : null },
-    host: { memory_total_bytes: total ? Number(total.value) : null, memory_available_bytes: available ? Number(available.value) : null, load1: load ? Number(load.value) : null, storage_free_bytes: storage ? Number(storage.value) : null },
-    services: { vllm: vllmStatus, collectors_healthy: collectors.filter(sample => Number(sample.value) === 1).length, collectors_total: collectors.length },
-    smart: { healthy: smart.filter(sample => Number(sample.value) === 1).length, total: smart.length },
-    bmc_temperatures: bmc,
-  };
-}
-function renderRig(data) {
-  const gpus = data.gpus || [];
-  const maxCore = Math.max(...gpus.map(g => Number(g.core_temp_celsius) || 0), 0);
-  const maxVram = Math.max(...gpus.map(g => Number(g.vram_temp_celsius) || 0), 0);
-  const alertCount = (data.alerts || []).length;
-  const fan = data.fan || {};
-  const host = data.host || {};
-  const services = data.services || {};
-  const smart = data.smart || {};
-  const statusClass = rigStateClass(data.status);
-  const alertHtml = alertCount ? `<div class="rig-section"><h3 class="rig-section-title">Attention</h3>${data.alerts.map(a => `<div class="rig-alert"><strong>${esc(a.summary || a.name)}</strong><span>${esc(a.description || a.severity || "Alert firing")}</span></div>`).join("")}</div>` : "";
-  const bmc = (data.bmc_temperatures || []).slice(0, 8);
-  const bmcHtml = bmc.length ? bmc.map(row => `<div class="rig-detail-row"><span>${esc(row.name)}</span><span class="${rigMetricClass(row.value_celsius, 70, 85)}">${rigTemp(row.value_celsius)}${row.upper_noncritical_celsius == null ? "" : ` · limit ${rigTemp(row.upper_noncritical_celsius)}`}</span></div>`).join("") : `<div class="empty" style="padding:8px 0;">No BMC temperature samples.</div>`;
-  const errorNote = (data.errors || []).length ? `<p class="rig-footnote rig-warn">Partial telemetry: ${esc(data.errors.join(", "))}. The underlying collectors may still be healthy.</p>` : "";
-  const grafana = data.links && data.links.grafana ? `<a class="btn" href="${esc(data.links.grafana)}" target="_blank" rel="noopener">Open Grafana</a>` : "";
-  const powerControls = data.power && data.power.enabled ? `<button class="btn" type="button" onclick="rigPower('on')">Power up</button><button class="btn danger" type="button" onclick="rigPower('off')">Power down</button>` : "";
-  qs("#rigBody").innerHTML = `<div class="rig-hero">
-      <div class="rig-status-line"><span class="rig-status-dot ${statusClass}"></span><span class="rig-status-title">${esc(rigStateLabel(data.status))}</span><span class="muted mono" style="font-size:11px;">${esc(rigAgo(data.sample_ts))}</span></div>
-      <div class="rig-status-copy">EPYC rig · ${esc(data.updated_at ? "gateway checked " + data.updated_at.replace("T", " ").replace("Z", " UTC") : "waiting for telemetry")}</div>
-      <div class="rig-actions"><button class="btn primary" type="button" onclick="loadRig()">Refresh now</button>${powerControls}${grafana}</div>
-    </div>
-    <div class="rig-kpis">
-      <div class="rig-kpi"><div class="rig-kpi-value ${rigMetricClass(maxCore, 75, 85)}">${gpus.length ? `${gpus.length}/4` : "—"}</div><div class="rig-kpi-label">GPUs reporting</div></div>
-      <div class="rig-kpi"><div class="rig-kpi-value ${rigMetricClass(maxVram, 90, 100)}">${maxVram ? rigTemp(maxVram) : "—"}</div><div class="rig-kpi-label">Peak VRAM junction</div></div>
-      <div class="rig-kpi"><div class="rig-kpi-value">${fan.rpm == null ? "—" : rigNum(fan.rpm) + " RPM"}</div><div class="rig-kpi-label">${esc(fan.name || "Fan tach")}</div></div>
-      <div class="rig-kpi"><div class="rig-kpi-value ${alertCount ? "rig-fail" : "rig-ok"}">${alertCount}</div><div class="rig-kpi-label">Firing alerts</div></div>
-    </div>
-    ${alertHtml}
-    <div class="rig-section"><h3 class="rig-section-title">GPU fleet</h3><p class="rig-section-subtitle">Core heat, GDDR6X junction, load, power, and framebuffer use.</p>${gpus.length ? gpus.map(rigGpuRow).join("") : `<div class="empty" style="padding:8px 0;">No GPU samples returned.</div>`}</div>
-    <div class="rig-section"><h3 class="rig-section-title">System</h3><div class="rig-detail-list">
-      <div class="rig-detail-row"><span>vLLM Qwen service</span><span class="${services.vllm === "running" ? "rig-ok" : services.vllm === "down" ? "rig-fail" : "rig-warn"}">${esc(services.vllm === "not_instrumented" ? "not instrumented" : services.vllm || "—")}</span></div>
-      <div class="rig-detail-row"><span>Collector targets</span><span>${rigNum(services.collectors_healthy)} / ${rigNum(services.collectors_total)}</span></div>
-      <div class="rig-detail-row"><span>Host memory available</span><span>${rigBytes(host.memory_available_bytes)} / ${rigBytes(host.memory_total_bytes)}</span></div>
-      <div class="rig-detail-row"><span>Load average (1m)</span><span>${rigNum(host.load1, 2)}</span></div>
-      <div class="rig-detail-row"><span>Data volume free</span><span>${rigBytes(host.storage_free_bytes)}</span></div>
-      <div class="rig-detail-row"><span>SMART devices healthy</span><span class="${smart.total && smart.healthy === smart.total ? "rig-ok" : "rig-warn"}">${rigNum(smart.healthy)} / ${rigNum(smart.total)}</span></div>
-    </div>${errorNote}</div>
-    <details class="rig-section"><summary class="rig-section-title" style="cursor:pointer;">BMC temperatures and limits</summary><div class="rig-detail-list" style="margin-top:12px;">${bmcHtml}</div></details>
-    <div class="rig-section"><p class="rig-footnote">Fan reading is FAN1, the visible tachometer for the chained PWM bank. Health history is stored every ${esc((data.history || {}).snapshot_interval || "5m")} and retained in Prometheus for ${esc((data.history || {}).retention || "365d")}.</p></div>`;
-}
-async function loadRig() {
-  if (!state.tenant?.rig_access) return;
-  const body = qs("#rigBody");
-  if (!state.rig) body.innerHTML = '<div class="empty">Loading rig telemetry…</div>';
-  try {
-    const data = rigNormalise(await api("/client/api/rig/status"));
-    state.rig = data;
-    renderRig(data);
-  } catch (err) {
-    body.innerHTML = `<div class="empty">Could not load rig telemetry. ${esc(err.message)}</div>`;
-  } finally {
-    if (state.currentTab === "rig") state.rigTimer = setTimeout(loadRig, 30000);
-  }
-}
-async function rigPower(action) {
-  if (action === "on") {
-    if (!confirm("Send a power-on command to the EPYC rig?")) return;
-  } else {
-    const confirmation = prompt("This will gracefully shut down the rig and stop vLLM. Type POWER DOWN EPYC RIG to continue:");
-    if (confirmation !== "POWER DOWN EPYC RIG") return;
-  }
-  try {
-    await api("/client/api/rig/power", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action, confirmation: action === "off" ? "POWER DOWN EPYC RIG" : "" }),
-    });
-    toast(action === "on" ? "Power-on command sent." : "Graceful shutdown command sent.");
-    if (action === "off") {
-      if (state.rigTimer) clearTimeout(state.rigTimer);
-      state.rigTimer = setTimeout(loadRig, 60000);
-    } else {
-      setTimeout(loadRig, 15000);
-    }
-  } catch (err) {
-    toast(`Power command failed: ${err.message}`);
   }
 }
 
@@ -1331,7 +1082,6 @@ window.navigate = navigate;
 window.setTheme = setTheme;
 window.loadCalls = loadCalls;
 window.setCallFilter = setCallFilter;
-window.rigPower = rigPower;
 window.markDone = markDone;  // obrien-board
 window.setVoicePreset = setVoicePreset;
 window.toggleVoiceAdvanced = toggleVoiceAdvanced;
