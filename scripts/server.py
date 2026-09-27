@@ -1852,6 +1852,20 @@ async def book_appointment_endpoint(request: Request):
 
 
 # --- Demo lead capture (called by Claire via Vapi tool) ---
+def _capture_lead_phone(body: dict, args: dict) -> str:
+    """Prefer the caller ID supplied by Vapi's call signalling data.
+
+    The model must not ask callers to repeat a number that the phone system
+    already supplied. The tool argument is a fallback for payload variants
+    that omit the nested customer object.
+    """
+    message = body.get("message") or {}
+    call = message.get("call") or body.get("call") or {}
+    customer = call.get("customer") or {}
+    caller_number = customer.get("number") or args.get("phone") or ""
+    return str(caller_number).strip()
+
+
 @app.post("/capture-lead")
 async def capture_lead(request: Request):
     """
@@ -1863,19 +1877,15 @@ async def capture_lead(request: Request):
     tool_call_id, assistant_id, args = _parse_vapi_tool_call(body)
 
     name        = args.get("name", "").strip()
-    phone       = args.get("phone", "").strip()
+    phone       = _capture_lead_phone(body, args)
     business    = args.get("business_type", "").strip()
     interest    = args.get("interest", "").strip()
     source      = args.get("source", "demo").strip()
     call_id     = body.get("message", {}).get("call", {}).get("id", "")
 
-    if not phone:
-        log_event(call_id, "lead-error", assistant_id, "captureLead called but no phone provided")
-        return _vapi_result(tool_call_id, "Could you repeat that number for me? I want to make sure I have it right.")
-
-    print(f"[LEAD] {source} | {name} | {phone} | {business} | {interest}")
+    print(f"[LEAD] {source} | {name} | {phone or 'caller ID unavailable'} | {business} | {interest}")
     log_event(call_id, "lead-captured", assistant_id,
-              f"{name} | {phone} | {business} | source:{source}",
+              f"{name} | {phone or 'caller ID unavailable'} | {business} | source:{source}",
               {"name": name, "phone": phone, "business_type": business, "interest": interest, "source": source})
 
     # Save to DB so /vapi/call-ended and /demo-complete can look up by call_id
@@ -1913,7 +1923,9 @@ async def capture_lead(request: Request):
 
     # Telegram alert
     label = "Custom Lead" if source == "catch_all" else "Demo Lead"
-    tg_parts = [f"📞 <b>{label}: {name or 'Unknown'}</b>", phone]
+    tg_parts = [f"📞 <b>{label}: {name or 'Unknown'}</b>"]
+    if phone:
+        tg_parts.append(phone)
     if business:
         tg_parts.append(f"Business: {business}")
     if interest:

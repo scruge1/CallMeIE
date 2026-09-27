@@ -20,7 +20,7 @@ If INFRA.md lacks detail you need, add it there BEFORE continuing so the next se
 ```
 Prospect rings +353 61 788 120
   → Claire (Vapi squad qualifier)
-      → collects name + phone → calls /capture-lead
+      → confirms their name; the backend uses inbound caller ID when available → calls /capture-lead
       → transfers to dental / motor_factors / salon / solicitor (or catch-all)
   → Demo assistant plays the role of a real receptionist
       → calls /demo-complete when wrapping up
