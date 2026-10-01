@@ -180,6 +180,7 @@ def test_sms_labels_owner_only_and_no_duplicate_alert(workspace,monkeypatch):
     assert post_tool(client,db,urgency='urgent').status_code==200
     assert len(sent)==1
     assert sent[0]['To']=='+353850000000'
+    assert sent[0]['From']=='CALLMEIE'
     assert sent[0]['Body'].startswith('Personal agent | PERSONAL CALL | URGENT')
     assert 'Dinner tomorrow' in sent[0]['Body']
     assert 'token=' not in sent[0]['Body']
