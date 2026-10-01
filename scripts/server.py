@@ -9702,6 +9702,10 @@ async def client_request_edit(
 # --- END MVP D5 edit-budget meter ----------------------------------------
 
 
+# Adam's dedicated personal message workspace.
+from personal_agent import install as _install_personal_agent
+_install_personal_agent(app, get_db, check_admin)
+
 if __name__ == "__main__":
     import uvicorn
     port = int(os.environ.get("PORT", 8080))

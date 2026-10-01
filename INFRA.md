@@ -1,5 +1,19 @@
 ﻿# INFRA · Owl Studio + CallMeIE — canonical reference
 
+## Adam personal agent — 2 October 2026
+
+Dedicated Twilio voice number: +35361788358 (061 788 358), USD1.80/month.
+Dedicated Vapi assistant: 5e192096-091e-4f18-9b0b-4d9a80c4c637.
+Vapi phone resource: 61f7744c-cb01-4227-8d00-602cda7b643a.
+Admin workspace: https://admin.callmeie.ie/admin#personal-agent.
+Implementation and deployment notes: scripts/PERSONAL-AGENT.md.
+Personal and CallMeIE messages; no appointment booking. Recording off.
+SMS uses the existing owner destination and labelled Personal agent alerts.
+No automatic caller messages or transfers. Backend reuses call_events/call_notes
+and adds three scoped tables. A dedicated webhook secret lives in the database,
+not frontend code. Private operator notes are excluded from voice knowledge.
+eir conditional forwarding still needs carrier activation and validation.
+
 > Authoritative source of truth for every piece of Owl Studio + CallMeIE
 > infrastructure. If anything is NOT in this file, it doesn't exist yet.
 > Every service, every URL, every API key LOCATION (never values), every
