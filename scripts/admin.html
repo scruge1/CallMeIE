@@ -386,7 +386,7 @@
 
   .primary-tabs {
     display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(5, minmax(0, 1fr));
     background: var(--surface);
     border-bottom: 1px solid var(--border);
     padding: 0 var(--space-4);
@@ -1679,7 +1679,7 @@
 
     .mobile-nav {
       display: grid;
-      grid-template-columns: repeat(5, 1fr);
+      grid-template-columns: repeat(6, 1fr);
       position: fixed;
       left: 0;
       right: 0;
@@ -1742,6 +1742,7 @@
     }
   }
 </style>
+<link rel="stylesheet" href="/admin/personal-agent.css">
 </head>
 <body>
 <div id="tokenScreen" class="login-wrap">
@@ -1792,6 +1793,7 @@
       <button class="tab-btn" data-tab="leads" onclick="navigate('leads')"></button>
       <button class="tab-btn" data-tab="calls" onclick="navigate('calls')"></button>
       <button class="tab-btn" data-tab="books" onclick="navigate('books')"></button>
+      <button class="tab-btn" data-tab="personal-agent" onclick="navigate('personal-agent')"></button>
     </nav>
 
     <section class="content">
@@ -1800,6 +1802,7 @@
       <section id="leadsView" class="view"></section>
       <section id="callsView" class="view"></section>
       <section id="booksView" class="view"></section>
+      <section id="personal-agentView" class="view"></section>
       <section id="moreView" class="view"></section>
     </section>
   </section>
@@ -1810,6 +1813,7 @@
   <button data-tab="leads" type="button" onclick="navigate('leads')"></button>
   <button data-tab="calls" type="button" onclick="navigate('calls')"></button>
   <button data-tab="books" type="button" onclick="navigate('books')"></button>
+  <button data-tab="personal-agent" type="button" onclick="navigate('personal-agent')"></button>
   <button type="button" onclick="openMoreSheet()"><span data-icon="more"></span><span>More</span></button>
 </nav>
 
@@ -1850,6 +1854,7 @@
 
 <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
+<script src="/admin/personal-agent.js"></script>
 <script>
 (() => {
   "use strict";
@@ -1858,7 +1863,7 @@
   const TITLE_BASE = "CallMeIE Admin";
   const STORAGE_TOKEN = "admin_token";
   const STORAGE_THEME = "admin_theme";
-  const PRIMARY_TABS = ["today", "leads", "calls", "books"];
+  const PRIMARY_TABS = ["today", "leads", "calls", "books", "personal-agent"];
   const MORE_ITEMS = [
     ["queue", "Queue", "Pending submissions", "queue"],
     ["recordings", "Recordings", "Mirrored call audio", "record"],
@@ -1928,8 +1933,8 @@
   function installStaticIcons() {
     qsa("[data-tab]").forEach((btn) => {
       const tab = btn.dataset.tab;
-      const label = tab === "books" ? "Books" : title(tab);
-      btn.innerHTML = `${icon(tab)}<span>${label}</span>`;
+      const label = tab === "personal-agent" ? "Personal agent" : tab === "books" ? "Books" : title(tab);
+      btn.innerHTML = `${icon(tab === "personal-agent" ? "phone" : tab)}<span>${label}</span>`;
     });
     qsa("[data-icon]").forEach((el) => {
       el.innerHTML = icon(el.dataset.icon);
@@ -1991,7 +1996,7 @@
     qs("#tokenScreen").hidden = true;
     qs("#main").hidden = false;
     loadChrome();
-    navigate("today");
+    navigate(location.hash === "#personal-agent" ? "personal-agent" : "today");
     clearInterval(state.healthTimer);
     clearInterval(state.todayTimer);
     state.healthTimer = setInterval(loadChrome, 30000);
@@ -2144,6 +2149,10 @@
       state.callsTimer = setInterval(loadCalls, 5000);
     }
     if (tab === "books") loadBooks();
+    if (tab === "personal-agent") {
+      history.replaceState({}, TITLE_BASE, "#personal-agent");
+      window.PersonalAgent.mount(qs("#personal-agentView"), api, showToast);
+    } else if (location.hash === "#personal-agent") history.replaceState({}, TITLE_BASE, location.pathname);
     if (tab === "more") loadMore(more || "settings");
     closeMoreSheet();
   }
