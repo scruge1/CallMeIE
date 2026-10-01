@@ -168,7 +168,10 @@ async def notify_owner(get_db, call_id, test=False):
                     error = "telegram_http_" + str(r.status_code)
             else:
                 sid, token = os.environ.get("TWILIO_ACCOUNT_SID"), os.environ.get("TWILIO_AUTH_TOKEN")
-                owner, sender = os.environ.get("OWNER_NOTIFICATION_NUMBER"), os.environ.get("TWILIO_FROM_NUMBER")
+                # Twilio ticket 27259801 confirms CALLMEIE registration on this account.
+                # Keep the voice-origin number separate from the one-way Irish SMS sender.
+                owner = os.environ.get("OWNER_NOTIFICATION_NUMBER")
+                sender = os.environ.get("PERSONAL_AGENT_SMS_FROM", "CALLMEIE")
                 if not all((sid, token, owner, sender)):
                     raise ValueError("owner_sms_not_configured")
                 r = await client.post("https://api.twilio.com/2010-04-01/Accounts/" + sid + "/Messages.json", auth=(sid, token), data={"To": owner, "From": sender, "Body": text})
