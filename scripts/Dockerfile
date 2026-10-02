@@ -8,6 +8,7 @@ COPY billing ./billing/
 # Static templates served by FastAPI (admin dashboard, etc) — *.py glob skips .html
 COPY *.html .
 COPY personal-agent.js personal-agent.css ./
+COPY great-national-demo.js great-national-demo.css ./
 # P5-4 — alembic versioned migrations
 COPY alembic.ini .
 COPY alembic ./alembic/

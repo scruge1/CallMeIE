@@ -9706,6 +9706,10 @@ async def client_request_edit(
 from personal_agent import install as _install_personal_agent
 _install_personal_agent(app, get_db, check_admin)
 
+# Scoped visual hotel demo; no provider routes or data mutation.
+from client_demo import install as _install_client_demo
+_install_client_demo(app)
+
 if __name__ == "__main__":
     import uvicorn
     port = int(os.environ.get("PORT", 8080))
