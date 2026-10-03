@@ -6757,7 +6757,7 @@ async def admin_vapi_update_keyterms(assistant_id: str, request: Request, token:
 
 
 @app.get("/admin/api/recordings")
-async def admin_recordings(token: str = Query(""), limit: int = Query(50)):
+async def admin_recordings(token: str = Query(""), limit: int = Query(50, ge=1, le=500)):
     """Gap 4 — list Hetzner recordings with presigned URLs for inline playback."""
     check_admin(token)
     ep = os.environ.get("HETZNER_OBJECT_STORAGE_ENDPOINT", "").strip()
@@ -6773,9 +6773,10 @@ async def admin_recordings(token: str = Query(""), limit: int = Query(50)):
                           endpoint_url=ep, region_name="eu-central",
                           config=Config(signature_version="s3v4",
                                         s3={"addressing_style": "path"}))
-        resp = s3.list_objects_v2(Bucket=bk, Prefix="recordings/", MaxKeys=min(limit, 500))
+        from recording_archive import latest_recording_objects
+        objects = latest_recording_objects(s3, bk, limit)
         out = []
-        for obj in resp.get("Contents", []):
+        for obj in objects:
             url = s3.generate_presigned_url(
                 "get_object",
                 Params={"Bucket": bk, "Key": obj["Key"]},
@@ -7140,7 +7141,7 @@ async def admin_call_scoring(token: str = Query(""), limit: int = Query(50)):
 
 
 @app.get("/admin/api/recordings-enriched")
-async def admin_recordings_enriched(token: str = Query(""), limit: int = Query(50)):
+async def admin_recordings_enriched(token: str = Query(""), limit: int = Query(50, ge=1, le=500)):
     """Gap 16 — Recordings + joined caller identity (CallRail pattern).
 
     For each Hetzner recording, look up the same call_id in call_events to
@@ -7162,10 +7163,11 @@ async def admin_recordings_enriched(token: str = Query(""), limit: int = Query(5
                           endpoint_url=ep, region_name="eu-central",
                           config=Config(signature_version="s3v4",
                                         s3={"addressing_style": "path"}))
-        resp = s3.list_objects_v2(Bucket=bk, Prefix="recordings/", MaxKeys=min(limit, 500))
+        from recording_archive import latest_recording_objects
+        objects = latest_recording_objects(s3, bk, limit)
         recordings = []
         call_ids = []
-        for obj in resp.get("Contents", []):
+        for obj in objects:
             call_id = obj["Key"].replace("recordings/", "").rsplit(".", 1)[0]
             url = s3.generate_presigned_url(
                 "get_object",
