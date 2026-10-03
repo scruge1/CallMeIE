@@ -250,6 +250,9 @@ except Exception:
 
 # --- Demo assistant IDs (used to detect demo calls in webhooks) ---
 DEMO_ASSISTANT_IDS = {
+    "adee3d89-99d8-4f58-9dc3-78c38b9f2a7c": "Claire demo",
+    "4be95112-f3f1-4d71-8596-9da97030526c": "Dunne demo",
+    "15b84033-bb08-48ff-9d95-c0d17035b5e6": "heating demo",
     "0b37deb5-2fc2-4e7b-81b1-e61e97103506": "dental",
     "8a533a56-2ca4-486f-b328-69183b59fa41": "motor factors",
     "db4ab378-cd8a-40f5-b3f9-8fcaaba408b0": "salon",
@@ -1429,32 +1432,12 @@ async def call_ended(request: Request, background_tasks: BackgroundTasks):
                     is_demo = True
                     break
 
-    if is_demo and caller and duration > 30:
-        # Look up the captured lead for this call to get their name
-        lead = None
-        if call_id:
-            try:
-                with get_db() as conn:
-                    lead = conn.execute(
-                        "SELECT * FROM leads WHERE call_id = ? ORDER BY created_at DESC LIMIT 1",
-                        (call_id,)
-                    ).fetchone()
-            except Exception:
-                pass
-
-        name = lead["name"] if lead and lead["name"] else ""
-        greeting = f"Hi {name}! " if name else "Hi! "
-        demo_type = DEMO_ASSISTANT_IDS[assistant_id]
-
-        # Follow-up SMS to prospect
-        await send_sms(
-            caller,
-            f"{greeting}Thanks for trying the CallMeIE {demo_type} demo. "
-            f"Our team will ring you shortly to chat about getting this set up for your business. "
-            f"Reply STOP to opt out.",
-            from_number=from_num,
-        )
-        print(f"[Demo Follow-up] SMS sent to {caller} ({demo_type})")
+    if is_demo and caller:
+        # Caller ID and demo duration are not permission for outbound contact.
+        # Callback requests do not grant automatic SMS or WhatsApp permission.
+        log_event(call_id, "demo-follow-up-suppressed", assistant_id,
+                  "No automatic demo SMS; explicit contact permission required",
+                  {"outbound_sent": False})
 
     elif not is_demo and status in ("missed", "no-answer") and caller:
         # Regular missed call text-back for real client assistants
@@ -1882,18 +1865,20 @@ async def capture_lead(request: Request):
     interest    = args.get("interest", "").strip()
     source      = args.get("source", "demo").strip()
     call_id     = body.get("message", {}).get("call", {}).get("id", "")
+    callback_requested = args.get("callback_requested") is True
 
     print(f"[LEAD] {source} | {name} | {phone or 'caller ID unavailable'} | {business} | {interest}")
     log_event(call_id, "lead-captured", assistant_id,
               f"{name} | {phone or 'caller ID unavailable'} | {business} | source:{source}",
-              {"name": name, "phone": phone, "business_type": business, "interest": interest, "source": source})
+              {"name": name, "phone": phone, "business_type": business, "interest": interest, "source": source,
+               "callback_requested": callback_requested})
 
     # Save to DB so /vapi/call-ended and /demo-complete can look up by call_id
     try:
         with get_db() as conn:
             conn.execute(
-                "INSERT INTO leads (call_id, name, phone, business_type, interest, source) VALUES (?,?,?,?,?,?)",
-                (call_id, name, phone, business, interest, source)
+                "INSERT INTO leads (call_id, name, phone, business_type, interest, source, callback_requested) VALUES (?,?,?,?,?,?,?)",
+                (call_id, name, phone, business, interest, source, int(callback_requested))
             )
             conn.commit()
     except Exception as e:
@@ -1908,7 +1893,7 @@ async def capture_lead(request: Request):
             f"{name} â {phone}\n"
             f"Business: {business}\n"
             f"Needs: {interest}\n"
-            f"No demo match â build custom. Ring back today."
+            f"No demo match â build custom. Follow up only if the caller explicitly requested contact."
         )
     else:
         msg_parts = ["[CallMeIE Lead]"]
@@ -1917,6 +1902,7 @@ async def capture_lead(request: Request):
         if business: msg_parts.append(business)
         if interest: msg_parts.append(f"Interest: {interest}")
         msg_parts.append("Demo in progress.")
+        msg_parts.append("Callback requested." if callback_requested else "No contact permission; do not follow up.")
         sms_body = " â ".join(msg_parts)
 
     await send_sms(owner, sms_body)
@@ -1974,7 +1960,7 @@ async def demo_complete(request: Request):
     pain_point = args.get("pain_point", "").strip()
     estimated_missed_calls = str(args.get("estimated_missed_calls_per_week", "")).strip()
     next_action = args.get("next_action", "").strip()
-    callback_requested = bool(args.get("callback_requested", False))
+    callback_requested = args.get("callback_requested") is True
     call_id = body.get("message", {}).get("call", {}).get("id", "")
 
     demo_type = DEMO_ASSISTANT_IDS.get(assistant_id, "unknown")
@@ -2033,7 +2019,7 @@ async def demo_complete(request: Request):
 
     callback_event = None
     callback_error = ""
-    should_create_callback = interest in ("very_interested", "curious") or callback_requested
+    should_create_callback = callback_requested
     if should_create_callback:
         try:
             callback_event = create_callback_event(
