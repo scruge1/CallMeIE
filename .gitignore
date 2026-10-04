@@ -1,2 +1,11 @@
 __pycache__/
 *.py[cod]
+
+# Keep browser captures and local test output out of Git.
+/gsc_*.png
+**/debug_screenshot.png
+/qa-screenshots/
+/.playwright-cli/
+/output/playwright/
+/test-results/
+/playwright-report/

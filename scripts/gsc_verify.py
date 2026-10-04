@@ -10,6 +10,7 @@ Steps:
 
 Run from a terminal: python scripts/gsc_verify.py
 """
+import os
 import sys
 import time
 import re
@@ -17,13 +18,13 @@ import requests
 from playwright.sync_api import sync_playwright, TimeoutError as PWTimeout
 
 # --- Credentials ---
-GOOGLE_EMAIL    = "REMOVED_EXPOSED_CREDENTIAL"
-GOOGLE_PASSWORD = "REMOVED_EXPOSED_CREDENTIAL"
+GOOGLE_EMAIL = os.environ["GOOGLE_EMAIL"]
+GOOGLE_PASSWORD = os.environ["GOOGLE_PASSWORD"]
 TARGET_DOMAIN   = "callmeie.ie"
 SITEMAP_URL     = "https://callmeie.ie/sitemap.xml"
 
-PORKBUN_API_KEY    = "REMOVED_EXPOSED_CREDENTIAL"
-PORKBUN_SECRET_KEY = "REMOVED_EXPOSED_CREDENTIAL"
+PORKBUN_API_KEY = os.environ["PORKBUN_API_KEY"]
+PORKBUN_SECRET_KEY = os.environ["PORKBUN_SECRET_KEY"]
 PORKBUN_BASE       = "https://api.porkbun.com/api/json/v3"
 
 # --------------------------------------------------------------------------
