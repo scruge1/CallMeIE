@@ -93,14 +93,44 @@ After a successful save, say you have taken the message for Adam, without promis
 """
 
 
+PERSONAL_RECORDING_NOTICE = "This call is recorded so Adam can review your message."
+PERSONAL_TRANSCRIBER = {
+    "provider": "deepgram", "model": "nova-3", "language": "en",
+    "smartFormat": True, "numerals": True,
+    "keyterm": ["CallMeIE", "Adam", "Aoife", "Niamh", "Caoimhe", "Saoirse",
+                "Eoin", "Oisin", "Roisin", "Limerick", "Galway"],
+    "fallbackPlan": {"transcribers": [
+        {"provider": "deepgram", "model": "flux-general-en", "language": "en"}
+    ]}
+}
+PERSONAL_CAPTURE_RULES = """
+MESSAGE ACCURACY:
+If a sentence is unclear, inconsistent or nonsensical, ask the caller to repeat
+that part in their own words. Never turn uncertain words into a confident story.
+Before the final save, read back the message and requested action briefly and ask
+whether they are correct. Apply corrections. Confirming a number alone does not
+confirm the message. Use caller-confirmed facts; explicitly mark unresolved details
+unclear. If the caller hangs up, retain partial information without inventing facts.
+Name, callback number and business details are optional. Respect a refusal and
+continue taking the message; use blank strings for unknown optional tool fields.
+The greeting discloses recording. Do not claim recording is off or that it can be
+disabled during this call. Never promise deletion or retention terms you cannot
+verify. Do not send follow-up messages to the caller without their permission.
+"""
+
+
 def assistant_patch(config, secret):
     properties = {key: {"type": "string", "description": "Leave blank when unknown; use caller-confirmed information."} for key in FIELDS}
     properties.update(kind={"type": "string", "enum": list(KINDS)}, urgency={"type": "string", "enum": ["normal", "urgent"]})
     endpoint = "https://api.callmeie.ie/vapi/personal-agent"
-    return {"firstMessage": config["greeting"], "serverMessages": ["end-of-call-report"],
+    greeting = config["greeting"]
+    if not greeting.startswith(PERSONAL_RECORDING_NOTICE):
+        greeting = PERSONAL_RECORDING_NOTICE + " " + greeting
+    return {"firstMessage": greeting, "serverMessages": ["end-of-call-report"],
             "server": {"url": endpoint, "headers": {"x-personal-agent-secret": secret}, "timeoutSeconds": 20},
-            "artifactPlan": {"recordingEnabled": False},
-            "model": {"provider": "openai", "model": "gpt-4.1-mini", "messages": [{"role": "system", "content": compile_prompt(config)}],
+            "artifactPlan": {"recordingEnabled": True},
+            "transcriber": json.loads(json.dumps(PERSONAL_TRANSCRIBER)),
+            "model": {"provider": "openai", "model": "gpt-4.1-mini", "messages": [{"role": "system", "content": compile_prompt(config) + PERSONAL_CAPTURE_RULES}],
                       "tools": [{"type": "endCall"}, {"type": "function", "function": {"name": "savePersonalMessage", "description": "Save or correct the caller's message for Adam. Call before ending; save urgent messages promptly.", "parameters": {"type": "object", "properties": properties, "required": ["caller_name", "callback_number", "reason", "kind", "urgency"]}}, "server": {"url": endpoint, "headers": {"x-personal-agent-secret": secret}, "timeoutSeconds": 20}}]}}
 
 
@@ -333,7 +363,11 @@ def make_router(get_db, check_admin):
         patch = assistant_patch(config, row["webhook_secret"])
         await provider_call("assistant/" + ASSISTANT_ID, "PATCH", patch)
         current = await provider_call("assistant/" + ASSISTANT_ID)
-        if current.get("firstMessage") != patch["firstMessage"] or current.get("model", {}).get("messages") != patch["model"]["messages"] or current.get("artifactPlan", {}).get("recordingEnabled") is not False:
+        if (current.get("firstMessage") != patch["firstMessage"]
+                or current.get("model", {}).get("messages") != patch["model"]["messages"]
+                or current.get("artifactPlan", {}).get("recordingEnabled") is not patch["artifactPlan"]["recordingEnabled"]
+                or current.get("transcriber", {}).get("model") != patch["transcriber"]["model"]
+                or current.get("transcriber", {}).get("keyterm") != patch["transcriber"]["keyterm"]):
             raise HTTPException(502, "publish_readback_failed")
         with get_db() as db:
             db.execute("UPDATE personal_agent_settings SET published_revision=?,published_config=? WHERE id=?", (row["revision"], json.dumps(config), SLUG))

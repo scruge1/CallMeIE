@@ -161,6 +161,67 @@ def test_publish_is_dedicated_and_verifies_readback(workspace,monkeypatch):
     assert pa.settings(db)['published_revision']==1
 
 
+def test_admin_workflow_publish_keeps_recording_notice_and_scoped_recognition(workspace, monkeypatch):
+    client, db = workspace
+    config = copy.deepcopy(pa.DEFAULT_CONFIG)
+    config['greeting'] = 'Hello, what message would you like to leave?'
+    config['private_notes'] = 'PRIVATE_OPERATOR_CONTEXT'
+    assert client.put(admin_url('/config'), json={'config': config, 'revision': 1}).status_code == 200
+    sent = []
+    async def provider(path, method='GET', payload=None):
+        if method == 'PATCH':
+            sent.append(copy.deepcopy(payload))
+        return sent[-1]
+    monkeypatch.setattr(pa, 'provider_call', provider)
+    assert client.post(admin_url('/publish')).json()['published']
+    patch = sent[0]
+    assert patch['artifactPlan']['recordingEnabled'] is True
+    assert patch['firstMessage'].startswith(pa.PERSONAL_RECORDING_NOTICE)
+    assert patch['transcriber']['model'] == 'nova-3'
+    assert patch['transcriber']['fallbackPlan']['transcribers'][0]['model'] == 'flux-general-en'
+    assert not any('Dunne' in term or 'POD' in term for term in patch['transcriber']['keyterm'])
+    assert 'PRIVATE_OPERATOR_CONTEXT' not in json.dumps(patch)
+    config['greeting'] = patch['firstMessage']
+    assert pa.assistant_patch(config, 'test-secret')['firstMessage'].count(pa.PERSONAL_RECORDING_NOTICE) == 1
+
+
+def test_message_without_identifying_fields_remains_saved(workspace):
+    client, db = workspace
+    body = tool(db, cid='anonymous-message')
+    args = json.loads(body['message']['toolCallList'][0]['function']['arguments'])
+    args['caller_name'] = ''
+    args['callback_number'] = ''
+    body['message']['toolCallList'][0]['function']['arguments'] = json.dumps(args)
+    response = client.post('/vapi/personal-agent', json=body,
+                           headers={'x-personal-agent-secret': pa.settings(db)['webhook_secret']})
+    assert response.status_code == 200
+    assert json.loads(response.json()['results'][0]['result'])['saved'] is True
+    intake = client.get(admin_url('/calls/anonymous-message')).json()['state']['intake']
+    assert intake['caller_name'] == '' and intake['callback_number'] == ''
+    assert intake['reason'] == 'Dinner tomorrow'
+
+
+@pytest.mark.parametrize('failed_setting', ['recording', 'transcriber'])
+def test_publish_refuses_unapplied_voice_settings(workspace, monkeypatch, failed_setting):
+    client, db = workspace
+    sent = []
+    async def provider(path, method='GET', payload=None):
+        if method == 'PATCH':
+            sent.append(copy.deepcopy(payload))
+            return payload
+        result = copy.deepcopy(sent[0])
+        if failed_setting == 'recording':
+            result['artifactPlan']['recordingEnabled'] = False
+        else:
+            result['transcriber']['model'] = 'flux-general-en'
+        return result
+    monkeypatch.setattr(pa, 'provider_call', provider)
+    response = client.post(admin_url('/publish'))
+    assert response.status_code == 502
+    assert response.json()['detail'] == 'publish_readback_failed'
+    assert pa.settings(db)['published_revision'] == 0
+
+
 def test_sms_labels_owner_only_and_no_duplicate_alert(workspace,monkeypatch):
     client,db=workspace;sent=[]
     monkeypatch.setenv('TWILIO_ACCOUNT_SID','test-account');monkeypatch.setenv('TWILIO_AUTH_TOKEN','test-auth')
