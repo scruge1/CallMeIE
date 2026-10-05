@@ -1874,7 +1874,7 @@
     ["discovery", "Discovery", "Quiz submissions", "search"],
     ["ads", "Ads", "Meta campaign control", "spark"],
     ["inbox", "Inbox", "Unified lead stream", "inbox"],
-    ["voices", "Voice Samples", "TTS voiceover A/B", "record"],
+    ["voices", "Voice Samples", "Claire comparison and voiceover samples", "record"],
     ["settings", "Settings", "Theme, tokens, exports", "settings"],
   ];
 
@@ -3415,7 +3415,7 @@
       else if (which === "ads") view.innerHTML = header("Ads", "Meta campaign control plane.") + await renderAds();
       else if (which === "inbox") view.innerHTML = header("Inbox", "Unified omnichannel lead feed.") + await renderInbox();
       else if (which === "settings") view.innerHTML = header("Settings", "Theme, diagnostics, token rotation, and exports.") + await renderSettings();
-      else if (which === "voices") view.innerHTML = header("Voice Samples", "Pick the video voiceover voice.") + await renderVoices();
+      else if (which === "voices") view.innerHTML = header("Voice Samples", "Listen and compare. Playback does not change any live assistant.") + await renderVoices();
       else renderMoreHome();
     } catch (err) {
       view.innerHTML = renderError(`${title(which)} could not load`, err.message);
@@ -3504,7 +3504,25 @@
       `<div style="margin:8px 0"><strong>${name}</strong> <span class="muted">${sub}</span><br><audio controls style="width:100%" src="${src || ""}"></audio></div>`;
 
     return `<section class="panel pad">
-      <h3>Reference A/B (same line) - decide the engine</h3>
+      <h2>Claire: Flash v2.5 vs V4 Turbo</h2>
+      <p>Same Claire voice. Same script. Recorded through Vapi on 5 October 2026.</p>
+      <p class="muted">These are saved samples. Listening uses no new Vapi or ElevenLabs credits. Claire's live voice has not been changed.</p>
+      <div id="claireVoiceComparison">
+        <h3>Flash v2.5</h3>
+        <p class="muted">The model used by Claire when this comparison was recorded.</p>
+        <audio controls preload="none" aria-label="Claire Flash v2.5 sample" style="width:100%"
+          src="${esc(endpoint('/admin/api/voice-comparison/eleven_flash_v2_5'))}"></audio>
+        <h3 style="margin-top:18px">V4 Turbo</h3>
+        <p class="muted">The newer model, for you to review before any live change.</p>
+        <audio controls preload="none" aria-label="Claire V4 Turbo sample" style="width:100%"
+          src="${esc(endpoint('/admin/api/voice-comparison/eleven_v4_turbo'))}"></audio>
+      </div>
+      <details style="margin-top:16px"><summary>Read the test script</summary>
+        <p>Hello, you're through to CallMeIE. Niamh O'Sullivan is at reception in Loughrea. We can put you through to the hotel team. The reference is four two seven. Reception opens at nine thirty. A late checkout costs twenty five euro. If you don't want a callback, that's fine. We can continue without your number.</p>
+      </details>
+      <p class="muted">Compare the tone, Irish names and place names, numbers, and clarity. This short test does not establish a quality or price winner.</p>
+    </section><section class="panel pad" style="margin-top:18px">
+      <h3>Video voiceover references</h3>
       <p class="muted">All $0 except Claire.</p>
       ${refRow("Kokoro", "free, LOCAL (hero finals) - highest quality", ref.kokoro)}
       ${refRow("Edge - Andrew Multilingual", "free, cloud-OK (drafts/bulk)", ref.premium)}

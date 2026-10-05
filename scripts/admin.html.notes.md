@@ -9,6 +9,11 @@ Primary chrome:
 
 More menu:
 
+- Voice Samples: saved Claire Flash v2.5 / V4 Turbo comparison at the top.
+  `GET /admin/api/voice-comparison/{model_id}` uses the existing admin token.
+  Only the two fixed synthetic WAV files in `scripts/voice-samples/` are served.
+  Playback makes no provider calls and does not change live assistant settings.
+
 - Queue: `/admin/api/submissions`, `/admin/api/provision/{id}`, `/admin/api/reject/{id}`.
 - Recordings: `/admin/api/recordings-enriched` with `/admin/api/recordings` fallback.
 - Errors: `/admin/api/vendor-errors-unified`.

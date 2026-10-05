@@ -1,5 +1,18 @@
 ﻿# INFRA · Owl Studio + CallMeIE — canonical reference
 
+## Admin voice comparison — 2026-10-05
+
+The Voices tab at `https://admin.callmeie.ie` includes saved Claire samples
+for `eleven_flash_v2_5` and `eleven_v4_turbo`. Both use the same voice and
+synthetic script. The files ship in the existing backend image at
+`/app/voice-samples/`. The fixed `/admin/api/voice-comparison/{model_id}`
+route requires the existing admin token. Playback does not call providers
+or change Claire. This comparison does not prove a price or quality winner.
+
+Current backend deployment is the existing Coolify `callmeie-api` application
+`xml9wji6109b1kergfz05665`, built from `scruge1/CallMeIE` main, `/scripts`.
+The Render deployment notes below are historical, not the current runbook.
+
 ## Adam personal agent — 2 October 2026
 
 Dedicated Twilio voice number: +35361788358 (061 788 358), USD1.80/month.

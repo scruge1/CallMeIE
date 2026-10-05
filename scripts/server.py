@@ -3230,6 +3230,24 @@ async def tts_samples_api(token: str = Query("")):
     }
 
 
+@app.get("/admin/api/voice-comparison/{model_id}")
+async def voice_comparison_audio(model_id: str, token: str = Query("")):
+    """Replay the two saved synthetic Claire samples. No provider calls."""
+    check_admin(token)
+    samples = {
+        "eleven_flash_v2_5": "eleven_flash_v2_5.wav",
+        "eleven_v4_turbo": "eleven_v4_turbo.wav",
+    }
+    filename = samples.get(model_id)
+    if filename is None:
+        raise HTTPException(status_code=404, detail="Unknown voice sample")
+    audio_path = os.path.join(_SCRIPTS_DIR, "voice-samples", filename)
+    if not os.path.isfile(audio_path):
+        raise HTTPException(status_code=404, detail="Voice sample unavailable")
+    return FileResponse(audio_path, media_type="audio/wav",
+                        headers={"Cache-Control": "private, no-store"})
+
+
 @app.get("/admin/api/edge-voices")
 async def edge_voices(token: str = Query("")):
     check_admin(token)
