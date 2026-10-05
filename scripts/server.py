@@ -3221,12 +3221,24 @@ _TTS_PRESETS = {
 @app.get("/admin/api/tts-samples")
 async def tts_samples_api(token: str = Query("")):
     check_admin(token)
+    # Match the existing mobile reference players: embedded MP3 sources do not
+    # depend on HTTP byte-range support in the pinned FileResponse runtime.
+    import base64
+    comparison = {}
+    for model_id in ("eleven_flash_v2_5", "eleven_v4_turbo"):
+        sample_path = os.path.join(_SCRIPTS_DIR, "voice-samples", model_id + ".mp3")
+        if os.path.isfile(sample_path):
+            with open(sample_path, "rb") as sample:
+                comparison["claire_" + model_id] = (
+                    "data:audio/mpeg;base64," + base64.b64encode(sample.read()).decode("ascii")
+                )
     return {
         "line": _TTS_LINE,
         "kokoro": "data:audio/mpeg;base64," + _TTS_KOKORO_B64,
         "premium": "data:audio/mpeg;base64," + _TTS_PREMIUM_B64,
         "irish": "data:audio/mpeg;base64," + _TTS_IRISH_B64,
         "claire": "data:audio/mpeg;base64," + _TTS_CLAIRE_B64,
+        **comparison,
     }
 
 

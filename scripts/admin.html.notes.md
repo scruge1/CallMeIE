@@ -10,6 +10,9 @@ Primary chrome:
 More menu:
 
 - Voice Samples: saved Claire Flash v2.5 / V4 Turbo comparison at the top.
+  Mobile players use embedded MP3 data URLs from the existing authenticated
+  `/admin/api/tts-samples` response, matching the working reference players.
+  MP3 copies come from the original WAVs without gain or speed changes.
   `GET /admin/api/voice-comparison/{model_id}` uses the existing admin token.
   Only the two fixed synthetic WAV files in `scripts/voice-samples/` are served.
   Playback makes no provider calls and does not change live assistant settings.

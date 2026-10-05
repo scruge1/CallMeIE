@@ -9,6 +9,13 @@ synthetic script. The files ship in the existing backend image at
 route requires the existing admin token. Playback does not call providers
 or change Claire. This comparison does not prove a price or quality winner.
 
+Mobile playback correction: the comparison players now use embedded MP3 data
+URLs from the existing authenticated `/admin/api/tts-samples` endpoint, like
+the working reference players. The pinned file response ignores Range requests;
+the original direct WAV players were not mobile-qualified. Both MP3 copies use
+the same 96 kb/s encoding with no gain, speed, or voice changes. Original WAVs
+remain available through the fixed authenticated download routes.
+
 Current backend deployment is the existing Coolify `callmeie-api` application
 `xml9wji6109b1kergfz05665`, built from `scruge1/CallMeIE` main, `/scripts`.
 The Render deployment notes below are historical, not the current runbook.

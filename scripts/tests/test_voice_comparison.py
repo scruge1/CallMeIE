@@ -1,5 +1,6 @@
 """Test the exact audio endpoint without startup jobs or provider calls."""
 import ast
+import base64
 import os
 from pathlib import Path
 import unittest
@@ -15,13 +16,15 @@ SCRIPTS = Path(__file__).resolve().parents[1]
 class VoiceComparisonTests(unittest.TestCase):
     def setUp(self):
         tree = ast.parse((SCRIPTS / "server.py").read_text(encoding="utf-8-sig"))
-        names = {"check_admin", "voice_comparison_audio"}
+        names = {"check_admin", "voice_comparison_audio", "tts_samples_api"}
         nodes = [n for n in tree.body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name in names]
-        self.assertEqual(len(nodes), 2)
+        self.assertEqual(len(nodes), 3)
         app = FastAPI()
         namespace = {"app": app, "ADMIN_TOKEN": "fixture-only", "Query": Query,
                      "HTTPException": HTTPException, "FileResponse": FileResponse,
                      "os": os, "_SCRIPTS_DIR": str(SCRIPTS)}
+        namespace.update({name: "fixture" for name in (
+            "_TTS_LINE", "_TTS_KOKORO_B64", "_TTS_PREMIUM_B64", "_TTS_IRISH_B64", "_TTS_CLAIRE_B64")})
         exec(compile(ast.Module(body=nodes, type_ignores=[]), "<actual-voice-route>", "exec"), namespace)
         self.client = TestClient(app)
 
@@ -52,9 +55,20 @@ class VoiceComparisonTests(unittest.TestCase):
         html = (SCRIPTS / "admin.html").read_text(encoding="utf-8-sig")
         self.assertIn('id="claireVoiceComparison"', html)
         for model in ("eleven_flash_v2_5", "eleven_v4_turbo"):
-            self.assertIn('/admin/api/voice-comparison/' + model, html)
-        self.assertIn('preload="none"', html)
+            self.assertIn('ref.claire_' + model, html)
+        self.assertIn('preload="metadata"', html)
         self.assertIn('COPY voice-samples ./voice-samples/', (SCRIPTS / "Dockerfile").read_text())
+
+    def test_embedded_mobile_samples_use_exact_saved_mp3s(self):
+        for token in ("", "wrong"):
+            self.assertEqual(self.client.get('/admin/api/tts-samples', params={'token': token}).status_code, 401)
+        r = self.client.get('/admin/api/tts-samples', params={'token': 'fixture-only'})
+        self.assertEqual(r.status_code, 200)
+        for model in ("eleven_flash_v2_5", "eleven_v4_turbo"):
+            uri = r.json()['claire_' + model]
+            prefix, payload = uri.split(',', 1)
+            self.assertEqual(prefix, 'data:audio/mpeg;base64')
+            self.assertEqual(base64.b64decode(payload), (SCRIPTS / 'voice-samples' / (model + '.mp3')).read_bytes())
 
 
 if __name__ == "__main__":
