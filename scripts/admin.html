@@ -3511,11 +3511,11 @@
         <h3>Flash v2.5</h3>
         <p class="muted">The model used by Claire when this comparison was recorded.</p>
         <audio controls preload="metadata" aria-label="Claire Flash v2.5 sample" style="width:100%"
-          src="${esc(ref.claire_eleven_flash_v2_5 || '')}"></audio>
+          src="${esc(endpoint('/admin/api/voice-comparison/eleven_flash_v2_5', {format: 'mp3'}))}"></audio>
         <h3 style="margin-top:18px">V4 Turbo</h3>
         <p class="muted">The newer model, for you to review before any live change.</p>
         <audio controls preload="metadata" aria-label="Claire V4 Turbo sample" style="width:100%"
-          src="${esc(ref.claire_eleven_v4_turbo || '')}"></audio>
+          src="${esc(endpoint('/admin/api/voice-comparison/eleven_v4_turbo', {format: 'mp3'}))}"></audio>
       </div>
       <details style="margin-top:16px"><summary>Read the test script</summary>
         <p>Hello, you're through to CallMeIE. Niamh O'Sullivan is at reception in Loughrea. We can put you through to the hotel team. The reference is four two seven. Reception opens at nine thirty. A late checkout costs twenty five euro. If you don't want a callback, that's fine. We can continue without your number.</p>

@@ -3221,31 +3221,22 @@ _TTS_PRESETS = {
 @app.get("/admin/api/tts-samples")
 async def tts_samples_api(token: str = Query("")):
     check_admin(token)
-    # Match the existing mobile reference players: embedded MP3 sources do not
-    # depend on HTTP byte-range support in the pinned FileResponse runtime.
-    import base64
-    comparison = {}
-    for model_id in ("eleven_flash_v2_5", "eleven_v4_turbo"):
-        sample_path = os.path.join(_SCRIPTS_DIR, "voice-samples", model_id + ".mp3")
-        if os.path.isfile(sample_path):
-            with open(sample_path, "rb") as sample:
-                comparison["claire_" + model_id] = (
-                    "data:audio/mpeg;base64," + base64.b64encode(sample.read()).decode("ascii")
-                )
     return {
         "line": _TTS_LINE,
         "kokoro": "data:audio/mpeg;base64," + _TTS_KOKORO_B64,
         "premium": "data:audio/mpeg;base64," + _TTS_PREMIUM_B64,
         "irish": "data:audio/mpeg;base64," + _TTS_IRISH_B64,
         "claire": "data:audio/mpeg;base64," + _TTS_CLAIRE_B64,
-        **comparison,
     }
 
 
 @app.get("/admin/api/voice-comparison/{model_id}")
-async def voice_comparison_audio(model_id: str, token: str = Query("")):
+@app.head("/admin/api/voice-comparison/{model_id}")
+async def voice_comparison_audio(model_id: str, request: Request, token: str = Query(""), format: str = Query("wav")):
     """Replay the two saved synthetic Claire samples. No provider calls."""
     check_admin(token)
+    if format not in ("wav", "mp3"):
+        raise HTTPException(status_code=404, detail="Unknown audio format")
     samples = {
         "eleven_flash_v2_5": "eleven_flash_v2_5.wav",
         "eleven_v4_turbo": "eleven_v4_turbo.wav",
@@ -3253,11 +3244,40 @@ async def voice_comparison_audio(model_id: str, token: str = Query("")):
     filename = samples.get(model_id)
     if filename is None:
         raise HTTPException(status_code=404, detail="Unknown voice sample")
+    if format == "mp3":
+        filename = filename[:-4] + ".mp3"
     audio_path = os.path.join(_SCRIPTS_DIR, "voice-samples", filename)
     if not os.path.isfile(audio_path):
         raise HTTPException(status_code=404, detail="Voice sample unavailable")
-    return FileResponse(audio_path, media_type="audio/wav",
-                        headers={"Cache-Control": "private, no-store"})
+    # Two small immutable files only. The pinned FileResponse predates Range
+    # support. Serve single byte ranges for mobile media probes and seeking.
+    with open(audio_path, "rb") as sample:
+        audio = sample.read()
+    size = len(audio)
+    media_type = "audio/mpeg" if format == "mp3" else "audio/wav"
+    headers = {"Cache-Control": "private, no-store", "Accept-Ranges": "bytes"}
+    if request.method == "HEAD":
+        headers["Content-Length"] = str(size)
+        return Response(media_type=media_type, headers=headers)
+    range_header = request.headers.get("range")
+    if range_header and not request.headers.get("if-range"):
+        import re
+        match = re.fullmatch(r"bytes=([0-9]*)-([0-9]*)", range_header) if len(range_header) <= 128 else None
+        if match and any(match.groups()):
+            first, last = match.groups()
+            if first:
+                start, end = int(first), min(int(last), size - 1) if last else size - 1
+            else:
+                suffix = int(last)
+                start, end = max(0, size - suffix), size - 1
+                if suffix == 0:
+                    start = size
+            if 0 <= start <= end < size:
+                headers["Content-Range"] = f"bytes {start}-{end}/{size}"
+                return Response(audio[start:end + 1], status_code=206, media_type=media_type, headers=headers)
+        headers["Content-Range"] = f"bytes */{size}"
+        return Response(status_code=416, headers=headers)
+    return Response(audio, media_type=media_type, headers=headers)
 
 
 @app.get("/admin/api/edge-voices")

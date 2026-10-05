@@ -1,13 +1,12 @@
 """Test the exact audio endpoint without startup jobs or provider calls."""
 import ast
-import base64
 import os
 from pathlib import Path
 import unittest
 import wave
 
-from fastapi import FastAPI, HTTPException, Query
-from fastapi.responses import FileResponse
+from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi.responses import FileResponse, Response
 from fastapi.testclient import TestClient
 
 SCRIPTS = Path(__file__).resolve().parents[1]
@@ -21,7 +20,7 @@ class VoiceComparisonTests(unittest.TestCase):
         self.assertEqual(len(nodes), 3)
         app = FastAPI()
         namespace = {"app": app, "ADMIN_TOKEN": "fixture-only", "Query": Query,
-                     "HTTPException": HTTPException, "FileResponse": FileResponse,
+                     "HTTPException": HTTPException, "FileResponse": FileResponse, "Request": Request, "Response": Response,
                      "os": os, "_SCRIPTS_DIR": str(SCRIPTS)}
         namespace.update({name: "fixture" for name in (
             "_TTS_LINE", "_TTS_KOKORO_B64", "_TTS_PREMIUM_B64", "_TTS_IRISH_B64", "_TTS_CLAIRE_B64")})
@@ -55,20 +54,48 @@ class VoiceComparisonTests(unittest.TestCase):
         html = (SCRIPTS / "admin.html").read_text(encoding="utf-8-sig")
         self.assertIn('id="claireVoiceComparison"', html)
         for model in ("eleven_flash_v2_5", "eleven_v4_turbo"):
-            self.assertIn('ref.claire_' + model, html)
+            self.assertIn("endpoint('/admin/api/voice-comparison/" + model + "', {format: 'mp3'})", html)
         self.assertIn('preload="metadata"', html)
         self.assertIn('COPY voice-samples ./voice-samples/', (SCRIPTS / "Dockerfile").read_text())
 
-    def test_embedded_mobile_samples_use_exact_saved_mp3s(self):
-        for token in ("", "wrong"):
-            self.assertEqual(self.client.get('/admin/api/tts-samples', params={'token': token}).status_code, 401)
-        r = self.client.get('/admin/api/tts-samples', params={'token': 'fixture-only'})
-        self.assertEqual(r.status_code, 200)
+    def test_mobile_samples_use_exact_authenticated_saved_mp3s(self):
         for model in ("eleven_flash_v2_5", "eleven_v4_turbo"):
-            uri = r.json()['claire_' + model]
-            prefix, payload = uri.split(',', 1)
-            self.assertEqual(prefix, 'data:audio/mpeg;base64')
-            self.assertEqual(base64.b64decode(payload), (SCRIPTS / 'voice-samples' / (model + '.mp3')).read_bytes())
+            route = '/admin/api/voice-comparison/' + model
+            for token in ('', 'wrong'):
+                self.assertEqual(self.client.get(route, params={'token':token,'format':'mp3'}).status_code,401)
+            r = self.client.get(route, params={'token':'fixture-only','format':'mp3'})
+            self.assertEqual(r.status_code,200)
+            self.assertEqual(r.headers['content-type'],'audio/mpeg')
+            self.assertEqual(r.content, (SCRIPTS / 'voice-samples' / (model + '.mp3')).read_bytes())
+            self.assertEqual(self.client.get(route, params={'token':'fixture-only','format':'../server.py'}).status_code,404)
+
+    def test_mobile_byte_probes_seek_suffix_and_head(self):
+        for model in ('eleven_flash_v2_5', 'eleven_v4_turbo'):
+            for fmt in ('mp3', 'wav'):
+                route = '/admin/api/voice-comparison/' + model
+                params = {'token':'fixture-only', 'format':fmt}
+                audio = (SCRIPTS / 'voice-samples' / (model + '.' + fmt)).read_bytes()
+                for value, start, end in (('bytes=0-1',0,1),('bytes=44-',44,len(audio)-1),('bytes=-128',len(audio)-128,len(audio)-1),('bytes=0-9999999',0,len(audio)-1)):
+                    r = self.client.get(route, params=params, headers={'Range':value})
+                    self.assertEqual(r.status_code,206)
+                    self.assertEqual(r.content,audio[start:end+1])
+                    self.assertEqual(r.headers['content-range'],f'bytes {start}-{end}/{len(audio)}')
+                    self.assertEqual(r.headers['accept-ranges'],'bytes')
+                    self.assertEqual(int(r.headers['content-length']),end-start+1)
+                head = self.client.head(route,params=params)
+                self.assertEqual(head.status_code,200)
+                self.assertEqual(head.content,b'')
+                self.assertEqual(int(head.headers['content-length']),len(audio))
+                self.assertEqual(self.client.head(route,params={'format':fmt}).status_code,401)
+
+    def test_invalid_ranges_refused_and_if_range_not_assumed(self):
+        route = '/admin/api/voice-comparison/eleven_v4_turbo'
+        params = {'token':'fixture-only','format':'mp3'}
+        for value in ('bytes=9999999-', 'bytes=3-1', 'bytes=-0', 'bytes=-', 'bytes=0-1,4-5', 'items=0-1', 'bytes='+'9'*200+'-'):
+            r = self.client.get(route,params=params,headers={'Range':value})
+            self.assertEqual(r.status_code,416)
+            self.assertTrue(r.headers['content-range'].startswith('bytes */'))
+        self.assertEqual(self.client.get(route,params=params,headers={'Range':'bytes=0-1','If-Range':'unknown'}).status_code,200)
 
 
 if __name__ == "__main__":

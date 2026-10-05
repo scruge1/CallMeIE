@@ -10,9 +10,12 @@ Primary chrome:
 More menu:
 
 - Voice Samples: saved Claire Flash v2.5 / V4 Turbo comparison at the top.
-  Mobile players use embedded MP3 data URLs from the existing authenticated
-  `/admin/api/tts-samples` response, matching the working reference players.
-  MP3 copies come from the original WAVs without gain or speed changes.
+  Mobile players use same-origin authenticated `?format=mp3` files with
+  explicit single-byte-range/HEAD support. The live proxy CSP blocks embedded
+  data/blob media URLs, so reference-player source alone was not sufficient.
+  No security policy is weakened. Files remain fixed and admin-only.
+  MP3 copies use the working Claire reference format: 44.1 kHz mono, 128 kb/s.
+  Originals are unchanged; no gain or speed changes are applied.
   `GET /admin/api/voice-comparison/{model_id}` uses the existing admin token.
   Only the two fixed synthetic WAV files in `scripts/voice-samples/` are served.
   Playback makes no provider calls and does not change live assistant settings.
