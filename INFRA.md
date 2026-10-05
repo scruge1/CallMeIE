@@ -1225,6 +1225,16 @@ Magic-link-gated public viewer for the Gold Cartel copier dashboard. Lets Adam s
 **Verified live 2026-06-15:** healthz 200, valid LE cert, `/login` serves, `/aurum-live.json` 401 unauthed, authed (session cookie) returns real snapshot + full dashboard, `/ingest` 200 from the laptop loop, magic-link email dispatched via Brevo. Pending: Adam/friend visual click-through of the emailed link.
 # CallMeIE phone voice standard — 5 October 2026
 
+Generated studio previews return an opaque audio ID. Playback uses authenticated
+same-origin `/admin/api/tts-preview-audio/{sample_id}`, including Range/HEAD.
+Seeking and replay do not generate more speech. Transient single-worker memory
+is limited to 10 samples / 10 MiB total / 2 MiB each. Access expires after 10
+minutes; expired bytes are pruned on the next preview store/read or process exit.
+No audio is written to disk. Restart loses previews; a 404 never regenerates.
+Generation remains backward-compatible audio/mpeg with an additional response
+header. The admin UI rejects duplicate clicks while generation is in progress
+and offers manual Play when mobile autoplay is blocked. No CSP change.
+
 Saved video reference players use `/admin/api/voice-reference/{sample_id}` with
 admin authentication and byte-range responses. The exact four IDs replay existing
 embedded audio bytes; no TTS call, new file access, or CSP change. The legacy

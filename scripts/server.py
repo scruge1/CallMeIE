@@ -3349,6 +3349,43 @@ async def el_voices(token: str = Query("")):
     }
 
 
+_TTS_PREVIEW_AUDIO = {}  # Single-worker app: bounded transient audio, never disk.
+
+
+def _prune_preview_audio():
+    import time
+    now = time.monotonic()
+    for sample_id, (expires, _) in list(_TTS_PREVIEW_AUDIO.items()):
+        if expires <= now:
+            del _TTS_PREVIEW_AUDIO[sample_id]
+
+
+def _preview_audio_response(audio: bytes):
+    import secrets, time
+    if not audio or len(audio) > 2 * 1024 * 1024:
+        raise HTTPException(status_code=502, detail="Preview audio unavailable or too large")
+    _prune_preview_audio()
+    while _TTS_PREVIEW_AUDIO and (len(_TTS_PREVIEW_AUDIO) >= 10 or
+            sum(len(row[1]) for row in _TTS_PREVIEW_AUDIO.values()) + len(audio) > 10 * 1024 * 1024):
+        del _TTS_PREVIEW_AUDIO[next(iter(_TTS_PREVIEW_AUDIO))]
+    sample_id = secrets.token_urlsafe(24)
+    _TTS_PREVIEW_AUDIO[sample_id] = (time.monotonic() + 600, audio)
+    return Response(audio, media_type="audio/mpeg", headers={
+        "Cache-Control": "private, no-store", "X-Preview-Audio-Id": sample_id})
+
+
+@app.get("/admin/api/tts-preview-audio/{sample_id}")
+@app.head("/admin/api/tts-preview-audio/{sample_id}")
+async def preview_audio(sample_id: str, request: Request, token: str = Query("")):
+    """Replay a generated preview. Seeking never calls a provider."""
+    check_admin(token)
+    _prune_preview_audio()
+    row = _TTS_PREVIEW_AUDIO.get(sample_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Preview expired. Generate a new preview.")
+    return _saved_audio_response(row[1], request, "audio/mpeg")
+
+
 @app.get("/admin/api/tts-preview")
 async def tts_preview(
     token: str = Query(""), engine: str = Query("edge"),
@@ -3383,7 +3420,7 @@ async def tts_preview(
         except Exception as exc:  # noqa: BLE001
             return JSONResponse(status_code=502, content={
                 "error": "elevenlabs: " + type(exc).__name__ + str(exc)[:200]})
-        return Response(content=au, media_type="audio/mpeg")
+        return _preview_audio_response(au)
     say = (text or _TTS_LINE)[:600]
     vn, _, _ = _TTS_PRESETS.get(voice, (voice, None, None))
 
@@ -3417,7 +3454,7 @@ async def tts_preview(
         return JSONResponse(status_code=502, content={'error': 'edge preview failed: ' + msg, 'hint': 'edge-tts dep may not be deployed yet; redeploy after requirements.txt update.'})
     if not audio:
         return JSONResponse(status_code=502, content={'error': 'empty audio'})
-    return Response(content=audio, media_type="audio/mpeg")
+    return _preview_audio_response(audio)
 
 
 @app.get("/admin/api/submissions")

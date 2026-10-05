@@ -3454,12 +3454,15 @@
       `<option value="${v.id}">${v.premium ? "★ " : ""}${esc(v.loc)} ${esc(v.label)} ${esc(v.gender)}${v.premium ? " (premium)" : ""}</option>`).join("");
     const elOpts = el.voices.map((v) =>
       `<option value="${v.id}">${esc(v.name)} ${esc((v.labels || []).slice(0, 3).join(" / "))}</option>`).join("");
-    const sl = (id, min, max, val, unit) =>
+    const sl = (id, min, max, val, unit, disabled = false) =>
       `<label style="display:block;margin:8px 0">${id} <output id="${id}o">${val}${unit}</output>` +
-      `<input type="range" id="${id}" min="${min}" max="${max}" step="${unit === "Hz" || unit === "%" ? 1 : 0.05}" value="${val}" style="width:100%" oninput="document.getElementById('${id}o').textContent=this.value+'${unit}'"></label>`;
+      `<input type="range" id="${id}" min="${min}" max="${max}" step="${unit === "Hz" || unit === "%" ? 1 : 0.05}" value="${val}" ${disabled ? 'disabled' : ''} style="width:100%" oninput="document.getElementById('${id}o').textContent=this.value+'${unit}'"></label>`;
     const charsLeft = (el.chars_limit || 0) - (el.chars_used || 0);
 
+    let previewBusy = false;
     window.ttsPreview = async (eng) => {
+      if (previewBusy) return;
+      previewBusy = true;
       const dbg = document.getElementById("ttsDbg");
       const setDbg = (s) => { if (dbg) dbg.textContent = s; };
       try {
@@ -3491,12 +3494,21 @@
           setDbg("HTTP " + res.status + " - " + body.slice(0, 220));
           return;
         }
-        a.src = URL.createObjectURL(await res.blob());
-        a.play();
-        setDbg("OK " + eng + (eng === "edge" ? " ($0)"
-          : " (used ElevenLabs cap)"));
+        const sampleId = res.headers.get("X-Preview-Audio-Id");
+        await res.arrayBuffer();
+        if (!sampleId || !/^[A-Za-z0-9_-]{32}$/.test(sampleId)) {
+          setDbg("Preview unavailable. Please try again."); return;
+        }
+        a.src = endpoint("/admin/api/tts-preview-audio/" + sampleId);
+        a.onerror = () => setDbg("Preview unavailable or expired. Press Hear to generate a new one.");
+        a.load();
+        setDbg("Preview ready. Replay and seeking cost nothing. Available for 10 minutes.");
+        try { await a.play(); }
+        catch (_) { setDbg("Preview ready. Press Play below to listen."); }
       } catch (e) {
         setDbg("JS error: " + (e && e.message ? e.message : String(e)));
+      } finally {
+        previewBusy = false;
       }
     };
 
@@ -3535,14 +3547,15 @@
       <button class="btn primary" type="button" onclick="ttsPreview('edge')">Hear edge ($0)</button>
       <h3 style="margin-top:22px">ElevenLabs studio (premium - uses cap, ${charsLeft} chars left)</h3>
       <label>Voice <select id="elVoice" style="width:100%;padding:6px;margin:4px 0">${elOpts || "<option>none loaded</option>"}</select></label>
-      <label>Model <select id="elModel" style="width:100%;padding:6px;margin:4px 0">
+      <label>Model <select id="elModel" style="width:100%;padding:6px;margin:4px 0" onchange="document.getElementById('sim').disabled=this.value==='eleven_v4_turbo';document.getElementById('sty').disabled=this.value==='eleven_v4_turbo'">
         <option value="eleven_v4_turbo">V4 Turbo (CallMeIE standard)</option>
         <option value="eleven_v4">V4</option>
         <option value="eleven_multilingual_v2">Multilingual v2 (legacy)</option>
         <option value="eleven_v3">v3 (legacy)</option>
         <option value="eleven_turbo_v2_5">Turbo v2.5 (fast)</option>
         <option value="eleven_flash_v2_5">Flash v2.5 (fastest)</option></select></label>
-      ${sl("stab", 0, 1, 0.5, "")}${sl("sim", 0, 1, 0.75, "")}${sl("sty", 0, 1, 0, "")}
+      <p class="muted">V4 Turbo uses stability. It ignores the older similarity and style settings.</p>
+      ${sl("stab", 0, 1, 0.5, "")}${sl("sim", 0, 1, 0.75, "", true)}${sl("sty", 0, 1, 0, "", true)}
       <button class="btn" type="button" onclick="ttsPreview('elevenlabs')">Hear ElevenLabs (uses cap)</button>
       <div style="margin-top:16px"><span class="muted">adjust + hear</span><br>
       <audio id="ttsOut" controls style="width:100%;margin-top:6px"></audio>
