@@ -1223,3 +1223,11 @@ Magic-link-gated public viewer for the Gold Cartel copier dashboard. Lets Adam s
 **Runbook — add/remove a guest:** edit `ALLOWLIST` in `/opt/cartel-dash/run.sh` (or `docker rm -f cartel-dash` + re-run with new `-e ALLOWLIST=`), then `bash /opt/cartel-dash/run.sh`. **Redeploy app:** `scp cartel-dash/app.py root@178.104.205.255:/opt/cartel-dash/ && ssh ... 'bash /opt/cartel-dash/run.sh'`. **Logs:** `docker logs --tail 50 cartel-dash`. **Restart pusher (laptop):** kill the `cartel_push.py` python proc — `CartelPush.vbs` relaunches in 8s.
 
 **Verified live 2026-06-15:** healthz 200, valid LE cert, `/login` serves, `/aurum-live.json` 401 unauthed, authed (session cookie) returns real snapshot + full dashboard, `/ingest` 200 from the laptop loop, magic-link email dispatched via Brevo. Pending: Adam/friend visual click-through of the emailed link.
+# CallMeIE phone voice standard — 5 October 2026
+
+ElevenLabs `eleven_v4_turbo` is the owner-approved minimum for operational Vapi
+phone assistants. Eleven assistants were updated and read back, with voice IDs
+preserved and all four phone routes unchanged. Historical synthetic fixtures
+remain unchanged. Phone voice-picker and reset defaults use V4. Keep saved Flash
+comparison audio as historical evidence. Direct ElevenLabs video studio preview
+is separate and does not establish the live phone model.

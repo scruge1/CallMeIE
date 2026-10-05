@@ -120,7 +120,7 @@ async def client_set_voice(request: Request, token: str = Query("")):
     voice_id = (body.get("voice_id") or "").strip()
     if not voice_id:
         raise HTTPException(status_code=400, detail="voice_id required")
-    voice_patch = {"provider": "11labs", "voiceId": voice_id, "model": "eleven_flash_v2_5",
+    voice_patch = {"provider": "11labs", "voiceId": voice_id, "model": "eleven_v4_turbo",
                    "stability": float(body.get("stability", 0.5)),
                    "similarityBoost": float(body.get("similarity", 0.75)),
                    "style": float(body.get("style", 0.45)),

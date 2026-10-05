@@ -58,6 +58,14 @@ class VoiceComparisonTests(unittest.TestCase):
         self.assertIn('preload="metadata"', html)
         self.assertIn('COPY voice-samples ./voice-samples/', (SCRIPTS / "Dockerfile").read_text())
 
+    def test_phone_voice_picker_and_reset_use_v4(self):
+        text = (SCRIPTS / "server.py").read_text(encoding="utf-8-sig")
+        tree = ast.parse(text)
+        default = next(n for n in tree.body if isinstance(n, ast.Assign) and any(isinstance(t, ast.Name) and t.id == 'OBRIEN_DEFAULT_VOICE' for t in n.targets))
+        self.assertEqual(ast.literal_eval(default.value)['model'], 'eleven_v4_turbo')
+        picker = next(n for n in tree.body if isinstance(n, ast.AsyncFunctionDef) and n.name == 'client_set_voice')
+        self.assertIn('"model": "eleven_v4_turbo"', ast.get_source_segment(text, picker))
+
     def test_mobile_samples_use_exact_authenticated_saved_mp3s(self):
         for model in ("eleven_flash_v2_5", "eleven_v4_turbo"):
             route = '/admin/api/voice-comparison/' + model

@@ -8364,7 +8364,7 @@ OBRIEN_IRISH_VOICES = [
     {"id": "kOvUpYLYS0rKGldsKcD1", "name": "Maeve", "tagline": "Soft Irish female", "accent": "Irish", "gender": "female", "preview": "https://storage.googleapis.com/eleven-public-prod/database/workspace/baeca79b83bc48c6a4bc3caf3b8e165f/voices/kOvUpYLYS0rKGldsKcD1/BHhq7ThFF1G2uRvUYIV1.mp3"},
 ]
 _OBRIEN_GREETING = "Hi, you've reached K O'Brien Heating and Plumbing. How can I help you today?"
-OBRIEN_DEFAULT_VOICE = {"provider": "11labs", "voiceId": "eyuCA3LWMylRajljTeOo", "model": "eleven_flash_v2_5",
+OBRIEN_DEFAULT_VOICE = {"provider": "11labs", "voiceId": "eyuCA3LWMylRajljTeOo", "model": "eleven_v4_turbo",
                         "stability": 0.5, "similarityBoost": 0.75, "style": 0.45,
                         "useSpeakerBoost": True, "cachingEnabled": False}
 
@@ -8451,7 +8451,7 @@ async def client_set_voice(request: Request, token: str = Query("")):
         voice_id = (body.get("voice_id") or "").strip()
         if not voice_id:
             raise HTTPException(status_code=400, detail="voice_id required")
-        voice_patch = {"provider": "11labs", "voiceId": voice_id, "model": "eleven_flash_v2_5",
+        voice_patch = {"provider": "11labs", "voiceId": voice_id, "model": "eleven_v4_turbo",
                        "stability": float(body.get("stability", 0.5)),
                        "similarityBoost": float(body.get("similarity", 0.75)),
                        "style": float(body.get("style", 0.45)),

@@ -3506,14 +3506,14 @@
     return `<section class="panel pad">
       <h2>Claire: Flash v2.5 vs V4 Turbo</h2>
       <p>Same Claire voice. Same script. Recorded through Vapi on 5 October 2026.</p>
-      <p class="muted">These are saved samples. Listening uses no new Vapi or ElevenLabs credits. Claire's live voice has not been changed.</p>
+      <p class="muted">These are saved samples. Listening uses no new Vapi or ElevenLabs credits. V4 Turbo is now the standard for CallMeIE phone assistants.</p>
       <div id="claireVoiceComparison">
         <h3>Flash v2.5</h3>
         <p class="muted">The model used by Claire when this comparison was recorded.</p>
         <audio controls preload="metadata" aria-label="Claire Flash v2.5 sample" style="width:100%"
           src="${esc(endpoint('/admin/api/voice-comparison/eleven_flash_v2_5', {format: 'mp3'}))}"></audio>
         <h3 style="margin-top:18px">V4 Turbo</h3>
-        <p class="muted">The newer model, for you to review before any live change.</p>
+        <p class="muted">Now used by Claire and the other CallMeIE phone assistants.</p>
         <audio controls preload="metadata" aria-label="Claire V4 Turbo sample" style="width:100%"
           src="${esc(endpoint('/admin/api/voice-comparison/eleven_v4_turbo', {format: 'mp3'}))}"></audio>
       </div>
