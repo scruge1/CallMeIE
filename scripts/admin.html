@@ -3500,8 +3500,8 @@
       }
     };
 
-    const refRow = (name, sub, src) =>
-      `<div style="margin:8px 0"><strong>${name}</strong> <span class="muted">${sub}</span><br><audio controls style="width:100%" src="${src || ""}"></audio></div>`;
+    const refRow = (name, sub, sample) =>
+      `<div style="margin:8px 0"><strong>${name}</strong> <span class="muted">${sub}</span><br><audio controls preload="metadata" aria-label="${esc(name)} reference" style="width:100%" src="${esc(endpoint('/admin/api/voice-reference/' + sample))}"></audio></div>`;
 
     return `<section class="panel pad">
       <h2>Claire: Flash v2.5 vs V4 Turbo</h2>
@@ -3523,11 +3523,11 @@
       <p class="muted">Compare the tone, Irish names and place names, numbers, and clarity. This short test does not establish a quality or price winner.</p>
     </section><section class="panel pad" style="margin-top:18px">
       <h3>Video voiceover references</h3>
-      <p class="muted">All $0 except Claire.</p>
-      ${refRow("Kokoro", "free, LOCAL (hero finals) - highest quality", ref.kokoro)}
-      ${refRow("Edge - Andrew Multilingual", "free, cloud-OK (drafts/bulk)", ref.premium)}
-      ${refRow("Edge - Connor (Irish)", "free, older tier", ref.irish)}
-      ${refRow("Claire (ElevenLabs)", "premium, brand voice, cap-limited", ref.claire)}
+      <p class="muted">Saved references. Playback costs nothing. These older recordings do not reflect the current V4 phone model.</p>
+      ${refRow("Kokoro", "local video voiceover", "kokoro")}
+      ${refRow("Edge - Andrew Multilingual", "video drafts", "premium")}
+      ${refRow("Edge - Connor (Irish)", "older Irish reference", "irish")}
+      ${refRow("Claire (ElevenLabs)", "older brand-voice reference", "claire")}
       <hr style="margin:18px 0;border:none;border-top:1px solid var(--border)">
       <h3>Edge studio (free, tune live)</h3>
       <label>Voice <select id="ttsVoice" style="width:100%;padding:6px;margin:4px 0">${edgeOpts || '<option value="en-US-AndrewMultilingualNeural">Andrew Multilingual</option>'}</select></label>

@@ -15,15 +15,19 @@ SCRIPTS = Path(__file__).resolve().parents[1]
 class VoiceComparisonTests(unittest.TestCase):
     def setUp(self):
         tree = ast.parse((SCRIPTS / "server.py").read_text(encoding="utf-8-sig"))
-        names = {"check_admin", "voice_comparison_audio", "tts_samples_api"}
+        names = {"check_admin", "voice_comparison_audio", "voice_reference_audio", "_saved_audio_response", "tts_samples_api"}
         nodes = [n for n in tree.body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name in names]
-        self.assertEqual(len(nodes), 3)
+        self.assertEqual(len(nodes), 5)
         app = FastAPI()
         namespace = {"app": app, "ADMIN_TOKEN": "fixture-only", "Query": Query,
                      "HTTPException": HTTPException, "FileResponse": FileResponse, "Request": Request, "Response": Response,
                      "os": os, "_SCRIPTS_DIR": str(SCRIPTS)}
         namespace.update({name: "fixture" for name in (
             "_TTS_LINE", "_TTS_KOKORO_B64", "_TTS_PREMIUM_B64", "_TTS_IRISH_B64", "_TTS_CLAIRE_B64")})
+        import base64
+        self.reference_bytes = b'ID3' + b'fixture-audio' * 20
+        namespace.update({name:base64.b64encode(self.reference_bytes).decode() for name in
+            ('_TTS_KOKORO_B64','_TTS_PREMIUM_B64','_TTS_IRISH_B64','_TTS_CLAIRE_B64')})
         exec(compile(ast.Module(body=nodes, type_ignores=[]), "<actual-voice-route>", "exec"), namespace)
         self.client = TestClient(app)
 
@@ -69,6 +73,23 @@ class VoiceComparisonTests(unittest.TestCase):
         self.assertIn('"model_id": "eleven_v4_turbo"', ast.get_source_segment(text, preview))
         html = (SCRIPTS / 'admin.html').read_text(encoding='utf-8-sig')
         self.assertIn('<option value="eleven_v4_turbo">V4 Turbo (CallMeIE standard)</option>', html)
+
+    def test_saved_references_auth_exact_bytes_range_head_and_allowlist(self):
+        for sample in ('kokoro','premium','irish','claire'):
+            url='/admin/api/voice-reference/'+sample
+            self.assertEqual(self.client.get(url).status_code,401)
+            r=self.client.get(url,params={'token':'fixture-only'})
+            self.assertEqual(r.status_code,200)
+            self.assertEqual(r.content,self.reference_bytes)
+            self.assertEqual(r.headers['content-type'],'audio/mpeg')
+            r=self.client.get(url,params={'token':'fixture-only'},headers={'Range':'bytes=0-1'})
+            self.assertEqual(r.status_code,206)
+            self.assertEqual(r.content,self.reference_bytes[:2])
+            r=self.client.head(url,params={'token':'fixture-only'})
+            self.assertEqual(r.status_code,200)
+            self.assertEqual(r.content,b'')
+            self.assertEqual(int(r.headers['content-length']),len(self.reference_bytes))
+        self.assertEqual(self.client.get('/admin/api/voice-reference/server.py',params={'token':'fixture-only'}).status_code,404)
 
     def test_mobile_samples_use_exact_authenticated_saved_mp3s(self):
         for model in ("eleven_flash_v2_5", "eleven_v4_turbo"):

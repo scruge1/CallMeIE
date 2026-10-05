@@ -1225,6 +1225,11 @@ Magic-link-gated public viewer for the Gold Cartel copier dashboard. Lets Adam s
 **Verified live 2026-06-15:** healthz 200, valid LE cert, `/login` serves, `/aurum-live.json` 401 unauthed, authed (session cookie) returns real snapshot + full dashboard, `/ingest` 200 from the laptop loop, magic-link email dispatched via Brevo. Pending: Adam/friend visual click-through of the emailed link.
 # CallMeIE phone voice standard — 5 October 2026
 
+Saved video reference players use `/admin/api/voice-reference/{sample_id}` with
+admin authentication and byte-range responses. The exact four IDs replay existing
+embedded audio bytes; no TTS call, new file access, or CSP change. The legacy
+base64 JSON response remains compatible with existing consumers.
+
 ElevenLabs `eleven_v4_turbo` is the owner-approved minimum for operational Vapi
 phone assistants. Eleven assistants were updated and read back, with voice IDs
 preserved and all four phone routes unchanged. Historical synthetic fixtures

@@ -3253,8 +3253,26 @@ async def voice_comparison_audio(model_id: str, request: Request, token: str = Q
     # support. Serve single byte ranges for mobile media probes and seeking.
     with open(audio_path, "rb") as sample:
         audio = sample.read()
+    return _saved_audio_response(audio, request, "audio/mpeg" if format == "mp3" else "audio/wav")
+
+
+@app.get("/admin/api/voice-reference/{sample_id}")
+@app.head("/admin/api/voice-reference/{sample_id}")
+async def voice_reference_audio(sample_id: str, request: Request, token: str = Query("")):
+    """Replay four existing reference samples over authenticated same-origin URLs."""
+    check_admin(token)
+    samples = {"kokoro": _TTS_KOKORO_B64, "premium": _TTS_PREMIUM_B64,
+               "irish": _TTS_IRISH_B64, "claire": _TTS_CLAIRE_B64}
+    encoded = samples.get(sample_id)
+    if encoded is None:
+        raise HTTPException(status_code=404, detail="Unknown voice reference")
+    import base64
+    return _saved_audio_response(base64.b64decode(encoded, validate=True), request, "audio/mpeg")
+
+
+def _saved_audio_response(audio: bytes, request: Request, media_type: str):
+    """Single-range responses for bounded saved audio, without provider access."""
     size = len(audio)
-    media_type = "audio/mpeg" if format == "mp3" else "audio/wav"
     headers = {"Cache-Control": "private, no-store", "Accept-Ranges": "bytes"}
     if request.method == "HEAD":
         headers["Content-Length"] = str(size)
