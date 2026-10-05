@@ -65,6 +65,10 @@ class VoiceComparisonTests(unittest.TestCase):
         self.assertEqual(ast.literal_eval(default.value)['model'], 'eleven_v4_turbo')
         picker = next(n for n in tree.body if isinstance(n, ast.AsyncFunctionDef) and n.name == 'client_set_voice')
         self.assertIn('"model": "eleven_v4_turbo"', ast.get_source_segment(text, picker))
+        preview = next(n for n in tree.body if isinstance(n, ast.AsyncFunctionDef) and n.name == 'client_voice_preview')
+        self.assertIn('"model_id": "eleven_v4_turbo"', ast.get_source_segment(text, preview))
+        html = (SCRIPTS / 'admin.html').read_text(encoding='utf-8-sig')
+        self.assertIn('<option value="eleven_v4_turbo">V4 Turbo (CallMeIE standard)</option>', html)
 
     def test_mobile_samples_use_exact_authenticated_saved_mp3s(self):
         for model in ("eleven_flash_v2_5", "eleven_v4_turbo"):

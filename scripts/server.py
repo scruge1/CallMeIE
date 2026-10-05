@@ -3341,7 +3341,7 @@ async def tts_preview(
     stability: float = Query(0.5),
     similarity: float = Query(0.75),
     style: float = Query(0.0),
-    model: str = Query("eleven_multilingual_v2"),
+    model: str = Query("eleven_v4_turbo"),
 ):
     # Live edge voice studio. Lazy import: a missing edge-tts dep
     # 502s ONLY this endpoint, never the receptionist server.
@@ -8422,7 +8422,7 @@ async def client_voice_preview(token: str = Query(""), voice_id: str = Query("")
     if not voice_id or not el:
         raise HTTPException(status_code=400, detail="voice_id and eleven key required")
     say = (text or _OBRIEN_GREETING)[:300]
-    body = json.dumps({"text": say, "model_id": "eleven_flash_v2_5",
+    body = json.dumps({"text": say, "model_id": "eleven_v4_turbo",
                        "voice_settings": {"stability": stability, "similarity_boost": similarity,
                                           "style": style, "use_speaker_boost": True}}).encode()
     async with httpx.AsyncClient(timeout=60) as h:

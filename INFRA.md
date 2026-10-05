@@ -1228,6 +1228,7 @@ Magic-link-gated public viewer for the Gold Cartel copier dashboard. Lets Adam s
 ElevenLabs `eleven_v4_turbo` is the owner-approved minimum for operational Vapi
 phone assistants. Eleven assistants were updated and read back, with voice IDs
 preserved and all four phone routes unchanged. Historical synthetic fixtures
-remain unchanged. Phone voice-picker and reset defaults use V4. Keep saved Flash
-comparison audio as historical evidence. Direct ElevenLabs video studio preview
-is separate and does not establish the live phone model.
+remain unchanged. Phone voice-picker, reset and direct-preview defaults use V4
+Turbo. The admin studio defaults to V4 Turbo and also offers V4. The provider's
+authenticated model list confirms both are available. Keep saved Flash comparison
+audio as historical evidence; preview choices do not change live phone models.

@@ -3536,8 +3536,10 @@
       <h3 style="margin-top:22px">ElevenLabs studio (premium - uses cap, ${charsLeft} chars left)</h3>
       <label>Voice <select id="elVoice" style="width:100%;padding:6px;margin:4px 0">${elOpts || "<option>none loaded</option>"}</select></label>
       <label>Model <select id="elModel" style="width:100%;padding:6px;margin:4px 0">
-        <option value="eleven_multilingual_v2">Multilingual v2 (default)</option>
-        <option value="eleven_v3">v3 (newest)</option>
+        <option value="eleven_v4_turbo">V4 Turbo (CallMeIE standard)</option>
+        <option value="eleven_v4">V4</option>
+        <option value="eleven_multilingual_v2">Multilingual v2 (legacy)</option>
+        <option value="eleven_v3">v3 (legacy)</option>
         <option value="eleven_turbo_v2_5">Turbo v2.5 (fast)</option>
         <option value="eleven_flash_v2_5">Flash v2.5 (fastest)</option></select></label>
       ${sl("stab", 0, 1, 0.5, "")}${sl("sim", 0, 1, 0.75, "")}${sl("sty", 0, 1, 0, "")}
