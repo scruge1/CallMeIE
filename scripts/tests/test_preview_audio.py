@@ -1,5 +1,6 @@
 """Use actual preview functions with one fake provider, never paid synthesis."""
 import ast
+import json
 import os
 from pathlib import Path
 import types
@@ -91,6 +92,47 @@ class PreviewAudioTests(unittest.TestCase):
         self.assertIn('endpoint("/admin/api/tts-preview-audio/" + sampleId)',handler)
         self.assertIn('if (previewBusy) return',handler)
         self.assertIn('finally',handler)
+
+    def test_v4_requests_only_supported_settings_and_preserves_delivery_cues(self):
+        requests = []
+        audio = self.audio
+        class FakeAudio:
+            def read(self): return audio
+        def provider(request, **kwargs):
+            requests.append(json.loads(request.data))
+            return FakeAudio()
+        text = '[steady, reassuring voice] I will try reception.'
+        with patch.dict(os.environ, {'ELEVENLABS_API_KEY':'fixture-only'}), patch('urllib.request.urlopen', side_effect=provider):
+            for model in ('eleven_v4', 'eleven_v4_turbo'):
+                response = self.client.get('/admin/api/tts-preview', params={
+                    'token':'fixture-only', 'engine':'elevenlabs', 'el_voice':'fixture-voice',
+                    'model':model, 'text':text, 'stability':0.5, 'similarity':0.75, 'style':0.6})
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(requests[-1], {'text':text, 'model_id':model,
+                    'voice_settings':{'stability':0.5, 'similarity_boost':0.75}})
+                self.assertEqual(response.content, audio)
+        self.assertEqual(len(requests), 2)
+
+    def test_legacy_request_retains_legacy_settings(self):
+        with patch.dict(os.environ, {'ELEVENLABS_API_KEY':'fixture-only'}), patch('urllib.request.urlopen') as provider:
+            provider.return_value.read.return_value = self.audio
+            response = self.client.get('/admin/api/tts-preview', params={
+                'token':'fixture-only', 'engine':'elevenlabs', 'el_voice':'fixture-voice',
+                'model':'eleven_flash_v2_5', 'style':0.4})
+            self.assertEqual(response.status_code, 200)
+            body = json.loads(provider.call_args.args[0].data)
+            self.assertEqual(body['voice_settings'], {'stability':0.5, 'similarity_boost':0.75,
+                'style':0.4, 'use_speaker_boost':True})
+            provider.assert_called_once()
+
+    def test_invalid_settings_and_missing_auth_never_generate(self):
+        base = {'token':'fixture-only', 'engine':'elevenlabs', 'el_voice':'fixture-voice'}
+        with patch('urllib.request.urlopen') as provider:
+            for key in ('stability', 'similarity', 'style'):
+                for value in ('-0.1', '1.1', 'nan', 'inf'):
+                    self.assertEqual(self.client.get('/admin/api/tts-preview', params={**base,key:value}).status_code,422)
+            self.assertEqual(self.client.get('/admin/api/tts-preview',params={**base,'token':'wrong'}).status_code,401)
+            provider.assert_not_called()
 
 
 if __name__=='__main__':unittest.main()

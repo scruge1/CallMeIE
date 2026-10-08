@@ -3484,7 +3484,9 @@
           params.model = (document.getElementById("elModel") || {}).value;
           params.stability = (document.getElementById("stab") || {}).value;
           params.similarity = (document.getElementById("sim") || {}).value;
-          params.style = (document.getElementById("sty") || {}).value;
+          if (!['eleven_v4', 'eleven_v4_turbo'].includes(params.model)) {
+            params.style = (document.getElementById("sty") || {}).value;
+          }
         }
         const url = endpoint("/admin/api/tts-preview", params);
         setDbg("requesting " + eng + "...");
@@ -3512,6 +3514,19 @@
       }
     };
 
+    const hotelVoiceLines = {
+      routing: {text: "Reception it is — let's get you past the phone menus.", cue: "[lightly amused, conversational voice]"},
+      privacy: {text: "That's fine. You don't need to give your name just to be put through.", cue: "[calm, matter-of-fact voice]"},
+      complaint: {text: "I won't ask you to repeat it to me. Let me try reception.", cue: "[steady, reassuring voice]"},
+      clarity: {text: "Niamh O'Sullivan is at reception in Loughrea. The reference is four two seven.", cue: "[clear, measured voice]"}
+    };
+    window.hotelVoiceScript = (directed) => {
+      const selected = document.getElementById("hotelVoiceSituation");
+      const line = hotelVoiceLines[selected && selected.value];
+      const input = document.getElementById("ttsText");
+      if (line && input) input.value = (directed ? line.cue + " " : "") + line.text;
+    };
+
     const refRow = (name, sub, sample) =>
       `<div style="margin:8px 0"><strong>${name}</strong> <span class="muted">${sub}</span><br><audio controls preload="metadata" aria-label="${esc(name)} reference" style="width:100%" src="${esc(endpoint('/admin/api/voice-reference/' + sample))}"></audio></div>`;
 
@@ -3533,6 +3548,17 @@
         <p>Hello, you're through to CallMeIE. Niamh O'Sullivan is at reception in Loughrea. We can put you through to the hotel team. The reference is four two seven. Reception opens at nine thirty. A late checkout costs twenty five euro. If you don't want a callback, that's fine. We can continue without your number.</p>
       </details>
       <p class="muted">Compare the tone, Irish names and place names, numbers, and clarity. This short test does not establish a quality or price winner.</p>
+    </section><section class="panel pad" style="margin-top:18px" id="hotelVoiceComparison">
+      <h3>Hotel voice: plain vs directed</h3>
+      <p class="muted">Clare voice, V4 Turbo, stability 0.5 and similarity 0.75. Generated on 8 October 2026. Saved synthetic samples; replay uses no new credits. This is a candidate voice, not a hotel-approved selection or a live call test.</p>
+      ${Object.entries(hotelVoiceLines).map(([key, line]) => `
+        <h4>${esc(key)}</h4><p>${esc(line.text)}</p>
+        <p class="muted">A: plain delivery</p>
+        <audio controls preload="metadata" aria-label="${esc(key)} plain hotel sample" style="width:100%" src="${esc(endpoint('/admin/api/voice-comparison/hotel-' + key + '-plain', {format: 'mp3'}))}"></audio>
+        <p class="muted">B: directed delivery — ${esc(line.cue)}</p>
+        <audio controls preload="metadata" aria-label="${esc(key)} directed hotel sample" style="width:100%" src="${esc(endpoint('/admin/api/voice-comparison/hotel-' + key + '-directed', {format: 'mp3'}))}"></audio>
+      `).join('')}
+      <p class="muted">Judge the tone, clear words and whether any cue is spoken aloud. Prefer the plain version if the direction sounds forced. Transfer statements here do not place calls.</p>
     </section><section class="panel pad" style="margin-top:18px">
       <h3>Video voiceover references</h3>
       <p class="muted">Saved references. Playback costs nothing. These older recordings do not reflect the current V4 phone model.</p>
@@ -3547,22 +3573,34 @@
       <button class="btn primary" type="button" onclick="ttsPreview('edge')">Hear edge ($0)</button>
       <h3 style="margin-top:22px">ElevenLabs studio (premium - uses cap, ${charsLeft} chars left)</h3>
       <label>Voice <select id="elVoice" style="width:100%;padding:6px;margin:4px 0">${elOpts || "<option>none loaded</option>"}</select></label>
-      <label>Model <select id="elModel" style="width:100%;padding:6px;margin:4px 0" onchange="document.getElementById('sim').disabled=this.value==='eleven_v4_turbo';document.getElementById('sty').disabled=this.value==='eleven_v4_turbo'">
+      <label>Model <select id="elModel" style="width:100%;padding:6px;margin:4px 0" onchange="document.getElementById('sty').disabled=['eleven_v4','eleven_v4_turbo'].includes(this.value)">
         <option value="eleven_v4_turbo">V4 Turbo (CallMeIE standard)</option>
         <option value="eleven_v4">V4</option>
         <option value="eleven_multilingual_v2">Multilingual v2 (legacy)</option>
         <option value="eleven_v3">v3 (legacy)</option>
         <option value="eleven_turbo_v2_5">Turbo v2.5 (fast)</option>
         <option value="eleven_flash_v2_5">Flash v2.5 (fastest)</option></select></label>
-      <p class="muted">V4 Turbo uses stability. It ignores the older similarity and style settings.</p>
-      ${sl("stab", 0, 1, 0.5, "")}${sl("sim", 0, 1, 0.75, "", true)}${sl("sty", 0, 1, 0, "", true)}
+      <p class="muted">V4 and V4 Turbo use stability and similarity. Style is for older models. Delivery cues must be tested with the selected voice.</p>
+      ${sl("stab", 0, 1, 0.5, "")}${sl("sim", 0, 1, 0.75, "")}${sl("sty", 0, 1, 0, "", true)}
       <button class="btn" type="button" onclick="ttsPreview('elevenlabs')">Hear ElevenLabs (uses cap)</button>
       <div style="margin-top:16px"><span class="muted">adjust + hear</span><br>
       <audio id="ttsOut" controls style="width:100%;margin-top:6px"></audio>
       <div id="ttsDbg" class="muted" style="margin-top:8px;font-size:12px;word-break:break-all"></div></div>
       <label style="display:block;margin-top:12px">Script
       <textarea id="ttsText" rows="3" style="width:100%;margin:6px 0" placeholder="${esc(ref.line || "")}">${esc(ref.line || "")}</textarea></label>
-      <p class="muted">Reply with the engine + settings to lock for the video pipeline.</p>
+      <details style="margin-top:12px"><summary>Hotel voice rehearsal</summary>
+        <p class="muted">Original synthetic examples. Load plain and directed versions of the same line, keeping voice and settings fixed. Loading is free; Hear ElevenLabs generates a paid preview. Cues are candidates, not proven delivery. This does not change a phone assistant.</p>
+        <label>Situation <select id="hotelVoiceSituation" style="width:100%;padding:6px;margin:4px 0">
+          <option value="routing">Caller jokes about phone menus</option>
+          <option value="privacy">Caller declines their name</option>
+          <option value="complaint">Caller has already explained twice</option>
+          <option value="clarity">Irish names and reference numbers</option>
+        </select></label>
+        <button class="btn" type="button" onclick="hotelVoiceScript(false)">Load plain line</button>
+        <button class="btn" type="button" onclick="hotelVoiceScript(true)">Load directed line</button>
+        <p class="muted">Listen for warmth without acting, clear words and no spoken cue labels. Staff transfer lines are rehearsal only; live use requires the approved route.</p>
+      </details>
+      <p class="muted">A preview checks sound, not conversational judgement, interruption handling or a working transfer.</p>
     </section>`;
   }
 

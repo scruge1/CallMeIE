@@ -3233,23 +3233,33 @@ async def tts_samples_api(token: str = Query("")):
 @app.get("/admin/api/voice-comparison/{model_id}")
 @app.head("/admin/api/voice-comparison/{model_id}")
 async def voice_comparison_audio(model_id: str, request: Request, token: str = Query(""), format: str = Query("wav")):
-    """Replay the two saved synthetic Claire samples. No provider calls."""
+    """Replay allowlisted saved synthetic samples. No provider calls."""
     check_admin(token)
     if format not in ("wav", "mp3"):
         raise HTTPException(status_code=404, detail="Unknown audio format")
     samples = {
         "eleven_flash_v2_5": "eleven_flash_v2_5.wav",
         "eleven_v4_turbo": "eleven_v4_turbo.wav",
+        "hotel-routing-plain": "hotel-routing-plain.mp3",
+        "hotel-routing-directed": "hotel-routing-directed.mp3",
+        "hotel-privacy-plain": "hotel-privacy-plain.mp3",
+        "hotel-privacy-directed": "hotel-privacy-directed.mp3",
+        "hotel-complaint-plain": "hotel-complaint-plain.mp3",
+        "hotel-complaint-directed": "hotel-complaint-directed.mp3",
+        "hotel-clarity-plain": "hotel-clarity-plain.mp3",
+        "hotel-clarity-directed": "hotel-clarity-directed.mp3",
     }
     filename = samples.get(model_id)
     if filename is None:
         raise HTTPException(status_code=404, detail="Unknown voice sample")
+    if format == "wav" and filename.endswith(".mp3"):
+        raise HTTPException(status_code=404, detail="Sample available as MP3 only")
     if format == "mp3":
         filename = filename[:-4] + ".mp3"
     audio_path = os.path.join(_SCRIPTS_DIR, "voice-samples", filename)
     if not os.path.isfile(audio_path):
         raise HTTPException(status_code=404, detail="Voice sample unavailable")
-    # Two small immutable files only. The pinned FileResponse predates Range
+    # Small immutable allowlisted files only. The pinned FileResponse predates Range
     # support. Serve single byte ranges for mobile media probes and seeking.
     with open(audio_path, "rb") as sample:
         audio = sample.read()
@@ -3393,9 +3403,9 @@ async def tts_preview(
     rate: str = Query("-6%"), pitch: str = Query("+0Hz"),
     volume: str = Query("+0%"), text: str = Query(""),
     el_voice: str = Query(""),
-    stability: float = Query(0.5),
-    similarity: float = Query(0.75),
-    style: float = Query(0.0),
+    stability: float = Query(0.5, ge=0, le=1),
+    similarity: float = Query(0.75, ge=0, le=1),
+    style: float = Query(0.0, ge=0, le=1),
     model: str = Query("eleven_v4_turbo"),
 ):
     # Live edge voice studio. Lazy import: a missing edge-tts dep
@@ -3406,11 +3416,11 @@ async def tts_preview(
         key = os.environ.get("ELEVENLABS_API_KEY", "")
         vid = el_voice or os.environ.get("ELEVENLABS_CLAIRE_VOICE_ID", "")
         say_el = (text or _TTS_LINE)[:600]
+        voice_settings = {"stability": stability, "similarity_boost": similarity}
+        if model not in ("eleven_v4", "eleven_v4_turbo"):
+            voice_settings.update({"style": style, "use_speaker_boost": True})
         body = _j.dumps({"text": say_el, "model_id": model,
-            "voice_settings": {"stability": stability,
-                "similarity_boost": similarity,
-                "style": style,
-                "use_speaker_boost": True}}).encode()
+            "voice_settings": voice_settings}).encode()
         try:
             au = _u.urlopen(_u.Request(
                 "https://api.elevenlabs.io/v1/text-to-speech/" + vid, body,
