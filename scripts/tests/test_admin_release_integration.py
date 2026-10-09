@@ -105,6 +105,13 @@ def run():
                     assert 'token=' not in str(header_response.request.url)
                     assert server._admin_bearer.get() is None
                     async def empty_assistant(*args): return {}
+                    # Small normal forms only: parser compatibility, not attack traffic.
+                    no_file = await client.post('/api/docops/extract', data={'description':'fixture'})
+                    assert no_file.status_code == 400 and no_file.json()['error'] == 'no_file'
+                    text_file = await client.post('/api/docops/extract', files={'file':('fixture.txt',b'fixture','text/plain')})
+                    assert text_file.status_code == 415 and text_file.json()['error'] == 'pdf_only'
+                    empty_file = await client.post('/api/docops/extract', files={'file':('fixture.pdf',b'','application/pdf')})
+                    assert empty_file.status_code == 400 and empty_file.json()['error'] == 'empty'
                     async def explicit_assistant(*args): return {'artifactPlan':{'recordingEnabled':False}}
                     for reader,expected in ((empty_assistant,'unverified'),(explicit_assistant,'verified')):
                         with patch.object(server,'_fetch_client_assistant',side_effect=reader):
@@ -218,6 +225,7 @@ def run():
                         'blocking_detail_does_not_block_health':True,
                         'protected_json_success_and_denial_no_store':True,
                         'client_config_targets_separate_from_enforcement':True,
+                        'normal_small_form_parser_compatible':True,
                         'production_actions':False}
             result = loop.run_until_complete(checks())
             import json

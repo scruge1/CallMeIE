@@ -1,10 +1,10 @@
 backports.zoneinfo==0.2.1; python_version < "3.9"
-fastapi==0.115.0
+fastapi==0.143.0
 google-api-python-client==2.153.0
 google-auth==2.35.0
 google-auth-httplib2==0.2.0
 httpx==0.27.0
-requests==2.32.0
+requests==2.34.2
 uvicorn==0.30.0
 psycopg[binary]==3.2.7
 # P5-4 — alembic versioned migrations (replaces runtime _ddl_fix/init_db)
@@ -14,7 +14,7 @@ SQLAlchemy==2.0.32
 stripe>=10.0.0
 # P5b — Doc Ops live extractor (PDF text-layer ingest, ephemeral)
 pypdf==4.3.1
-python-multipart==0.0.9
+python-multipart==0.0.32
 # P2 (2026-05-11) — call-recording mirror from Vapi to Hetzner Object Storage
 # (S3-compatible). Vapi PAYG keeps the file 14d; we mirror to durable EU
 # archive within that window so privacy.html §sec-12 + dpa.html promise of
