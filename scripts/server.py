@@ -7068,18 +7068,57 @@ async def admin_stripe_recent(token: str = Query("")):
     })
 
 
-async def _vapi_calls_window(start_unix: int) -> list:
+def _usage_tenant_bindings() -> dict:
+    """Current operator configuration labels, not historical/billing ownership."""
+    try:
+        with get_db() as conn:
+            rows = conn.execute(
+                "SELECT tenant_slug, tenant_display_name, assistant_ids FROM client_tokens "
+                "WHERE revoked_at IS NULL LIMIT 1001"
+            ).fetchall()
+        if len(rows) > 1000:
+            return {"status": "unavailable", "rows": []}
+        labels = []
+        for stored in rows:
+            row = dict(stored)
+            tenant = row.get("tenant_slug")
+            raw = row.get("assistant_ids")
+            if not isinstance(tenant, str) or not tenant.strip() or not isinstance(raw, (str, list, tuple)):
+                return {"status": "unavailable", "rows": []}
+            ids = _client_assistant_ids(row)
+            if any(not isinstance(identity, str) or not identity.strip() for identity in ids):
+                return {"status": "unavailable", "rows": []}
+            name = row.get("tenant_display_name")
+            labels.append({"tenant_slug": tenant, "display_name": name if isinstance(name, str) and name else tenant,
+                           "assistant_ids": ids})
+        return {"status": "ok", "rows": labels}
+    except Exception:
+        # No tokens, raw rows, or database errors leave this metadata reader.
+        return {"status": "unavailable", "rows": []}
+
+
+async def _vapi_calls_window(start_unix: int) -> dict:
+    """Bounded read-only snapshot; distinguish unavailable data from no calls."""
     vk = os.environ.get("VAPI_API_KEY", "").strip()
     if not vk:
-        return []
+        return {"status": "unavailable", "reason": "not_configured", "calls": []}
     iso = _time.strftime("%Y-%m-%dT%H:%M:%SZ", _time.gmtime(start_unix))
-    async with httpx.AsyncClient(timeout=20) as c:
-        r = await c.get("https://api.vapi.ai/call",
-                        headers={"Authorization": f"Bearer {vk}"},
-                        params={"limit": 100, "createdAtGt": iso})
+    try:
+        async with httpx.AsyncClient(timeout=20) as c:
+            r = await c.get("https://api.vapi.ai/call",
+                            headers={"Authorization": f"Bearer {vk}"},
+                            params={"limit": 100, "createdAtGt": iso})
+    except httpx.RequestError:
+        return {"status": "unavailable", "reason": "provider_unreachable", "calls": []}
     if r.status_code != 200:
-        return []
-    return r.json() if isinstance(r.json(), list) else []
+        return {"status": "unavailable", "reason": "provider_error", "calls": []}
+    try:
+        calls = r.json()
+    except ValueError:
+        calls = None
+    if not isinstance(calls, list):
+        return {"status": "unavailable", "reason": "invalid_response", "calls": []}
+    return {"status": "ok", "observed_at": int(_time.time()), "calls": calls}
 
 
 @app.get("/admin/api/operations-summary")
@@ -7112,7 +7151,11 @@ async def admin_operations_summary(token: str = Query("")):
             fees_today_minor += int(amt * 0.014 + 25)
 
     # Vapi calls today (Adam asked for current-day cost view)
-    vapi_calls = await _vapi_calls_window(day_start)
+    from billing.usage import project_usage
+    vapi_snapshot = await _vapi_calls_window(day_start)
+    usage = project_usage(vapi_snapshot, now=int(time.time()), window_start=day_start,
+                          tenant_bindings=_usage_tenant_bindings())
+    vapi_calls = [c for c in vapi_snapshot["calls"] if isinstance(c, dict)]
     vapi_mins_today = 0.0
     call_count_today = 0
     for c in vapi_calls:
@@ -7186,6 +7229,7 @@ async def admin_operations_summary(token: str = Query("")):
             "cost_per_acquisition_minor": cac_minor,
         },
         "currency": "eur",
+        "usage": usage,
         "rate_card_used": {
             "vapi_per_min_eur": VAPI_RATE_PER_MIN_EUR,
             "twilio_sms_intl_eur": TWILIO_SMS_INTL_RATE_EUR,
@@ -7404,30 +7448,68 @@ async def admin_flow_graph(token: str = Query("")):
     vk = os.environ.get("VAPI_API_KEY", "").strip()
     if not vk:
         raise HTTPException(status_code=500, detail="VAPI_API_KEY missing")
-    async with httpx.AsyncClient(timeout=20) as c:
-        r = await c.get("https://api.vapi.ai/assistant",
-                        headers={"Authorization": f"Bearer {vk}"},
-                        params={"limit": 50})
+    try:
+        async with httpx.AsyncClient(timeout=20) as c:
+            r = await c.get("https://api.vapi.ai/assistant",
+                            headers={"Authorization": f"Bearer {vk}"},
+                            params={"limit": 50})
+    except httpx.TimeoutException:
+        raise HTTPException(status_code=504, detail="Routing information provider timed out")
+    except httpx.RequestError:
+        raise HTTPException(status_code=502, detail="Routing information provider unavailable")
     if r.status_code != 200:
         raise HTTPException(status_code=502, detail=f"Vapi HTTP {r.status_code}")
+    try:
+        assistants = r.json()
+    except ValueError:
+        raise HTTPException(status_code=502, detail="Invalid routing information from provider")
+    if not isinstance(assistants, list):
+        raise HTTPException(status_code=502, detail="Invalid routing information from provider")
+
+    def mapping(value):
+        if value is None:
+            return {}
+        if not isinstance(value, dict):
+            raise HTTPException(status_code=502, detail="Invalid routing information from provider")
+        return value
+
+    def sequence(value):
+        if value is None:
+            return []
+        if not isinstance(value, list):
+            raise HTTPException(status_code=502, detail="Invalid routing information from provider")
+        return value
+
     nodes = []
     edges = []
-    for a in r.json():
+    for item in assistants:
+        if not isinstance(item, dict):
+            raise HTTPException(status_code=502, detail="Invalid routing information from provider")
+        a = mapping(item)
         aid = a.get("id")
         name = a.get("name") or "?"
-        voice = (a.get("voice") or {}).get("voiceId") or ""
-        model = (a.get("model") or {})
+        voice = mapping(a.get("voice")).get("voiceId") or ""
+        if not isinstance(voice, str):
+            raise HTTPException(status_code=502, detail="Invalid routing information from provider")
+        model = mapping(a.get("model"))
+        tools = sequence(model.get("tools"))
         nodes.append({
             "id": aid,
             "name": name,
             "voice": voice[:8],
-            "tools_count": len(model.get("tools") or []),
+            "tools_count": len(tools),
             "model": model.get("model", ""),
         })
-        for tool in (model.get("tools") or []):
+        for item in tools:
+            if item is None:
+                raise HTTPException(status_code=502, detail="Invalid routing information from provider")
+            tool = mapping(item)
             if tool.get("type") == "transferCall":
-                tname = (tool.get("function") or {}).get("name", "?")
-                for dest in (tool.get("destinations") or []):
+                tname = mapping(tool.get("function")).get("name", "?")
+                for item in sequence(tool.get("destinations")):
+                    if item is None:
+                        raise HTTPException(status_code=502, detail="Invalid routing information from provider")
+                    dest = mapping(item)
                     target = dest.get("number") or dest.get("extension") or dest.get("assistantName") or "?"
                     edges.append({
                         "from": aid,
@@ -7435,7 +7517,7 @@ async def admin_flow_graph(token: str = Query("")):
                         "to_target": target,
                         "to_kind": dest.get("type", "?"),
                         "tool_name": tname,
-                        "mode": (dest.get("transferPlan") or {}).get("mode", "blind"),
+                        "mode": mapping(dest.get("transferPlan")).get("mode", "blind"),
                     })
     return JSONResponse({"nodes": nodes, "edges": edges})
 

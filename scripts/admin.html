@@ -1893,6 +1893,8 @@
     callsTimer: null,
     leadsCursor: null,
     assistantId: "",
+    assistantEditorId: "",
+    assistantRequest: 0,
     toastTimer: null,
     themeMode: "auto",
   };
@@ -2137,6 +2139,8 @@
     state.callsTimer = null;
     state.currentTab = tab;
     state.currentMore = more;
+    state.assistantRequest += 1;
+    state.assistantEditorId = "";
     qsa(".tab-btn").forEach((btn) => btn.classList.toggle("active", btn.dataset.tab === tab));
     qsa("#mobileNav [data-tab]").forEach((btn) => btn.classList.toggle("active", btn.dataset.tab === tab));
     qsa(".view").forEach((view) => view.classList.remove("active"));
@@ -2187,9 +2191,11 @@
       const today = data.today || {};
       const net = Number(today.net_minor || 0) - Number(today.vapi_cost_minor || 0);
       qs("#netToday").textContent = eur(net, data.currency || "eur");
+      refreshUsagePanels();
       return data;
     } catch (err) {
       qs("#netToday").textContent = "offline";
+      refreshUsagePanels();
       return null;
     }
   }
@@ -2323,6 +2329,7 @@
           </div>
           <div class="side-grid">
             ${renderMoneyPanel(ops)}
+            ${renderUsagePanel(ops)}
             ${renderSystemPanel(health)}
             ${renderRecordingsPanel(recordings)}
             ${renderSignalPanel(state.events)}
@@ -2489,11 +2496,39 @@
             <div class="money-stat"><span>Cost</span><strong>${eur(cost, currency)}</strong></div>
             <div class="money-stat"><span>Net</span><strong class="ok-text">${eur(net, currency)}</strong></div>
           </div>
-          <div class="pulse-row"><span>${esc(today.calls_count || 0)} calls</span><span class="mono">${esc(today.vapi_minutes || 0)} min</span></div>
           <div class="pulse-row"><span>${esc(last.demos_count || 0)} demos / 7d</span><span>${esc(last.converted_count || 0)} converted</span></div>
           <div class="pulse-row"><span>MRR</span><span class="mono">${eur((ops && ops.mrr_minor) || 0, currency)}</span></div>
         </div>
       </section>`;
+  }
+
+  function renderUsagePanel(ops) {
+    const usage = ops && ops.usage;
+    if (!usage || usage.status === 'unavailable') {
+      return `<section class="panel" data-usage-panel><div class="panel-header"><h2 class="panel-title">Call usage</h2></div><div class="panel-body">Usage data unavailable. This does not mean zero calls.</div></section>`;
+    }
+    const age = Date.now() / 1000 - Number(usage.observed_at);
+    const fresh = usage.status === 'fresh' && Number.isFinite(age) && age >= 0 && age <= 90;
+    const rows = (usage.lines || []).map(line => `<div class="pulse-row" style="flex-wrap:wrap;gap:8px">
+      <span style="overflow-wrap:anywhere">${line.allocation_status === 'configured_match' ? 'Configured tenant: ' + esc(line.configured_tenant_name || line.configured_tenant_id) : line.allocation_status === 'conflicting' ? 'Conflicting tenant configuration' : line.allocation_status === 'unassigned' ? 'No configured tenant' : 'Tenant configuration unavailable'}</span>
+      <span style="overflow-wrap:anywhere">${line.line_id ? 'Line ID: ' + esc(line.line_id) : 'No line ID'}</span>
+      <span>${esc(line.completed_calls)} completed · ${esc(line.completed_provider_minutes)} min</span>
+      <span>${esc(line.observed_active_calls)} active at snapshot · ${fresh && line.active_provider_minutes_estimate != null ? esc(line.active_provider_minutes_estimate) + ' min estimated' : 'estimate unavailable'}</span>
+      ${line.unknown_calls ? `<span>${esc(line.unknown_calls)} calls with unconfirmed timing</span>` : ''}
+    </div>`).join('');
+    return `<section class="panel" data-usage-panel><div class="panel-header"><div><h2 class="panel-title">Call usage</h2>
+      <p class="panel-subtitle">Today, UTC · ${fresh ? 'Recent snapshot' : 'Stale snapshot'} · partial coverage</p></div></div>
+      <div class="panel-body"><p>Provider call time, not confirmed AI handling or billable minutes.</p>
+      <p>Snapshot: ${esc(new Date(Number(usage.observed_at) * 1000).toISOString())}</p>
+      ${rows || '<p>No calls returned in this window.</p>'}
+      <p>Calls created before midnight are not included.${usage.limit_reached ? ' The 100-call limit was reached.' : ''}</p>
+      ${usage.conflicting_calls || usage.rejected_records ? `<p>${esc(usage.conflicting_calls)} conflicting calls and ${esc(usage.rejected_records)} invalid records excluded.</p>` : ''}
+      <p>Tenant labels use current assistant configuration, not verified call ownership. Hotel allocation, confirmed AI minutes, billable minutes and allowance remaining: not yet verified.</p>
+      </div></section>`;
+  }
+
+  function refreshUsagePanels() {
+    qsa('[data-usage-panel]').forEach(panel => { panel.outerHTML = renderUsagePanel(state.ops); });
   }
 
   function sparkline() {
@@ -3113,6 +3148,7 @@
         </div>
         <div class="grid-3">
           ${renderMoneyPanel(ops)}
+          ${renderUsagePanel(ops)}
           <section class="panel pad">
             <h2 class="panel-title">MRR</h2>
             <div class="money-stat"><span>Active subs</span><strong>${eur(stripe.mrr_minor || 0)}</strong></div>
@@ -3393,6 +3429,8 @@
   async function loadMore(which) {
     state.currentTab = "more";
     state.currentMore = which;
+    const assistantRequest = ++state.assistantRequest;
+    state.assistantEditorId = "";
     qsa(".view").forEach((view) => view.classList.remove("active"));
     qs("#moreView").classList.add("active");
     qsa(".tab-btn").forEach((btn) => btn.classList.remove("active"));
@@ -3408,7 +3446,12 @@
       if (which === "queue") view.innerHTML = header("Queue", "Pending onboarding submissions.") + await renderQueue();
       else if (which === "recordings") view.innerHTML = header("Recordings", "Hetzner mirrored call audio.") + await renderRecordingsFull();
       else if (which === "errors") view.innerHTML = header("Errors", "Unified vendor issue stream.") + await renderErrors();
-      else if (which === "assistants") view.innerHTML = header("Assistants", "Vapi prompt, voice, and keyterm editor.") + await renderAssistants();
+      else if (which === "assistants") {
+        const content = await renderAssistants(assistantRequest);
+        if (state.currentTab !== "more" || state.currentMore !== which || state.assistantRequest !== assistantRequest) return;
+        view.innerHTML = header("Assistants", "Vapi prompt, voice, and keyterm editor.") + content;
+        if (state.assistantId) await selectAssistant(state.assistantId);
+      }
       else if (which === "flow") view.innerHTML = header("Flow", "Assistant routing graph.") + await renderFlow();
       else if (which === "clients") view.innerHTML = header("Active clients", "Provisioned receptionist assistants.") + await renderClients();
       else if (which === "discovery") view.innerHTML = header("Discovery", "Quiz submissions from callmeie.ie.") + await renderDiscovery();
@@ -3675,15 +3718,16 @@
     </tbody></table></div></section>`;
   }
 
-  async function renderAssistants() {
+  async function renderAssistants(request = state.assistantRequest) {
     const data = await api("/admin/api/vapi/assistants");
+    if (request !== state.assistantRequest || state.currentTab !== "more" || state.currentMore !== "assistants") return "";
     const assistants = data.assistants || [];
-    const first = state.assistantId || (assistants[0] && assistants[0].id) || "";
+    const first = assistants.some((a) => a.id === state.assistantId) ? state.assistantId : (assistants[0] && assistants[0].id) || "";
     state.assistantId = first;
     return `
       <div class="assistant-layout">
         <section class="panel"><div class="assistant-list">${assistants.map((a) => `
-          <button class="assistant-item ${a.id === first ? "active" : ""}" type="button" onclick="selectAssistant('${esc(a.id)}')">
+          <button class="assistant-item ${a.id === first ? "active" : ""}" data-assistant-id="${esc(a.id)}" type="button" onclick="selectAssistant('${esc(a.id)}')">
             <div class="row-title"><span>${esc(a.name || "?")}</span></div>
             <div class="row-sub mono">${esc(shortId(a.id))} · ${esc(a.tools_count || 0)} tools · ${esc(a.model_name || "")}</div>
           </button>`).join("") || '<div class="empty">No assistants returned.</div>'}</div></section>
@@ -3693,13 +3737,20 @@
 
   async function selectAssistant(id) {
     state.assistantId = id;
-    qsa(".assistant-item").forEach((el) => el.classList.remove("active"));
+    state.assistantEditorId = "";
+    const request = ++state.assistantRequest;
+    qsa(".assistant-item").forEach((el) => el.classList.toggle("active", el.dataset.assistantId === id));
     const editor = qs("#assistantEditor");
+    if (!editor) return;
     setLoading(editor, "Loading assistant detail...");
     try {
       const a = await api(`/admin/api/vapi/assistant/${encodeURIComponent(id)}`);
+      if (request !== state.assistantRequest || id !== state.assistantId || state.currentTab !== "more" || state.currentMore !== "assistants") return;
+      if (!a || a.id !== id) throw new Error("Assistant detail does not match the selected assistant.");
       editor.innerHTML = renderAssistantEditor(a);
+      state.assistantEditorId = id;
     } catch (err) {
+      if (request !== state.assistantRequest || id !== state.assistantId || state.currentTab !== "more" || state.currentMore !== "assistants") return;
       editor.innerHTML = renderError("Assistant detail failed", err.message);
     }
   }
@@ -3762,10 +3813,16 @@
   }
 
   async function saveAssistantPart(part, body, resultSel) {
+    const assistantId = state.assistantEditorId;
+    if (!assistantId || assistantId !== state.assistantId || state.currentTab !== "more" || state.currentMore !== "assistants") {
+      showToast("Wait for the selected assistant to load before saving.", "error");
+      return;
+    }
     const out = qs(resultSel);
+    if (!out) return;
     out.textContent = "Saving...";
     try {
-      const data = await api(`/admin/api/vapi/assistant/${encodeURIComponent(state.assistantId)}/${part}`, {
+      const data = await api(`/admin/api/vapi/assistant/${encodeURIComponent(assistantId)}/${part}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
