@@ -1581,10 +1581,15 @@
     }
 
     .chip {
-      height: 32px;
+      height: 44px;
       padding: 0 10px;
       font-size: 12px;
     }
+
+    .btn { min-height: 44px; min-width: 44px; }
+    .btn.icon-btn { width: 44px; }
+    .play { width: 44px; height: 44px; }
+    .recording-row { grid-template-columns: 44px minmax(0, 1fr) 40px 44px; }
 
     .mobile-more-trigger {
       display: inline-flex;
@@ -2731,7 +2736,7 @@
     const label = caller.name ? `${caller.name} · ${caller.business_type || "call"}` : rec.call_id || rec.key || "Recording";
     return `
       <div class="recording-row">
-        <button class="play" type="button" onclick='openDrawer(${jsonAttr(recordingContext(rec))})'>${icon("record", "icon")}</button>
+        <button class="play" type="button" aria-label="Open recording" onclick='openDrawer(${jsonAttr(recordingContext(rec))})'>${icon("record", "icon")}</button>
         <div class="truncate"><strong>${esc(label)}</strong><br><span class="muted">${esc(fmtDate(rec.last_modified))}</span></div>
         <div class="wave" aria-hidden="true"></div>
         <a class="btn icon-btn" href="${esc(rec.presigned_url || rec.url || "#")}" target="_blank" aria-label="Download">${icon("download")}</a>
@@ -3812,10 +3817,11 @@
   async function renderErrors() {
     const data = await api("/admin/api/vendor-errors-unified");
     const groups = data.groups || data.errors || data.fingerprints || [];
+    if (!Array.isArray(groups)) throw new Error("Error list is unavailable.");
     if (!groups.length) {
-      return `<section class="panel pad"><div class="soft-note ok-text">No errors in last 24h across Stripe, Twilio, and Vapi.</div></section>`;
+      return `<section class="panel pad"><div class="soft-note">No errors returned by the latest read. This does not prove all services or calls are error-free.</div></section>`;
     }
-    return `<section class="panel"><div class="table-wrap"><table><thead><tr><th>Fingerprint</th><th>Severity</th><th>Count</th><th>Last seen</th><th>Samples</th></tr></thead><tbody>
+    return `<section class="panel"><div class="panel-body"><p class="panel-subtitle">Scroll sideways to see all error columns.</p></div><div class="table-wrap" tabindex="0" role="region" aria-label="Error details, scroll horizontally"><table><thead><tr><th>Fingerprint</th><th>Severity</th><th>Count</th><th>Last seen</th><th>Samples</th></tr></thead><tbody>
       ${groups.map((g) => `<tr><td class="mono">${esc(g.fingerprint || g.code || g.name)}</td><td><span class="badge ${g.severity === "error" ? "fail" : "warm"}">${esc(g.severity || "warn")}</span></td><td>${esc(g.count || g.n || 1)}</td><td>${esc(fmtDate(g.last_seen || g.last_seen_at))}</td><td>${esc((g.sample_object_ids || g.samples || []).join(", "))}</td></tr>`).join("")}
     </tbody></table></div></section>`;
   }

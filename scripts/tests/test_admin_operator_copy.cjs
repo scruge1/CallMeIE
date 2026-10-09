@@ -27,3 +27,11 @@ test('healthy service probes do not claim entire systems or phone path tested',a
  vm.runInContext(extract('  async function loadHealth(', '  function normalStatus('),c);await c.loadHealth();
  assert.equal(nodes['#healthLabel'].textContent,'Service checks OK');assert.match(html,/this is not a call-path test/);
 });
+test('error table provides a named keyboard-scrollable region and honest empty state',async()=>{
+ let data={groups:[]};const c=vm.createContext({api:async()=>data,esc:String,fmtDate:String});
+ vm.runInContext(extract('  async function renderErrors(', '  async function renderAssistants('),c);
+ assert.match(await c.renderErrors(),/does not prove all services or calls are error-free/);
+ data={groups:[{fingerprint:'synthetic',count:1,samples:['fixture']}]};const rendered=await c.renderErrors();
+ assert.match(rendered,/Scroll sideways/);assert.match(rendered,/tabindex="0" role="region" aria-label="Error details, scroll horizontally"/);
+ data={groups:{bad:true}};await assert.rejects(c.renderErrors(),/unavailable/);
+});
