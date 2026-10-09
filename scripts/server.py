@@ -30,6 +30,7 @@ import json
 import os
 import sqlite3
 import sys
+from contextvars import ContextVar
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
@@ -46,6 +47,35 @@ sys.path.insert(0, os.path.dirname(__file__))
 from voice_catalog import voice_for_industry  # noqa: E402  (D6 — needs sys.path above)
 
 app = FastAPI(title="CallMeIE — AI Receptionist Server")
+
+_admin_bearer = ContextVar('admin_bearer', default=None)
+
+
+class AdminBearerContext:
+    """Request-local credential transport; no sessions, roles or authority grant."""
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope['type'] != 'http':
+            return await self.app(scope, receive, send)
+        credential = None
+        if scope.get('path', '').startswith('/admin/api/'):
+            values = Request(scope).headers.getlist('authorization')
+            if values:
+                credential = ''  # malformed/duplicate headers must not fall back
+                if len(values) == 1:
+                    scheme, separator, value = values[0].partition(' ')
+                    if separator and scheme.lower() == 'bearer':
+                        credential = value
+        binding = _admin_bearer.set(credential)
+        try:
+            return await self.app(scope, receive, send)
+        finally:
+            _admin_bearer.reset(binding)
+
+
+app.add_middleware(AdminBearerContext)
 
 
 # P0-7 — wrap any uncaught exception in a JSON envelope so the visitor
@@ -206,7 +236,7 @@ OWNER_NUMBER = os.environ.get("OWNER_NOTIFICATION_NUMBER", "")
 
 # --- Vapi + admin ---
 VAPI_API_KEY = os.environ.get("VAPI_API_KEY", "")
-ADMIN_TOKEN = os.environ.get("ADMIN_TOKEN", "changeme")
+ADMIN_TOKEN = os.environ.get("ADMIN_TOKEN", "")
 
 # --- Anomaly diagnostics (Claude API) ---
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
@@ -1198,7 +1228,15 @@ async def diagnose_call_anomaly(
 
 
 def check_admin(token: str = Query("")):
-    if not token or token != ADMIN_TOKEN:
+    bearer = _admin_bearer.get()
+    if bearer is not None:
+        if (not isinstance(token, str) or
+                (token and not hmac.compare_digest(token.encode('utf-8'), bearer.encode('utf-8')))):
+            raise HTTPException(status_code=401, detail="Unauthorized")
+        token = bearer
+    if (not ADMIN_TOKEN or ADMIN_TOKEN.strip().lower() == 'changeme'
+            or not isinstance(token, str) or not token
+            or not hmac.compare_digest(token.encode('utf-8'), ADMIN_TOKEN.encode('utf-8'))):
         raise HTTPException(status_code=401, detail="Unauthorized")
 
 
@@ -3233,23 +3271,33 @@ async def tts_samples_api(token: str = Query("")):
 @app.get("/admin/api/voice-comparison/{model_id}")
 @app.head("/admin/api/voice-comparison/{model_id}")
 async def voice_comparison_audio(model_id: str, request: Request, token: str = Query(""), format: str = Query("wav")):
-    """Replay the two saved synthetic Claire samples. No provider calls."""
+    """Replay allowlisted saved synthetic samples. No provider calls."""
     check_admin(token)
     if format not in ("wav", "mp3"):
         raise HTTPException(status_code=404, detail="Unknown audio format")
     samples = {
         "eleven_flash_v2_5": "eleven_flash_v2_5.wav",
         "eleven_v4_turbo": "eleven_v4_turbo.wav",
+        "hotel-routing-plain": "hotel-routing-plain.mp3",
+        "hotel-routing-directed": "hotel-routing-directed.mp3",
+        "hotel-privacy-plain": "hotel-privacy-plain.mp3",
+        "hotel-privacy-directed": "hotel-privacy-directed.mp3",
+        "hotel-complaint-plain": "hotel-complaint-plain.mp3",
+        "hotel-complaint-directed": "hotel-complaint-directed.mp3",
+        "hotel-clarity-plain": "hotel-clarity-plain.mp3",
+        "hotel-clarity-directed": "hotel-clarity-directed.mp3",
     }
     filename = samples.get(model_id)
     if filename is None:
         raise HTTPException(status_code=404, detail="Unknown voice sample")
+    if format == "wav" and filename.endswith(".mp3"):
+        raise HTTPException(status_code=404, detail="Sample available as MP3 only")
     if format == "mp3":
         filename = filename[:-4] + ".mp3"
     audio_path = os.path.join(_SCRIPTS_DIR, "voice-samples", filename)
     if not os.path.isfile(audio_path):
         raise HTTPException(status_code=404, detail="Voice sample unavailable")
-    # Two small immutable files only. The pinned FileResponse predates Range
+    # Small immutable allowlisted files only. The pinned FileResponse predates Range
     # support. Serve single byte ranges for mobile media probes and seeking.
     with open(audio_path, "rb") as sample:
         audio = sample.read()
@@ -3393,9 +3441,9 @@ async def tts_preview(
     rate: str = Query("-6%"), pitch: str = Query("+0Hz"),
     volume: str = Query("+0%"), text: str = Query(""),
     el_voice: str = Query(""),
-    stability: float = Query(0.5),
-    similarity: float = Query(0.75),
-    style: float = Query(0.0),
+    stability: float = Query(0.5, ge=0, le=1),
+    similarity: float = Query(0.75, ge=0, le=1),
+    style: float = Query(0.0, ge=0, le=1),
     model: str = Query("eleven_v4_turbo"),
 ):
     # Live edge voice studio. Lazy import: a missing edge-tts dep
@@ -3406,11 +3454,11 @@ async def tts_preview(
         key = os.environ.get("ELEVENLABS_API_KEY", "")
         vid = el_voice or os.environ.get("ELEVENLABS_CLAIRE_VOICE_ID", "")
         say_el = (text or _TTS_LINE)[:600]
+        voice_settings = {"stability": stability, "similarity_boost": similarity}
+        if model not in ("eleven_v4", "eleven_v4_turbo"):
+            voice_settings.update({"style": style, "use_speaker_boost": True})
         body = _j.dumps({"text": say_el, "model_id": model,
-            "voice_settings": {"stability": stability,
-                "similarity_boost": similarity,
-                "style": style,
-                "use_speaker_boost": True}}).encode()
+            "voice_settings": voice_settings}).encode()
         try:
             au = _u.urlopen(_u.Request(
                 "https://api.elevenlabs.io/v1/text-to-speech/" + vid, body,
@@ -7058,18 +7106,57 @@ async def admin_stripe_recent(token: str = Query("")):
     })
 
 
-async def _vapi_calls_window(start_unix: int) -> list:
+def _usage_tenant_bindings() -> dict:
+    """Current operator configuration labels, not historical/billing ownership."""
+    try:
+        with get_db() as conn:
+            rows = conn.execute(
+                "SELECT tenant_slug, tenant_display_name, assistant_ids FROM client_tokens "
+                "WHERE revoked_at IS NULL LIMIT 1001"
+            ).fetchall()
+        if len(rows) > 1000:
+            return {"status": "unavailable", "rows": []}
+        labels = []
+        for stored in rows:
+            row = dict(stored)
+            tenant = row.get("tenant_slug")
+            raw = row.get("assistant_ids")
+            if not isinstance(tenant, str) or not tenant.strip() or not isinstance(raw, (str, list, tuple)):
+                return {"status": "unavailable", "rows": []}
+            ids = _client_assistant_ids(row)
+            if any(not isinstance(identity, str) or not identity.strip() for identity in ids):
+                return {"status": "unavailable", "rows": []}
+            name = row.get("tenant_display_name")
+            labels.append({"tenant_slug": tenant, "display_name": name if isinstance(name, str) and name else tenant,
+                           "assistant_ids": ids})
+        return {"status": "ok", "rows": labels}
+    except Exception:
+        # No tokens, raw rows, or database errors leave this metadata reader.
+        return {"status": "unavailable", "rows": []}
+
+
+async def _vapi_calls_window(start_unix: int) -> dict:
+    """Bounded read-only snapshot; distinguish unavailable data from no calls."""
     vk = os.environ.get("VAPI_API_KEY", "").strip()
     if not vk:
-        return []
+        return {"status": "unavailable", "reason": "not_configured", "calls": []}
     iso = _time.strftime("%Y-%m-%dT%H:%M:%SZ", _time.gmtime(start_unix))
-    async with httpx.AsyncClient(timeout=20) as c:
-        r = await c.get("https://api.vapi.ai/call",
-                        headers={"Authorization": f"Bearer {vk}"},
-                        params={"limit": 100, "createdAtGt": iso})
+    try:
+        async with httpx.AsyncClient(timeout=20) as c:
+            r = await c.get("https://api.vapi.ai/call",
+                            headers={"Authorization": f"Bearer {vk}"},
+                            params={"limit": 100, "createdAtGt": iso})
+    except httpx.RequestError:
+        return {"status": "unavailable", "reason": "provider_unreachable", "calls": []}
     if r.status_code != 200:
-        return []
-    return r.json() if isinstance(r.json(), list) else []
+        return {"status": "unavailable", "reason": "provider_error", "calls": []}
+    try:
+        calls = r.json()
+    except ValueError:
+        calls = None
+    if not isinstance(calls, list):
+        return {"status": "unavailable", "reason": "invalid_response", "calls": []}
+    return {"status": "ok", "observed_at": int(_time.time()), "calls": calls}
 
 
 @app.get("/admin/api/operations-summary")
@@ -7102,7 +7189,11 @@ async def admin_operations_summary(token: str = Query("")):
             fees_today_minor += int(amt * 0.014 + 25)
 
     # Vapi calls today (Adam asked for current-day cost view)
-    vapi_calls = await _vapi_calls_window(day_start)
+    from billing.usage import project_usage
+    vapi_snapshot = await _vapi_calls_window(day_start)
+    usage = project_usage(vapi_snapshot, now=int(time.time()), window_start=day_start,
+                          tenant_bindings=_usage_tenant_bindings())
+    vapi_calls = [c for c in vapi_snapshot["calls"] if isinstance(c, dict)]
     vapi_mins_today = 0.0
     call_count_today = 0
     for c in vapi_calls:
@@ -7176,6 +7267,7 @@ async def admin_operations_summary(token: str = Query("")):
             "cost_per_acquisition_minor": cac_minor,
         },
         "currency": "eur",
+        "usage": usage,
         "rate_card_used": {
             "vapi_per_min_eur": VAPI_RATE_PER_MIN_EUR,
             "twilio_sms_intl_eur": TWILIO_SMS_INTL_RATE_EUR,
@@ -7394,30 +7486,68 @@ async def admin_flow_graph(token: str = Query("")):
     vk = os.environ.get("VAPI_API_KEY", "").strip()
     if not vk:
         raise HTTPException(status_code=500, detail="VAPI_API_KEY missing")
-    async with httpx.AsyncClient(timeout=20) as c:
-        r = await c.get("https://api.vapi.ai/assistant",
-                        headers={"Authorization": f"Bearer {vk}"},
-                        params={"limit": 50})
+    try:
+        async with httpx.AsyncClient(timeout=20) as c:
+            r = await c.get("https://api.vapi.ai/assistant",
+                            headers={"Authorization": f"Bearer {vk}"},
+                            params={"limit": 50})
+    except httpx.TimeoutException:
+        raise HTTPException(status_code=504, detail="Routing information provider timed out")
+    except httpx.RequestError:
+        raise HTTPException(status_code=502, detail="Routing information provider unavailable")
     if r.status_code != 200:
         raise HTTPException(status_code=502, detail=f"Vapi HTTP {r.status_code}")
+    try:
+        assistants = r.json()
+    except ValueError:
+        raise HTTPException(status_code=502, detail="Invalid routing information from provider")
+    if not isinstance(assistants, list):
+        raise HTTPException(status_code=502, detail="Invalid routing information from provider")
+
+    def mapping(value):
+        if value is None:
+            return {}
+        if not isinstance(value, dict):
+            raise HTTPException(status_code=502, detail="Invalid routing information from provider")
+        return value
+
+    def sequence(value):
+        if value is None:
+            return []
+        if not isinstance(value, list):
+            raise HTTPException(status_code=502, detail="Invalid routing information from provider")
+        return value
+
     nodes = []
     edges = []
-    for a in r.json():
+    for item in assistants:
+        if not isinstance(item, dict):
+            raise HTTPException(status_code=502, detail="Invalid routing information from provider")
+        a = mapping(item)
         aid = a.get("id")
         name = a.get("name") or "?"
-        voice = (a.get("voice") or {}).get("voiceId") or ""
-        model = (a.get("model") or {})
+        voice = mapping(a.get("voice")).get("voiceId") or ""
+        if not isinstance(voice, str):
+            raise HTTPException(status_code=502, detail="Invalid routing information from provider")
+        model = mapping(a.get("model"))
+        tools = sequence(model.get("tools"))
         nodes.append({
             "id": aid,
             "name": name,
             "voice": voice[:8],
-            "tools_count": len(model.get("tools") or []),
+            "tools_count": len(tools),
             "model": model.get("model", ""),
         })
-        for tool in (model.get("tools") or []):
+        for item in tools:
+            if item is None:
+                raise HTTPException(status_code=502, detail="Invalid routing information from provider")
+            tool = mapping(item)
             if tool.get("type") == "transferCall":
-                tname = (tool.get("function") or {}).get("name", "?")
-                for dest in (tool.get("destinations") or []):
+                tname = mapping(tool.get("function")).get("name", "?")
+                for item in sequence(tool.get("destinations")):
+                    if item is None:
+                        raise HTTPException(status_code=502, detail="Invalid routing information from provider")
+                    dest = mapping(item)
                     target = dest.get("number") or dest.get("extension") or dest.get("assistantName") or "?"
                     edges.append({
                         "from": aid,
@@ -7425,7 +7555,7 @@ async def admin_flow_graph(token: str = Query("")):
                         "to_target": target,
                         "to_kind": dest.get("type", "?"),
                         "tool_name": tname,
-                        "mode": (dest.get("transferPlan") or {}).get("mode", "blind"),
+                        "mode": mapping(dest.get("transferPlan")).get("mode", "blind"),
                     })
     return JSONResponse({"nodes": nodes, "edges": edges})
 
@@ -7886,6 +8016,9 @@ async def admin_today_actions(token: str = Query(""), limit: int = Query(10)):
     week_cutoff = (now - _dt.timedelta(days=7)).strftime("%Y-%m-%d %H:%M:%S")
 
     actions: list[dict] = []
+    source_status = {"call_events": "not_checked", "submissions": "not_checked",
+                     "stripe_sessions": "not_configured", "sms_capability": "not_checked",
+                     "classifications": "not_checked"}
 
     # ---- demo-complete events (hottest signal) ----
     try:
@@ -7975,8 +8108,9 @@ async def admin_today_actions(token: str = Query(""), limit: int = Query(10)):
                     "summary": r["summary"],
                 },
             })
+        source_status["call_events"] = "ok"
     except Exception:
-        pass
+        source_status["call_events"] = "failed"
 
     # ---- onboarding submissions pending ----
     try:
@@ -8005,11 +8139,13 @@ async def admin_today_actions(token: str = Query(""), limit: int = Query(10)):
                     "last_event_at": str(r["created_at"]),
                 },
             })
+        source_status["submissions"] = "ok"
     except Exception:
-        pass
+        source_status["submissions"] = "failed"
 
     # ---- Stripe sessions open + unpaid (in-flight signups) ----
     if OWL_STRIPE_API_KEY:
+        source_status["stripe_sessions"] = "failed"
         try:
             import time as _ts
             since = int(_ts.time()) - (7 * 86400)
@@ -8044,6 +8180,7 @@ async def admin_today_actions(token: str = Query(""), limit: int = Query(10)):
                             "tier_hint": (md.get("product") or "").replace("receptionist-", "") or "professional",
                         },
                     })
+                source_status["stripe_sessions"] = "ok"
         except Exception:
             pass
 
@@ -8051,6 +8188,7 @@ async def admin_today_actions(token: str = Query(""), limit: int = Query(10)):
     try:
         # Reuse the existing health probes - check one cheap signal: Twilio FROM valid
         health = await _probe_twilio_from_sms()
+        source_status["sms_capability"] = "ok" if health.get("status") == "ok" else "failed"
         if health.get("status") == "fail":
             actions.insert(0, {
                 "rank_score": 100,
@@ -8062,7 +8200,7 @@ async def admin_today_actions(token: str = Query(""), limit: int = Query(10)):
                 "context": {"probe": health},
             })
     except Exception:
-        pass
+        source_status["sms_capability"] = "failed"
 
     # Sort + limit
     actions.sort(key=lambda a: a["rank_score"], reverse=True)
@@ -8094,12 +8232,17 @@ async def admin_today_actions(token: str = Query(""), limit: int = Query(10)):
                     continue  # flagged as test/spam/discard — drop from ranking
                 kept.append(a)
             actions = kept
+        source_status["classifications"] = "ok"
     except Exception as e:
-        print(f"[today-actions] flag filter skipped: {e}", file=sys.stderr)
+        source_status["classifications"] = "failed"
+        print("[today-actions] classification read unavailable", file=sys.stderr)
 
     return JSONResponse({
         "actions": actions[:limit],
         "total_seen": len(actions),
+        "coverage": "partial" if any(status not in {"ok", "not_configured"} for status in source_status.values()) else "bounded",
+        "source_status": source_status,
+        "complete_period": False,
         "ts": _t.strftime("%Y-%m-%dT%H:%M:%SZ", _t.gmtime()),
     })
 

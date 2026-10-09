@@ -54,6 +54,35 @@ class VoiceComparisonTests(unittest.TestCase):
             r = self.client.get(f"/admin/api/voice-comparison/{model}", params={"token": "fixture-only"})
             self.assertEqual(r.status_code, 404)
 
+    def test_saved_hotel_pairs_auth_bytes_head_and_range(self):
+        for situation in ('routing', 'privacy', 'complaint', 'clarity'):
+            for delivery in ('plain', 'directed'):
+                sample = f'hotel-{situation}-{delivery}'
+                route = '/admin/api/voice-comparison/' + sample
+                expected = (SCRIPTS / 'voice-samples' / (sample + '.mp3')).read_bytes()
+                self.assertGreater(len(expected), 1000)
+                for token in ('', 'wrong'):
+                    self.assertEqual(self.client.get(route, params={'token':token,'format':'mp3'}).status_code,401)
+                params = {'token':'fixture-only','format':'mp3'}
+                r = self.client.get(route, params=params)
+                self.assertEqual(r.status_code,200)
+                self.assertEqual(r.content,expected)
+                self.assertEqual(r.headers['content-type'],'audio/mpeg')
+                self.assertEqual(r.headers['cache-control'],'private, no-store')
+                ranged = self.client.get(route,params=params,headers={'Range':'bytes=0-1'})
+                self.assertEqual(ranged.status_code,206)
+                self.assertEqual(ranged.content,expected[:2])
+                head = self.client.head(route,params=params)
+                self.assertEqual(head.content,b'')
+                self.assertEqual(int(head.headers['content-length']),len(expected))
+                self.assertEqual(self.client.get(route,params={'token':'fixture-only','format':'wav'}).status_code,404)
+
+    def test_hotel_comparison_reuses_saved_audio_player(self):
+        html = (SCRIPTS / 'admin.html').read_text(encoding='utf-8-sig')
+        self.assertIn('id="hotelVoiceComparison"',html)
+        self.assertIn("endpoint('/admin/api/voice-comparison/hotel-' + key + '-plain', {format: 'mp3'})",html)
+        self.assertIn("endpoint('/admin/api/voice-comparison/hotel-' + key + '-directed', {format: 'mp3'})",html)
+
     def test_ui_and_build_include_both_saved_samples(self):
         html = (SCRIPTS / "admin.html").read_text(encoding="utf-8-sig")
         self.assertIn('id="claireVoiceComparison"', html)
