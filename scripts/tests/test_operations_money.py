@@ -49,6 +49,20 @@ class MoneyTests(unittest.TestCase):
     def test_uncertain_call_timing_not_complete_cost_display(self):
         snapshot={'status':'ok','observed_at':int(time.time()),'calls':[{'id':'synthetic','status':'ended'}]}
         self.assertEqual(summarize({'data':[]},snapshot)['money']['status'],'unavailable')
+    def test_today_money_uses_deduplicated_window_clipped_observations(self):
+        from datetime import datetime, timezone
+        now=int(time.time());start=now-now%86400
+        stamp=lambda value:datetime.fromtimestamp(value,timezone.utc).isoformat()
+        record={'id':'synthetic','phoneNumberId':'line-a','status':'ended',
+                'startedAt':stamp(start-60),'endedAt':stamp(start+60)}
+        old={**record,'id':'old','endedAt':stamp(start-30)}
+        snapshot={'status':'ok','observed_at':now,'calls':[record,record,old],
+                  'query_scope':'calls_updated_since_utc_midnight'}
+        with patch('time.time',return_value=start+3600):
+            result=summarize({'data':[]},snapshot)
+        self.assertEqual(result['today']['vapi_minutes'],1)
+        self.assertEqual(result['today']['calls_count'],1)
+        self.assertEqual(result['usage']['outside_window_calls'],1)
     def test_payment_page_limit_explicit(self):
         for payload in [{'data':[],'has_more':True},{'data':[self.payment()]*100}]:
             self.assertTrue(summarize(payload)['money']['payment_limit_reached'])

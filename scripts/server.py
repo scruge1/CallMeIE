@@ -7148,7 +7148,7 @@ async def _vapi_calls_window(start_unix: int) -> dict:
         async with httpx.AsyncClient(timeout=20) as c:
             r = await c.get("https://api.vapi.ai/call",
                             headers={"Authorization": f"Bearer {vk}"},
-                            params={"limit": 100, "createdAtGt": iso})
+                            params={"limit": 100, "updatedAtGe": iso})
     except httpx.RequestError:
         return {"status": "unavailable", "reason": "provider_unreachable", "calls": []}
     if r.status_code != 200:
@@ -7159,7 +7159,8 @@ async def _vapi_calls_window(start_unix: int) -> dict:
         calls = None
     if not isinstance(calls, list):
         return {"status": "unavailable", "reason": "invalid_response", "calls": []}
-    return {"status": "ok", "observed_at": int(_time.time()), "calls": calls}
+    return {"status": "ok", "observed_at": int(_time.time()), "calls": calls,
+            "query_scope": "calls_updated_since_utc_midnight"}
 
 
 @app.get("/admin/api/operations-summary")
@@ -7210,21 +7211,10 @@ async def admin_operations_summary(token: str = Query("")):
     vapi_snapshot = await _vapi_calls_window(day_start)
     usage = project_usage(vapi_snapshot, now=int(time.time()), window_start=day_start,
                           tenant_bindings=_usage_tenant_bindings())
-    vapi_calls = [c for c in vapi_snapshot["calls"] if isinstance(c, dict)]
-    vapi_mins_today = 0.0
-    call_count_today = 0
-    for c in vapi_calls:
-        sa = c.get("startedAt")
-        ea = c.get("endedAt")
-        if sa and ea:
-            try:
-                import datetime as dt
-                s = dt.datetime.fromisoformat(sa.replace("Z","+00:00")).timestamp()
-                e = dt.datetime.fromisoformat(ea.replace("Z","+00:00")).timestamp()
-                vapi_mins_today += (e - s) / 60.0
-                call_count_today += 1
-            except Exception:
-                pass
+    # Use the same deduplicated, day-clipped observations as the line panel.
+    # An older call updated today is not automatically today's call time.
+    vapi_mins_today = sum(line["completed_provider_minutes"] for line in usage["lines"])
+    call_count_today = sum(line["completed_calls"] for line in usage["lines"])
 
     vapi_cost_today = vapi_mins_today * VAPI_RATE_PER_MIN_EUR
 

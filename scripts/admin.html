@@ -2621,7 +2621,9 @@
       <div class="panel-body"><p>Provider call time, not confirmed AI handling or billable minutes.</p>
       <p>Snapshot: ${esc(snapshotTime.toISOString())}</p>
       ${rows || '<p>No calls returned in this window.</p>'}
-      <p>Calls created before midnight are not included.${usage.limit_reached ? ' The 100-call limit was reached.' : ''}</p>
+      <p>${usage.query_scope === 'calls_updated_since_utc_midnight'
+        ? 'Calls updated since midnight, including observed calls that cross midnight. Only time within this UTC day is shown. Live-call coverage is not guaranteed.'
+        : 'Calls created before midnight are not included.'}${usage.limit_reached ? ' The 100-call limit was reached.' : ''}</p>
       ${usage.conflicting_calls || usage.rejected_records ? `<p>${esc(usage.conflicting_calls)} conflicting calls and ${esc(usage.rejected_records)} invalid records excluded.</p>` : ''}
       <p>Tenant labels use current assistant configuration, not verified call ownership. Hotel allocation, confirmed AI minutes, billable minutes and allowance remaining: not yet verified.</p>
       </div></section>`;

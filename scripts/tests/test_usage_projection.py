@@ -60,6 +60,19 @@ class ProjectionTests(unittest.TestCase):
     def test_duration_is_clipped_to_period(self):
         line = project([call(startedAt=iso(START - 60), endedAt=iso(START + 60))])['lines'][0]
         self.assertEqual(line['completed_provider_minutes'], 1)
+    def test_call_ended_before_window_is_not_a_today_call(self):
+        result = project([call(startedAt=iso(START-120), endedAt=iso(START-60))])
+        self.assertEqual(result['lines'], [])
+        self.assertEqual(result['outside_window_calls'], 1)
+    def test_call_ending_at_window_boundary_has_no_today_usage(self):
+        self.assertEqual(project([call(startedAt=iso(START-60), endedAt=iso(START))])['lines'], [])
+    def test_update_query_scope_does_not_claim_complete_carryover(self):
+        result = project([call(startedAt=iso(START-60), endedAt=iso(START+60))],
+                         query_scope='calls_updated_since_utc_midnight')
+        self.assertEqual(result['query_scope'], 'calls_updated_since_utc_midnight')
+        self.assertTrue(result['carryover_calls_included'])
+        self.assertEqual(result['coverage'], 'partial')
+        self.assertIsNone(result['billable_minutes'])
     def test_bad_timings_not_zero_confirmed_calls(self):
         for changes in ({'startedAt':'bad'}, {'endedAt':iso(NOW+10)},
                         {'endedAt':iso(NOW-180)}, {'endedAt':'bad'},
@@ -181,6 +194,12 @@ class FetchTests(unittest.TestCase):
         self.assertEqual(result['status'], 'ok')
         self.assertIsInstance(result['observed_at'], int)
         self.assertEqual(requests[0][1]['limit'], 100)
+    def test_one_update_time_query_includes_midnight_boundary(self):
+        result, requests = fetch(payload=[])
+        self.assertEqual(len(requests), 1)
+        self.assertEqual(set(requests[0][1]), {'limit','updatedAtGe'})
+        self.assertEqual(requests[0][1]['updatedAtGe'], iso(START).replace('+00:00','Z'))
+        self.assertEqual(result['query_scope'], 'calls_updated_since_utc_midnight')
 
 class IntegrationTests(unittest.TestCase):
     def test_operations_uses_one_snapshot_and_real_projection(self):

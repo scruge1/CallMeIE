@@ -43,8 +43,13 @@ def project_usage(snapshot, *, now, window_start, tenant_bindings=None):
         else:
             unique[identity] = (signature, record)
     groups = {}
+    outside_window = 0
     for identity, (_, record) in unique.items():
         if identity in conflicts:
+            continue
+        start, end = _timestamp(record.get("startedAt")), _timestamp(record.get("endedAt"))
+        if start is not None and end is not None and start <= end <= window_start:
+            outside_window += 1
             continue
         line = record.get("phoneNumberId")
         line = line if isinstance(line, str) and line else None
@@ -64,7 +69,6 @@ def project_usage(snapshot, *, now, window_start, tenant_bindings=None):
             "unknown_calls": 0, "confirmed_ai_minutes": None,
             "billable_minutes": None, "allowance_remaining_minutes": None,
         })
-        start, end = _timestamp(record.get("startedAt")), _timestamp(record.get("endedAt"))
         if start is not None and end is not None and start <= end <= now:
             group["completed_calls"] += 1
             group["completed_provider_minutes"] += max(0, end - max(start, window_start)) / 60
@@ -82,9 +86,12 @@ def project_usage(snapshot, *, now, window_start, tenant_bindings=None):
         "status": "unavailable" if not available else ("fresh" if fresh else "stale"),
         "reason": snapshot.get("reason"), "observed_at": observed,
         "window_start": window_start, "window_end": now, "timezone": "UTC",
-        "coverage": "partial", "query_scope": "calls_created_since_utc_midnight",
+        "coverage": "partial", "query_scope": (
+            "calls_updated_since_utc_midnight" if snapshot.get("query_scope") == "calls_updated_since_utc_midnight"
+            else "calls_created_since_utc_midnight"),
         "limit_reached": available and len(records) >= 100,
-        "carryover_calls_included": False,
+        "carryover_calls_included": snapshot.get("query_scope") == "calls_updated_since_utc_midnight",
+        "outside_window_calls": outside_window,
         "conflicting_calls": len(conflicts), "rejected_records": rejected,
         "lines": sorted(groups.values(), key=lambda group: (group["line_id"] or "", group["configured_tenant_id"] or "", group["allocation_status"])),
         "tenant_binding_status": bindings.get("status", "unavailable"),

@@ -9,6 +9,14 @@ const render=usage=>context.renderUsagePanel({usage});
 function snapshot(changes={}) {return {status:'fresh',observed_at:Math.floor(Date.now()/1000),lines:[{line_id:'line-a',completed_calls:1,completed_provider_minutes:2,observed_active_calls:1,active_provider_minutes_estimate:3,unknown_calls:0}],...changes};}
 test('missing data never says zero calls',()=>{assert.match(render(),/unavailable/);assert.match(render({status:'unavailable'}),/does not mean zero/);});
 test('scope and unknown billing remain visible',()=>{const output=render(snapshot());assert.match(output,/partial coverage/);assert.match(output,/not confirmed AI/);assert.match(output,/not yet verified/);assert.match(output,/before midnight/);assert.match(output,/3 min estimated/);});
+
+test('update-time scope states observed carryover without full coverage',()=>{
+ const output=render(snapshot({query_scope:'calls_updated_since_utc_midnight',carryover_calls_included:true}));
+ assert.match(output,/Calls updated since midnight/);
+ assert.match(output,/observed calls that cross midnight/);
+ assert.match(output,/Live-call coverage is not guaranteed/);
+ assert.doesNotMatch(output,/created before midnight are not included/);
+});
 test('stale snapshot hides live estimate',()=>{const output=render(snapshot({observed_at:Math.floor(Date.now()/1000)-100}));assert.match(output,/Stale snapshot/);assert.match(output,/estimate unavailable/);assert.doesNotMatch(output,/3 min estimated/);});
 
 test('invalid snapshot times show unavailable without throwing',()=>{
