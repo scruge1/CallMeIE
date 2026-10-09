@@ -40,6 +40,7 @@ def run():
         root = Path(folder).resolve()
         env = {name: os.environ[name] for name in ('SYSTEMROOT', 'PATH', 'TEMP', 'TMP') if name in os.environ}
         env.update(ADMIN_TOKEN='synthetic-admin', VAPI_API_KEY='synthetic-provider',
+                   VAPI_CALL_REPORT_SECRET='synthetic-call-report-only-secret-20261009',
                    DB_PATH=str(root/'app.sqlite'), AGENCY_DB_PATH=str(root/'billing.sqlite'))
         connect = sqlite3.connect
         def private_connect(path, *args, **kwargs):
@@ -92,6 +93,16 @@ def run():
             async def checks():
                 transport = httpx.ASGITransport(app=server.app,raise_app_exceptions=True)
                 async with real_client(transport=transport,base_url='http://fixture.test') as client:
+                    # Actual route registration enforces credentials before JSON
+                    # parsing. Valid ignored/final-empty fixtures have no effects.
+                    report_headers={'Authorization':'Bearer '+env['VAPI_CALL_REPORT_SECRET']}
+                    assert (await client.post('/vapi/call-ended',content='not-json')).status_code==401
+                    assert (await client.post('/vapi/call-ended',headers={'Authorization':'Bearer synthetic-wrong'},content='not-json')).status_code==401
+                    ignored=await client.post('/vapi/call-ended',headers=report_headers,json={'message':{'type':'status-update','status':'in-progress'}})
+                    assert ignored.status_code==200 and ignored.json()['ignored_type']=='status-update'
+                    empty_final=await client.post('/vapi/call-ended',headers=report_headers,json={'message':{'type':'end-of-call-report'}})
+                    assert empty_final.status_code==200 and empty_final.json()['skipped']=='no_call_id_or_assistant'
+                    assert observed==[], 'call report boundary contacted provider'
                     for endpoint in ('/admin/api/operations-summary','/admin/api/flow-graph'):
                         response = await client.get(endpoint)
                         assert response.status_code==401,(endpoint,response.status_code)

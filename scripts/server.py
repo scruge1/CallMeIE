@@ -35,7 +35,7 @@ from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 import httpx
-from fastapi import BackgroundTasks, FastAPI, HTTPException, Query, Request
+from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse, Response
 
@@ -1313,7 +1313,10 @@ async def send_telegram(message: str) -> None:
 
 
 # --- Vapi post-call webhook ---
-@app.post("/vapi/call-ended")
+from billing.webhook import require_call_report_auth
+
+
+@app.post("/vapi/call-ended", dependencies=[Depends(require_call_report_auth)])
 async def call_ended(request: Request, background_tasks: BackgroundTasks):
     """Vapi fires this when any call ends. Returns 200 immediately; anomaly diagnosis runs in background.
 

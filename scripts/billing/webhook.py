@@ -33,6 +33,8 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/billing", tags=["billing"])
 
 VAPI_WEBHOOK_SECRET = os.environ.get("VAPI_WEBHOOK_SECRET", "").strip()
+# Separate scope: general call reports must not inherit billing credentials.
+VAPI_CALL_REPORT_SECRET = os.environ.get("VAPI_CALL_REPORT_SECRET", "").strip()
 VAPI_API_KEY = os.environ.get("VAPI_API_KEY", "").strip()
 TOLERANCE_SECONDS = 300
 
@@ -117,6 +119,30 @@ def _verify_static_secret(headers, secret: str) -> bool:
         except Exception:
             continue
     return False
+
+
+async def require_call_report_auth(request: Request) -> None:
+    """Authenticate general call reports before parsing or side effects.
+
+    Static bearer/legacy headers use the existing constant-time verifier.
+    Do not accept an assumed HMAC format or credentials from a request body.
+    Deploy only with a matching saved-resource sender credential.
+    """
+    secret = VAPI_CALL_REPORT_SECRET
+    if len(secret) < 32 or not secret.isascii():
+        raise HTTPException(status_code=503, detail="call report authentication unavailable")
+    present = False
+    for name in ("authorization", "x-vapi-secret"):
+        values = request.headers.getlist(name)
+        if not values:
+            continue
+        present = True
+        # All supplied credentials must agree. Never fall back from a malformed
+        # or duplicate header to another valid authentication transport.
+        if len(values) != 1 or not _verify_static_secret({name: values[0]}, secret):
+            raise HTTPException(status_code=401, detail="invalid call report credential")
+    if not present:
+        raise HTTPException(status_code=401, detail="call report credential required")
 
 
 def _extract_fields(msg: dict, call: dict) -> dict[str, Any]:
