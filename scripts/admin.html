@@ -2406,6 +2406,7 @@
 
   function renderActionsPanel(data) {
     const actions = data.actions || [];
+    const incomplete = data.coverage === 'partial';
     return `
       <section class="panel">
         <div class="panel-header">
@@ -2416,7 +2417,8 @@
           <button class="btn ghost" type="button" onclick="navigate('more','queue')">View all actions (${esc(actions.length || 0)})</button>
         </div>
         <div class="action-list">
-          ${actions.length ? actions.map((action, index) => renderActionRow(action, index)).join("") : `
+          ${incomplete ? '<p class="muted" role="status">Some action sources are unavailable. This list may be incomplete.</p>' : ''}
+          ${actions.length ? actions.map((action, index) => renderActionRow(action, index)).join("") : incomplete ? '<div class="empty">Action data is incomplete. Refresh before assuming there is nothing to review.</div>' : `
             <div class="empty">No urgent actions. New calls, submissions, or open payment sessions will appear here.</div>
           `}
         </div>

@@ -113,10 +113,16 @@ def run():
                     assert set(response.json())=={'nodes','edges'}
                     health = await client.get('/health')
                     assert health.status_code==200
+                    today = await client.get('/admin/api/today-actions',params={'token':'synthetic-admin'})
+                    assert today.status_code==200
+                    assert today.json()['coverage']=='partial'
+                    assert today.json()['source_status']['sms_capability']=='failed'
+                    assert today.json()['complete_period'] is False
                 return {'scope':'real imported app, ASGI transport, disposable SQLite, mocked providers',
                         'status':'passed','authorized_usage':True,'auth_before_provider':True,
                         'revoked_mapping_excluded':True,'usage_provider_failure_explicit':True,
                         'flow_timeout_504':True,'flow_malformed_502':True,'flow_success_contract':True,
+                        'today_partial_sources_explicit':True,
                         'production_actions':False}
             result = loop.run_until_complete(checks())
             import json

@@ -7980,6 +7980,9 @@ async def admin_today_actions(token: str = Query(""), limit: int = Query(10)):
     week_cutoff = (now - _dt.timedelta(days=7)).strftime("%Y-%m-%d %H:%M:%S")
 
     actions: list[dict] = []
+    source_status = {"call_events": "not_checked", "submissions": "not_checked",
+                     "stripe_sessions": "not_configured", "sms_capability": "not_checked",
+                     "classifications": "not_checked"}
 
     # ---- demo-complete events (hottest signal) ----
     try:
@@ -8069,8 +8072,9 @@ async def admin_today_actions(token: str = Query(""), limit: int = Query(10)):
                     "summary": r["summary"],
                 },
             })
+        source_status["call_events"] = "ok"
     except Exception:
-        pass
+        source_status["call_events"] = "failed"
 
     # ---- onboarding submissions pending ----
     try:
@@ -8099,11 +8103,13 @@ async def admin_today_actions(token: str = Query(""), limit: int = Query(10)):
                     "last_event_at": str(r["created_at"]),
                 },
             })
+        source_status["submissions"] = "ok"
     except Exception:
-        pass
+        source_status["submissions"] = "failed"
 
     # ---- Stripe sessions open + unpaid (in-flight signups) ----
     if OWL_STRIPE_API_KEY:
+        source_status["stripe_sessions"] = "failed"
         try:
             import time as _ts
             since = int(_ts.time()) - (7 * 86400)
@@ -8138,6 +8144,7 @@ async def admin_today_actions(token: str = Query(""), limit: int = Query(10)):
                             "tier_hint": (md.get("product") or "").replace("receptionist-", "") or "professional",
                         },
                     })
+                source_status["stripe_sessions"] = "ok"
         except Exception:
             pass
 
@@ -8145,6 +8152,7 @@ async def admin_today_actions(token: str = Query(""), limit: int = Query(10)):
     try:
         # Reuse the existing health probes - check one cheap signal: Twilio FROM valid
         health = await _probe_twilio_from_sms()
+        source_status["sms_capability"] = "ok" if health.get("status") == "ok" else "failed"
         if health.get("status") == "fail":
             actions.insert(0, {
                 "rank_score": 100,
@@ -8156,7 +8164,7 @@ async def admin_today_actions(token: str = Query(""), limit: int = Query(10)):
                 "context": {"probe": health},
             })
     except Exception:
-        pass
+        source_status["sms_capability"] = "failed"
 
     # Sort + limit
     actions.sort(key=lambda a: a["rank_score"], reverse=True)
@@ -8188,12 +8196,17 @@ async def admin_today_actions(token: str = Query(""), limit: int = Query(10)):
                     continue  # flagged as test/spam/discard — drop from ranking
                 kept.append(a)
             actions = kept
+        source_status["classifications"] = "ok"
     except Exception as e:
-        print(f"[today-actions] flag filter skipped: {e}", file=sys.stderr)
+        source_status["classifications"] = "failed"
+        print("[today-actions] classification read unavailable", file=sys.stderr)
 
     return JSONResponse({
         "actions": actions[:limit],
         "total_seen": len(actions),
+        "coverage": "partial" if any(status not in {"ok", "not_configured"} for status in source_status.values()) else "bounded",
+        "source_status": source_status,
+        "complete_period": False,
         "ts": _t.strftime("%Y-%m-%dT%H:%M:%SZ", _t.gmtime()),
     })
 
