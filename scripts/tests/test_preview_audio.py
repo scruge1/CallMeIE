@@ -1,6 +1,7 @@
 """Use actual preview functions with one fake provider, never paid synthesis."""
 import ast
 from contextvars import ContextVar
+import hmac
 import json
 import os
 from pathlib import Path
@@ -23,6 +24,7 @@ class PreviewAudioTests(unittest.TestCase):
         self.assertEqual(len(nodes), len(names))
         self.ns = {'app':FastAPI(), 'ADMIN_TOKEN':'fixture-only', 'Query':Query,
                    '_admin_bearer':ContextVar('fixture_admin_bearer', default=None),
+                   'hmac':hmac,
                    'Request':Request, 'Response':Response, 'JSONResponse':JSONResponse,
                    'HTTPException':HTTPException, 'os':os, '_TTS_PREVIEW_AUDIO':{},
                    '_TTS_LINE':'Fixture speech', '_TTS_PRESETS':{'premium':('fixture',None,None)}}
