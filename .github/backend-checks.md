@@ -1,10 +1,17 @@
 # Backend checks
 
 `backend-offline` runs the Python tests in `scripts/tests` except tests marked
-`integration`. Standalone CJS tests are not collected by this job. It runs for every pull request, main push, merge group and manual
+`integration`, followed by the existing `scripts/tests/*.cjs` source tests on
+Node 24.21.0 LTS. It runs for every pull request, main push, merge group and manual
 request. It has no path filter. The test step receives a clean environment,
 private temporary SQLite paths and socket blocking. Unix sockets remain enabled
 for local async test plumbing. This is a test boundary, not OS containment.
+
+The JavaScript tests use local source and VM fixtures, including stub requests.
+They need no npm packages or application server. Their clean environment has no
+provider credentials; this is not OS network isolation or a live browser test.
+The Bash pipeline preserves Node failures through the job shell's `pipefail`.
+The retained artifact contains Python JUnit and JavaScript TAP results.
 
 The workflow uses Python 3.11.16 and hash-pinned action commits. Test dependencies
 are resolved from the existing production constraints and `requirements-test.in`
@@ -28,6 +35,9 @@ Refresh through the existing repository maintenance owner. Review new action,
 Python and package versions; regenerate the CI lock with the command in its
 header; run the complete offline suite and changed dependency regressions before
 accepting new pins. Keep the prior accepted commit available for rollback.
+Review Node LTS releases and the pinned setup-node action through this same
+maintenance owner. Qualify the exact Node binary and all existing CJS tests
+before changing their pins. This test runtime does not replace service Node.
 
 Local qualification against main da38e2ec on 7 October 2026 ran 149 tests plus
 2 subtests with zero failures or skips. The real container shell script is tested
