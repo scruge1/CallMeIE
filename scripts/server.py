@@ -30,6 +30,7 @@ import json
 import os
 import sqlite3
 import sys
+from contextvars import ContextVar
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
@@ -46,6 +47,35 @@ sys.path.insert(0, os.path.dirname(__file__))
 from voice_catalog import voice_for_industry  # noqa: E402  (D6 — needs sys.path above)
 
 app = FastAPI(title="CallMeIE — AI Receptionist Server")
+
+_admin_bearer = ContextVar('admin_bearer', default=None)
+
+
+class AdminBearerContext:
+    """Request-local credential transport; no sessions, roles or authority grant."""
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope['type'] != 'http':
+            return await self.app(scope, receive, send)
+        credential = None
+        if scope.get('path', '').startswith('/admin/api/'):
+            values = Request(scope).headers.getlist('authorization')
+            if values:
+                credential = ''  # malformed/duplicate headers must not fall back
+                if len(values) == 1:
+                    scheme, separator, value = values[0].partition(' ')
+                    if separator and scheme.lower() == 'bearer':
+                        credential = value
+        binding = _admin_bearer.set(credential)
+        try:
+            return await self.app(scope, receive, send)
+        finally:
+            _admin_bearer.reset(binding)
+
+
+app.add_middleware(AdminBearerContext)
 
 
 # P0-7 — wrap any uncaught exception in a JSON envelope so the visitor
@@ -1198,6 +1228,12 @@ async def diagnose_call_anomaly(
 
 
 def check_admin(token: str = Query("")):
+    bearer = _admin_bearer.get()
+    if bearer is not None:
+        if (not isinstance(token, str) or
+                (token and not hmac.compare_digest(token.encode('utf-8'), bearer.encode('utf-8')))):
+            raise HTTPException(status_code=401, detail="Unauthorized")
+        token = bearer
     if (not ADMIN_TOKEN or ADMIN_TOKEN.strip().lower() == 'changeme'
             or not isinstance(token, str) or not token
             or not hmac.compare_digest(token.encode('utf-8'), ADMIN_TOKEN.encode('utf-8'))):

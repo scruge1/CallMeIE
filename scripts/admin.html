@@ -2042,11 +2042,25 @@
     '/admin/api/events', '/admin/api/call-scoring', '/admin/api/today-actions']);
   async function api(path, options = {}) {
     const { params, ...fetchOptions } = options;
-    const url = endpoint(path, params);
+    let url = endpoint(path, params);
+    const suppliedHeaders = fetchOptions.headers;
+    const explicitToken = params && Object.prototype.hasOwnProperty.call(params, 'token');
+    const adminPath = path.startsWith('/admin/api/');
+    const headers = new Headers(suppliedHeaders);
+    const suppliedAuth = headers.has('Authorization');
+    const ownerBearer = adminPath && !explicitToken && !suppliedAuth && /^[\x21-\x7e]+$/.test(state.token);
+    if (ownerBearer || (adminPath && suppliedAuth && !explicitToken)) {
+      const cleanUrl = new URL(url);
+      cleanUrl.searchParams.delete('token');
+      url = cleanUrl.toString();
+    }
+    if (ownerBearer) headers.set('Authorization', 'Bearer ' + state.token);
+    if (ownerBearer || suppliedAuth) fetchOptions.headers = headers;
+    const requestKey = ownerBearer ? url + '\n' + state.token : url;
     const bounded = boundedReadPaths.has(path) && (fetchOptions.method || 'GET').toUpperCase() === 'GET'
-      && !fetchOptions.body && !fetchOptions.headers && !fetchOptions.signal;
+      && !fetchOptions.body && !suppliedHeaders && !fetchOptions.signal;
     const shared = bounded && sharedReadPaths.has(path);
-    if (shared && sharedReads.has(url)) return sharedReads.get(url);
+    if (shared && sharedReads.has(requestKey)) return sharedReads.get(requestKey);
     const controller = bounded ? new AbortController() : null;
     const timer = controller ? setTimeout(() => controller.abort(), 25000) : null;
     const pending = (async () => {
@@ -2072,11 +2086,11 @@
         if (timer !== null) clearTimeout(timer);
       }
     })();
-    if (shared) sharedReads.set(url, pending);
+    if (shared) sharedReads.set(requestKey, pending);
     try {
       return await pending;
     } finally {
-      if (shared && sharedReads.get(url) === pending) sharedReads.delete(url);
+      if (shared && sharedReads.get(requestKey) === pending) sharedReads.delete(requestKey);
     }
   }
 

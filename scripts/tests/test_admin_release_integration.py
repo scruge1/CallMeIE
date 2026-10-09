@@ -88,6 +88,23 @@ def run():
                         response = await client.get(endpoint,params={'token':'wrong-synthetic'})
                         assert response.status_code==401
                     assert observed==[], 'provider contacted before authorization'
+                    header_response=await client.get('/admin/api/operations-summary',headers={'Authorization':'Bearer synthetic-admin'})
+                    assert header_response.status_code==200
+                    assert 'token=' not in str(header_response.request.url)
+                    assert server._admin_bearer.get() is None
+                    for headers,params in (({'Authorization':'Bearer wrong'}, {'token':'synthetic-admin'}),
+                                           ({'Authorization':'Bearer synthetic-admin'}, {'token':'wrong'}),
+                                           ({'Authorization':'Basic synthetic'}, {'token':'synthetic-admin'})):
+                        denied=await client.get('/admin/api/operations-summary',headers=headers,params=params)
+                        assert denied.status_code==401
+                    duplicate=await client.get('/admin/api/operations-summary',headers=[('Authorization','Bearer synthetic-admin'),('Authorization','Bearer synthetic-admin')])
+                    assert duplicate.status_code==401
+                    matched=await client.get('/admin/api/operations-summary',headers={'Authorization':'Bearer synthetic-admin'},params={'token':'synthetic-admin'})
+                    assert matched.status_code==200
+                    parallel=await asyncio.gather(client.get('/admin/api/operations-summary',headers={'Authorization':'Bearer synthetic-admin'}),client.get('/admin/api/operations-summary'))
+                    assert [r.status_code for r in parallel]==[200,401]
+                    assert server._admin_bearer.get() is None
+                    observed.clear()
                     response = await client.get('/admin/api/operations-summary',params={'token':'synthetic-admin'})
                     assert response.status_code==200
                     payload=response.json()
@@ -123,6 +140,7 @@ def run():
                         'revoked_mapping_excluded':True,'usage_provider_failure_explicit':True,
                         'flow_timeout_504':True,'flow_malformed_502':True,'flow_success_contract':True,
                         'today_partial_sources_explicit':True,
+                        'bearer_and_legacy_auth_compatible':True,'credential_conflicts_rejected':True,'request_auth_isolated':True,
                         'production_actions':False}
             result = loop.run_until_complete(checks())
             import json

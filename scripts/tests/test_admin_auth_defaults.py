@@ -15,7 +15,8 @@ class Unauthorized(Exception):
     def __init__(self,status_code,detail): self.status_code,self.detail=status_code,detail
 
 def check(configured,supplied):
-    ns={'ADMIN_TOKEN':configured,'hmac':hmac,'Query':lambda default:default,'HTTPException':Unauthorized}
+    ns={'ADMIN_TOKEN':configured,'hmac':hmac,'Query':lambda default:default,'HTTPException':Unauthorized,
+        '_admin_bearer':SimpleNamespace(get=lambda:None)}
     exec(compile(ast.Module(body=[GUARD],type_ignores=[]),'<admin-auth>','exec'),ns)
     return ns['check_admin'](supplied)
 

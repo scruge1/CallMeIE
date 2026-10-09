@@ -5,12 +5,12 @@ const start=html.indexOf('  function pollIfVisible('),end=html.indexOf('  functi
 const code=html.slice(start,end);
 function harness(){
  const requests=[],timers=new Map();let next=0,token='synthetic-a';
- const c=vm.createContext({Map,Set,AbortController,document:{hidden:false},
-  endpoint:(url,params)=>url+'?token='+token+'&'+JSON.stringify(params||{}),
+ const c=vm.createContext({Map,Set,AbortController,Headers,URL,state:{token},document:{hidden:false},
+  endpoint:(url,params)=>'https://fixture.test'+url+'?token='+token+'&q='+encodeURIComponent(JSON.stringify(params||{})),
   setTimeout:fn=>{const id=++next;timers.set(id,fn);return id;},clearTimeout:id=>timers.delete(id),
   fetch:(url,options)=>new Promise((resolve,reject)=>{requests.push({url,options,resolve,reject});options.signal?.addEventListener('abort',()=>reject(Object.assign(Error('private-url'),{name:'AbortError'})));})});
  vm.runInContext(code,c);
- return {c,requests,timers,token:value=>{token=value;},run:input=>vm.runInContext(input,c)};
+ return {c,requests,timers,token:value=>{token=value;c.state.token=value;},run:input=>vm.runInContext(input,c)};
 }
 function resolve(row,data={ok:true},status=200){row.resolve({ok:status<400,status,text:async()=>JSON.stringify(data)});}
 test('simultaneous summary reads share one request, not a persistent cache',async()=>{
@@ -53,4 +53,15 @@ test('reviewed event, score and action reads have a finite timeout',async()=>{
 test('manual event refreshes are independent rather than sharing an older snapshot',async()=>{
  const h=harness(),a=h.run("api('/admin/api/events',{params:{limit:300}})"),b=h.run("api('/admin/api/events',{params:{limit:300}})");
  assert.equal(h.requests.length,2);resolve(h.requests[1],[{id:'new'}]);await b;resolve(h.requests[0],[{id:'old'}]);await a;assert.equal(h.timers.size,0);
+});
+test('ordinary admin API request has a bearer header and no token in URL',async()=>{
+ const h=harness(),op=h.run("api('/admin/api/health-detail')");assert.equal(new URL(h.requests[0].url).searchParams.has('token'),false);assert.equal(h.requests[0].options.headers.get('Authorization'),'Bearer synthetic-a');resolve(h.requests[0]);await op;
+});
+test('explicit caller authorization is not overwritten by owner credentials',async()=>{
+ const h=harness(),op=h.run("api('/admin/api/health-detail',{headers:{Authorization:'Bearer explicit-fixture'}})");assert.equal(new URL(h.requests[0].url).searchParams.has('token'),false);assert.equal(h.requests[0].options.headers.get('Authorization'),'Bearer explicit-fixture');resolve(h.requests[0]);await op;
+});
+test('native media URL builder retains the legacy query credential',()=>{
+ const start=html.indexOf('  function endpoint('),end=html.indexOf('  function pollIfVisible(',start);
+ const c=vm.createContext({URL,BASE:'https://fixture.test',state:{token:'synthetic-media'},window:{location:{href:'https://fixture.test/admin'}}});vm.runInContext(html.slice(start,end),c);
+ const url=new URL(c.endpoint('/admin/api/voice-sample',{id:'fixture'}));assert.equal(url.searchParams.get('token'),'synthetic-media');
 });
