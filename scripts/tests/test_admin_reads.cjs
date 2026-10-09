@@ -45,3 +45,12 @@ test('hidden polling issues no read; visible polling resumes once',()=>{
  const h=harness();h.c.count=0;h.c.document.hidden=true;h.run('pollIfVisible(()=>count++)');assert.equal(h.c.count,0);
  h.c.document.hidden=false;h.run('pollIfVisible(()=>count++)');assert.equal(h.c.count,1);
 });
+test('reviewed event, score and action reads have a finite timeout',async()=>{
+ const h=harness(),calls=['events','call-scoring','today-actions'].map(p=>h.run(`api('/admin/api/${p}')`));
+ const done=Promise.allSettled(calls);assert.equal(h.timers.size,3);for(const fn of [...h.timers.values()])fn();
+ assert((await done).every(r=>r.status==='rejected'&&r.reason.message.includes('timed out')));assert.equal(h.timers.size,0);
+});
+test('manual event refreshes are independent rather than sharing an older snapshot',async()=>{
+ const h=harness(),a=h.run("api('/admin/api/events',{params:{limit:300}})"),b=h.run("api('/admin/api/events',{params:{limit:300}})");
+ assert.equal(h.requests.length,2);resolve(h.requests[1],[{id:'new'}]);await b;resolve(h.requests[0],[{id:'old'}]);await a;assert.equal(h.timers.size,0);
+});

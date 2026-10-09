@@ -1891,6 +1891,9 @@
     healthTimer: null,
     todayTimer: null,
     callsTimer: null,
+    callsRequest: 0,
+    callsLoading: false,
+    todayRequest: 0,
     leadsCursor: null,
     assistantId: "",
     assistantEditorId: "",
@@ -2033,13 +2036,18 @@
   // GET synthesis and all mutations retain their existing execution semantics.
   const sharedReads = new Map();
   const sharedReadPaths = new Set(['/admin/api/operations-summary', '/admin/api/health-detail']);
+  // Explicit event/action refreshes must be independent so they can supersede
+  // an older request. They are bounded, but not coalesced.
+  const boundedReadPaths = new Set([...sharedReadPaths,
+    '/admin/api/events', '/admin/api/call-scoring', '/admin/api/today-actions']);
   async function api(path, options = {}) {
     const { params, ...fetchOptions } = options;
     const url = endpoint(path, params);
-    const shared = sharedReadPaths.has(path) && (fetchOptions.method || 'GET').toUpperCase() === 'GET'
+    const bounded = boundedReadPaths.has(path) && (fetchOptions.method || 'GET').toUpperCase() === 'GET'
       && !fetchOptions.body && !fetchOptions.headers && !fetchOptions.signal;
+    const shared = bounded && sharedReadPaths.has(path);
     if (shared && sharedReads.has(url)) return sharedReads.get(url);
-    const controller = shared ? new AbortController() : null;
+    const controller = bounded ? new AbortController() : null;
     const timer = controller ? setTimeout(() => controller.abort(), 25000) : null;
     const pending = (async () => {
       try {
@@ -2177,6 +2185,9 @@
     state.callsTimer = null;
     state.currentTab = tab;
     state.currentMore = more;
+    state.callsRequest += 1;
+    state.callsLoading = false;
+    state.todayRequest += 1;
     state.assistantRequest += 1;
     state.assistantEditorId = "";
     qsa(".tab-btn").forEach((btn) => btn.classList.toggle("active", btn.dataset.tab === tab));
@@ -2188,7 +2199,9 @@
     if (tab === "leads") loadLeads();
     if (tab === "calls") {
       loadCalls();
-      state.callsTimer = setInterval(() => pollIfVisible(loadCalls), 5000);
+      state.callsTimer = setInterval(() => pollIfVisible(() => {
+        if (!state.callsLoading) loadCalls();
+      }), 5000);
     }
     if (tab === "books") loadBooks();
     if (tab === "personal-agent") {
@@ -2343,8 +2356,10 @@
   window.loadTwilioNumbersIntoHealth = loadTwilioNumbersIntoHealth;
 
   async function loadToday() {
+    if (state.currentTab !== 'today') return;
+    const request = ++state.todayRequest;
     const view = qs("#todayView");
-    setLoading(view, "Ranking next best actions...");
+    if (!qs('#todayRefreshStatus')) setLoading(view, "Loading actions and calls...");
     try {
       const [actionsRes, opsRes, healthRes, eventsRes, recRes] = await Promise.allSettled([
         api("/admin/api/today-actions", { params: { limit: 12 } }),
@@ -2353,6 +2368,9 @@
         api("/admin/api/events", { params: { limit: 20 } }),
         loadRecordingsData(8),
       ]);
+      if (state.currentTab !== 'today' || request !== state.todayRequest) return;
+      if (actionsRes.status !== 'fulfilled' || !actionsRes.value || !Array.isArray(actionsRes.value.actions)) throw new Error('Actions could not be refreshed.');
+      if (eventsRes.status !== 'fulfilled' || !Array.isArray(eventsRes.value)) throw new Error('Call events could not be refreshed.');
       const actionsData = valueOf(actionsRes, { actions: [], total_seen: 0 });
       const ops = valueOf(opsRes, null);
       const health = valueOf(healthRes, null);
@@ -2361,6 +2379,7 @@
       state.actions = actionsData.actions || [];
       state.events = Array.isArray(events) ? events : [];
       view.innerHTML = `
+        <p class="muted" id="todayRefreshStatus" role="status">Actions and calls refreshed.</p>
         <div class="dashboard-grid">
           <div class="main-column">
             ${renderActionsPanel(actionsData)}
@@ -2374,7 +2393,10 @@
           </div>
         </div>`;
     } catch (err) {
-      view.innerHTML = renderError("Today could not load", err.message);
+      if (state.currentTab !== 'today' || request !== state.todayRequest) return;
+      const status = qs('#todayRefreshStatus');
+      if (status) status.textContent = 'Refresh failed. Showing previously loaded actions and calls.';
+      else view.innerHTML = renderError("Today could not load", err.message);
     }
   }
 
@@ -2930,6 +2952,9 @@
   window.updateLeadStatus = updateLeadStatus;
 
   async function loadCalls() {
+    if (state.currentTab !== 'calls') return;
+    const request = ++state.callsRequest;
+    state.callsLoading = true;
     const view = qs("#callsView");
     if (!view.innerHTML.trim()) setLoading(view, "Loading calls...");
     try {
@@ -2937,10 +2962,26 @@
         api("/admin/api/events", { params: { limit: 300 } }),
         api("/admin/api/call-scoring"),
       ]);
+      if (state.currentTab !== 'calls' || request !== state.callsRequest) return;
+      if (eventsRes.status !== 'fulfilled') throw new Error('Call events could not be refreshed.');
+      if (!Array.isArray(eventsRes.value)) throw new Error('Call events response is invalid.');
       const events = valueOf(eventsRes, []);
+      if (events.some(event => !event || typeof event !== 'object' || Array.isArray(event))) throw new Error('Call event record is invalid.');
       const scoring = valueOf(scoreRes, {});
-      state.events = Array.isArray(events) ? events : [];
-      view.innerHTML = `
+      const mode = state.callFilter || 'all';
+      const count = filteredCallGroups(events, scoring, mode).flatCount;
+      const timelineHtml = renderFilteredCallGroups(events, scoring, mode);
+      state.events = events;
+      const refreshed = scoreRes.status === 'fulfilled' ? 'Calls refreshed.' : 'Calls refreshed. Call scores unavailable.';
+      const timeline = qs('#callTimeline');
+      if (timeline) {
+        // Keep filter buttons, draft form inputs and the separate record drawer.
+        timeline.innerHTML = timelineHtml;
+        const counter = qs('#callEventsCount');
+        if (counter) counter.textContent = `${count} events`;
+        const status = qs('#callsRefreshStatus');
+        if (status) status.textContent = refreshed;
+      } else view.innerHTML = `
         <div class="view-title-row">
           <div><h1>Calls</h1><p>Chronological Vapi event timeline grouped by call.</p></div>
           <div class="panel-actions">
@@ -2952,15 +2993,23 @@
           <button class="filter-chip ${(state.callFilter||'all')==='all'?'active':''}" type="button" data-filter="all" onclick="setCallFilter('all')">All calls</button>
           <button class="filter-chip ${state.callFilter==='hot'?'active':''}" type="button" data-filter="hot" onclick="setCallFilter('hot')">Hot</button>
           <button class="filter-chip ${state.callFilter==='no-hangups'?'active':''}" type="button" data-filter="no-hangups" onclick="setCallFilter('no-hangups')">Hang-ups hidden</button>
-          <span class="muted" id="callEventsCount">${esc(state.events.length)} events</span>
+          <span class="muted" id="callEventsCount">${esc(count)} events</span>
         </div>
-        <div id="callTimeline">${renderFilteredCallGroups(state.events, scoring, state.callFilter || 'all')}</div>`;
+        <p class="muted" id="callsRefreshStatus" role="status">${esc(refreshed)}</p>
+        <div id="callTimeline">${timelineHtml}</div>`;
       state.scoring = scoring;
       hydrateLatestLeadPhone();
     } catch (err) {
-      view.innerHTML = renderError("Calls could not load", err.message);
+      if (state.currentTab !== 'calls' || request !== state.callsRequest) return;
+      const status = qs('#callsRefreshStatus');
+      if (status) status.textContent = 'Refresh failed. Showing previously loaded calls.';
+      else view.innerHTML = renderError("Calls could not load", err.message);
+    } finally {
+      if (request === state.callsRequest) state.callsLoading = false;
     }
   }
+
+  window.loadCalls = loadCalls;
 
   function renderSendSetupCard(prefix) {
     return `
@@ -3120,7 +3169,7 @@
   }
 
   function callHeat(events, scoring, callId) {
-    const scoreRows = scoring && (scoring.calls || scoring.scores || scoring.data || []);
+    const scoreRows = scoring && (scoring.events || scoring.calls || scoring.scores || scoring.data || []);
     if (Array.isArray(scoreRows)) {
       const row = scoreRows.find((x) => x.call_id === callId);
       if (row && (row.heat || row.interest_level)) return row.heat || row.interest_level;
