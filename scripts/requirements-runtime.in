@@ -1,0 +1,3 @@
+# Application requirements plus build metadata shared with the tested CI runtime.
+-r requirements.txt
+packaging==26.3

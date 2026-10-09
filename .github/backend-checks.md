@@ -1,15 +1,28 @@
 # Backend checks
 
-`backend-offline` runs the complete `scripts/tests` directory except tests marked
-`integration`. It runs for every pull request, main push, merge group and manual
+`backend-offline` runs the Python tests in `scripts/tests` except tests marked
+`integration`. Standalone CJS tests are not collected by this job. It runs for every pull request, main push, merge group and manual
 request. It has no path filter. The test step receives a clean environment,
 private temporary SQLite paths and socket blocking. Unix sockets remain enabled
 for local async test plumbing. This is a test boundary, not OS containment.
 
 The workflow uses Python 3.11.16 and hash-pinned action commits. Test dependencies
 are resolved from the existing production constraints and `requirements-test.in`
-into `requirements-ci.txt`. The Dockerfile still uses its existing requirements.
-The CI lock does not change production dependency installation.
+into `requirements-ci.txt`. The Dockerfile pins the official Python 3.11.16
+multi-architecture image digest and installs `requirements-runtime.txt` with
+hash checking. Compile that runtime lock from `requirements-runtime.in`,
+constrained by the CI lock. Its 60 packages match CI; the five test-only packages
+are excluded. The explicit packaging pin keeps shared build metadata aligned.
+
+Regenerate CI first, then the runtime lock, using the portable commands in their
+headers. Review upstream releases and selectively update packages; preserve
+accepted versions for other packages. Verify every runtime pin and distribution
+hash belongs to the CI lock. Check the actual image interpreter, installed
+packages, shipped source and application behavior before accepting a release.
+Base-image updates need fresh official digest lookup and the same checks.
+
+The Requests 2.32.0 pin was withdrawn upstream. This candidate selects the
+current stable 2.34.2 release; acceptance requires the updated offline checks.
 
 Refresh through the existing repository maintenance owner. Review new action,
 Python and package versions; regenerate the CI lock with the command in its
