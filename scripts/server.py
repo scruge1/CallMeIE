@@ -206,7 +206,7 @@ OWNER_NUMBER = os.environ.get("OWNER_NOTIFICATION_NUMBER", "")
 
 # --- Vapi + admin ---
 VAPI_API_KEY = os.environ.get("VAPI_API_KEY", "")
-ADMIN_TOKEN = os.environ.get("ADMIN_TOKEN", "changeme")
+ADMIN_TOKEN = os.environ.get("ADMIN_TOKEN", "")
 
 # --- Anomaly diagnostics (Claude API) ---
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
@@ -1198,7 +1198,9 @@ async def diagnose_call_anomaly(
 
 
 def check_admin(token: str = Query("")):
-    if not token or token != ADMIN_TOKEN:
+    if (not ADMIN_TOKEN or ADMIN_TOKEN.strip().lower() == 'changeme'
+            or not isinstance(token, str) or not token
+            or not hmac.compare_digest(token.encode('utf-8'), ADMIN_TOKEN.encode('utf-8'))):
         raise HTTPException(status_code=401, detail="Unauthorized")
 
 
