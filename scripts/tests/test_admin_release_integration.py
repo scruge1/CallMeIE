@@ -113,11 +113,14 @@ def run():
                     assert line['allocation_status']=='configured_match'
                     assert line['tenant_id'] is None and line['billable_minutes'] is None
                     assert line['completed_provider_minutes']==1
+                    assert payload['money']['status']=='partial' and payload['money']['profit_verified'] is False
+                    assert payload['money']['payment_fees_basis']=='estimated_percentage_plus_fixed_fee'
                     assert observed==['https://api.vapi.ai/call']
                     assert 'synthetic-client' not in response.text and 'synthetic-revoked' not in response.text
                     mode['value']='timeout'
                     response = await client.get('/admin/api/operations-summary',params={'token':'synthetic-admin'})
                     assert response.status_code==200 and response.json()['usage']['status']=='unavailable'
+                    assert response.json()['money']['status']=='unavailable'
                     response = await client.get('/admin/api/flow-graph',params={'token':'synthetic-admin'})
                     assert response.status_code==504
                     assert 'synthetic provider timeout' not in response.text

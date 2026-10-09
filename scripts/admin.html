@@ -1775,7 +1775,7 @@
           <span class="status-dot"></span>
           <span id="healthLabel">Health unknown</span>
         </button>
-        <button id="moneyChip" class="chip money-chip" type="button" onclick="navigate('books')" title="Revenue less reported fees and estimated call costs; not profit">
+        <button id="moneyChip" class="chip money-chip" type="button" onclick="navigate('books')" title="Revenue less estimated payment fees and call costs; not profit">
           <span>Today estimate</span>
           <strong id="netToday">—</strong>
         </button>
@@ -2266,12 +2266,15 @@
       state.ops = data;
       const today = data.today || {};
       const net = Number(today.net_minor || 0) - Number(today.vapi_cost_minor || 0);
-      qs("#netToday").textContent = eur(net, data.currency || "eur");
+      qs("#netToday").textContent = data.money?.status === 'partial' ? eur(net, data.currency || "eur") : "Unavailable";
       refreshUsagePanels();
+      refreshMoneyPanels();
       return data;
     } catch (err) {
       qs("#netToday").textContent = "offline";
+      if (state.ops) state.ops = {...state.ops, money: {...state.ops.money, status: 'unavailable'}};
       refreshUsagePanels();
+      refreshMoneyPanels();
       return null;
     }
   }
@@ -2568,8 +2571,9 @@
     const currency = (ops && ops.currency) || "eur";
     const cost = Number(today.settled_fees_minor || 0) + Number(today.vapi_cost_minor || 0);
     const net = Number(today.net_minor || 0) - Number(today.vapi_cost_minor || 0);
+    const available = ops?.money?.status === 'partial';
     return `
-      <section class="panel">
+      <section class="panel" data-money-panel>
         <div class="panel-header">
           <div>
             <h2 class="panel-title">Money today</h2>
@@ -2578,15 +2582,19 @@
         </div>
         <div class="panel-body">
           <div class="money-grid">
-            <div class="money-stat"><span>Revenue</span><strong>${eur(today.revenue_minor, currency)}</strong></div>
-            <div class="money-stat"><span>Listed costs</span><strong>${eur(cost, currency)}</strong></div>
-            <div class="money-stat"><span>After listed costs</span><strong>${eur(net, currency)}</strong></div>
+            <div class="money-stat"><span>Revenue</span><strong>${available ? eur(today.revenue_minor, currency) : 'Unavailable'}</strong></div>
+            <div class="money-stat"><span>Listed costs</span><strong>${available ? eur(cost, currency) : 'Unavailable'}</strong></div>
+            <div class="money-stat"><span>After listed costs</span><strong>${available ? eur(net, currency) : 'Unavailable'}</strong></div>
           </div>
-          <p class="panel-subtitle">Listed costs include reported payment fees and estimated call costs. Other business costs are not included.</p>
+          <p class="panel-subtitle">Payment fees and call costs are estimates. Other business costs and active calls are not included. This is a partial read, not a complete period.</p>
+          ${!available ? '<p class="muted" role="status">Money data is unavailable or incompatible. Missing sources do not mean zero revenue or cost.</p>' : ''}
           <div class="pulse-row"><span>${esc(last.demos_count || 0)} demos / 7d</span><span>${esc(last.converted_count || 0)} converted</span></div>
-          <div class="pulse-row"><span>MRR</span><span class="mono">${eur((ops && ops.mrr_minor) || 0, currency)}</span></div>
         </div>
       </section>`;
+  }
+
+  function refreshMoneyPanels() {
+    qsa('[data-money-panel]').forEach(panel => { panel.outerHTML = renderMoneyPanel(state.ops); });
   }
 
   function renderUsagePanel(ops) {

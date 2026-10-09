@@ -7161,7 +7161,7 @@ async def _vapi_calls_window(start_unix: int) -> dict:
 
 @app.get("/admin/api/operations-summary")
 async def admin_operations_summary(token: str = Query("")):
-    """Gaps 8 + 14 + CAC — today's revenue, cost, net, conversion."""
+    """Bounded operations observations; fees/call costs estimated, not billing."""
     check_admin(token)
     import time
     now = int(time.time())
@@ -7176,8 +7176,22 @@ async def admin_operations_summary(token: str = Query("")):
     fees_today_minor = 0
     payments_today = 0
     payments_7d = 0
-    for p in pi_7d.get("data", []):
+    payment_rows_valid = isinstance(pi_7d, dict) and isinstance(pi_7d.get("data"), list)
+    payment_currency_valid = True
+    payment_rows = pi_7d.get("data", []) if payment_rows_valid else []
+    for p in payment_rows:
+        if not isinstance(p, dict):
+            payment_rows_valid = False
+            continue
         if p.get("status") != "succeeded":
+            continue
+        if (not isinstance(p.get("amount"), int) or isinstance(p.get("amount"), bool)
+                or p["amount"] < 0 or not isinstance(p.get("created"), int)
+                or isinstance(p.get("created"), bool)):
+            payment_rows_valid = False
+            continue
+        if not isinstance(p.get("currency"), str) or p["currency"].lower() != "eur":
+            payment_currency_valid = False
             continue
         amt = p.get("amount", 0) or 0
         rev_7d_minor += amt
@@ -7268,6 +7282,20 @@ async def admin_operations_summary(token: str = Query("")):
         },
         "currency": "eur",
         "usage": usage,
+        "money": {
+            "status": "partial" if (payment_rows_valid and payment_currency_valid
+                                     and vapi_snapshot.get("status") == "ok"
+                                     and not usage["rejected_records"] and not usage["conflicting_calls"]
+                                     and not any(line["unknown_calls"] for line in usage["lines"])) else "unavailable",
+            "payment_rows_valid": payment_rows_valid,
+            "payment_currency_valid": payment_currency_valid,
+            "payment_limit_reached": isinstance(pi_7d, dict) and
+                                     (pi_7d.get("has_more") is True or len(payment_rows) >= 100),
+            "payment_fees_basis": "estimated_percentage_plus_fixed_fee",
+            "call_cost_basis": "completed_provider_elapsed_times_configured_rate",
+            "complete_period": False,
+            "profit_verified": False,
+        },
         "rate_card_used": {
             "vapi_per_min_eur": VAPI_RATE_PER_MIN_EUR,
             "twilio_sms_intl_eur": TWILIO_SMS_INTL_RATE_EUR,
