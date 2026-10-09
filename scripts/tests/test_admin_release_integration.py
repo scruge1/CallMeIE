@@ -119,6 +119,26 @@ def run():
                     assert (await client.post('/vapi/call-ended',headers=report_headers,content='not-json')).status_code==400
                     empty_final=await client.post('/vapi/call-ended',headers=report_headers,json={'message':{'type':'end-of-call-report'}})
                     assert empty_final.status_code==200 and empty_final.json()['skipped']=='no_call_id_or_assistant'
+                    final_body={'message':{'type':'end-of-call-report',
+                                'call':{'id':'final-fixture','assistantId':'fixture-assistant','status':'ended','duration':0},
+                                'artifact':{'transcript':'synthetic final transcript',
+                                            'assistantActivations':[{'assistantId':'handoff-fixture'}]}}}
+                    with patch.object(server,'_delayed_mirror_via_vapi') as archive, \
+                         patch.object(server,'score_anomaly',return_value=0), \
+                         patch.object(server,'get_client',return_value={'name':'Fixture','owner':'','from':''}):
+                        with patch.object(server,'store_final_report',side_effect=RuntimeError('private synthetic failure')):
+                            failed_final=await client.post('/vapi/call-ended',headers=report_headers,json=final_body)
+                        assert failed_final.status_code==503 and failed_final.json()=={'error':'final_storage_unavailable'}
+                        assert archive.call_count==0
+                        final_results=await asyncio.gather(*[
+                            client.post('/vapi/call-ended',headers=report_headers,json=final_body) for _ in range(8)])
+                        assert all(r.status_code==200 for r in final_results)
+                        assert sum(r.json().get('duplicate',False) for r in final_results)==7
+                        assert archive.call_count==1
+                    with server.get_db() as db:
+                        final_rows=db.execute("SELECT assistant,detail FROM call_events WHERE call_id='final-fixture' ORDER BY id").fetchall()
+                    assert [r['assistant'] for r in final_rows]==['fixture-assistant','handoff-fixture']
+                    assert 'synthetic final transcript' in final_rows[0]['detail']
                     assert observed==[], 'call report boundary contacted provider'
                     for endpoint in ('/admin/api/operations-summary','/admin/api/flow-graph'):
                         response = await client.get(endpoint)

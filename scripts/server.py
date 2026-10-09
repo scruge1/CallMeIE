@@ -1322,7 +1322,7 @@ async def send_telegram(message: str) -> None:
 
 # --- Vapi post-call webhook ---
 from billing.webhook import require_call_report_auth
-from billing.status_events import normalize_status_event, store_status_event, read_status_feed
+from billing.status_events import normalize_status_event, store_status_event, read_status_feed, store_final_report
 from fastapi.concurrency import run_in_threadpool
 
 
@@ -1392,18 +1392,8 @@ async def call_ended(request: Request, background_tasks: BackgroundTasks):
     if not call_id and not assistant_id:
         return JSONResponse({"status": "ok", "skipped": "no_call_id_or_assistant"})
 
-    if call_id:
-        try:
-            with get_db() as conn:
-                duplicate = conn.execute(
-                    "SELECT 1 FROM call_events WHERE call_id=? AND event_type='call-ended' LIMIT 1",
-                    (call_id,),
-                ).fetchone()
-            if duplicate:
-                print(f"[Call] duplicate call-ended webhook ignored for {call_id}")
-                return JSONResponse({"status": "ok", "duplicate": True})
-        except Exception as e:
-            print(f"[Call] dedupe check failed: {e}")
+    if not call_id:
+        return JSONResponse({'error': 'missing_call_id'}, status_code=400)
 
     client = get_client(assistant_id)
     business = client["name"]
@@ -1426,7 +1416,7 @@ async def call_ended(request: Request, background_tasks: BackgroundTasks):
     status_pretty = ended_reason or status or "completed"
     summary_text = f"{status_pretty} · {duration_int}s · from {caller}" if caller else f"{status_pretty} · {duration_int}s"
 
-    log_event(call_id, "call-ended", assistant_id,
+    final_rows = [(assistant_id,
               summary_text,
               {
                   "status": status,
@@ -1437,7 +1427,7 @@ async def call_ended(request: Request, background_tasks: BackgroundTasks):
                   "summary": (analysis.get("summary") or "")[:1000] if analysis else "",
                   "structured_data": analysis.get("structuredData") if analysis else None,
                   "messages_count": len(artifact_messages) if isinstance(artifact_messages, list) else 0,
-              })
+              })]
 
     # 2026-05-13 — Handoff attribution. Vapi sends ONE end-of-call-report tagged
     # with the ORIGINATING assistantId. For multi-assistant chains (Claire ->
@@ -1458,9 +1448,7 @@ async def call_ended(request: Request, background_tasks: BackgroundTasks):
         if not aid or aid in seen_aids:
             continue
         seen_aids.add(aid)
-        log_event(
-            call_id,
-            "call-ended",
+        final_rows.append((
             aid,
             summary_text,
             {
@@ -1468,13 +1456,22 @@ async def call_ended(request: Request, background_tasks: BackgroundTasks):
                 "duration": duration,
                 "caller": caller,
                 "handoff_from": assistant_id,
-                "handoff_chain": handoff_chain or [assistant_id],
+                "handoff_chain": list(handoff_chain) or [assistant_id],
                 "transcript": transcript_text[:30000] if transcript_text else "",
                 "ended_reason": ended_reason,
                 "summary": (analysis.get("summary") or "")[:1000] if analysis else "",
                 "is_mirror_row": True,
             },
-        )
+        ))
+
+    try:
+        saved = await run_in_threadpool(store_final_report, get_db, call_id, final_rows)
+    except ValueError:
+        return JSONResponse({'error': 'invalid_final_report'}, status_code=400)
+    except Exception:
+        return JSONResponse({'error': 'final_storage_unavailable'}, status_code=503)
+    if saved['duplicate']:
+        return JSONResponse(saved)
 
     # P2 — mirror Vapi recording to durable Hetzner archive (90d retention promise).
     # Vapi includes recordingUrl + stereoRecordingUrl on the call object once

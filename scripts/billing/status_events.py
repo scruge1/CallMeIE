@@ -82,3 +82,41 @@ def read_status_feed(connection_factory):
     if stamp.tzinfo is None:
         stamp = stamp.replace(tzinfo=timezone.utc)
     return {'status': 'observed', 'last_received_at': stamp.timestamp(), 'coverage_verified': False}
+
+
+def store_final_report(connection_factory, call_id, rows):
+    """Commit the origin and all handoff rows together, once per call.
+
+    Existing NULL-key historical reports remain duplicates. The origin key is
+    call-bound, not assistant-bound: changed attribution cannot replay a report.
+    This does not provide durable recovery of later notification/archive work.
+    """
+    call_id = _identifier(call_id, required=True)
+    if not rows:
+        raise ValueError('missing_final_rows')
+    key = hashlib.sha256(('call-ended-v1:' + call_id).encode('utf-8')).hexdigest()
+    with connection_factory() as conn:
+        # Retain old dedupe semantics for reports stored before event_key existed.
+        old = conn.execute(
+            "SELECT 1 FROM call_events WHERE call_id=? AND event_type='call-ended' LIMIT 1",
+            (call_id,),
+        ).fetchone()
+        if old:
+            conn.commit()
+            return {'status': 'ok', 'stored': False, 'duplicate': True}
+        assistant, summary, detail = rows[0]
+        inserted = conn.execute(
+            'INSERT INTO call_events(call_id,event_type,assistant,summary,detail,event_key) '
+            'VALUES(?,?,?,?,?,?) ON CONFLICT(event_key) DO NOTHING RETURNING id',
+            (call_id, 'call-ended', assistant, summary, json.dumps(detail), key),
+        ).fetchone()
+        if inserted is not None:
+            for assistant, summary, detail in rows[1:]:
+                conn.execute(
+                    'INSERT INTO call_events(call_id,event_type,assistant,summary,detail) VALUES(?,?,?,?,?)',
+                    (call_id, 'call-ended', assistant, summary, json.dumps(detail)),
+                )
+        # Explicit commit is necessary: the legacy proxy suppresses context-exit
+        # commit errors. Never acknowledge a successful report before this.
+        conn.commit()
+    return {'status': 'ok', 'stored': inserted is not None, 'duplicate': inserted is None}
