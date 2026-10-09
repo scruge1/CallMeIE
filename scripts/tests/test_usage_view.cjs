@@ -1,7 +1,8 @@
 'use strict';
 const test=require('node:test'), assert=require('node:assert/strict'), fs=require('node:fs'), path=require('node:path'), vm=require('node:vm');
 const html=fs.readFileSync(path.join(__dirname,'../admin.html'),'utf8');
-const start=html.indexOf('  function renderUsagePanel('), end=html.indexOf('  function sparkline()',start);
+const start=html.indexOf('  function renderUsagePanel('), end=html.indexOf('  function renderSystemPanel(',start);
+assert(start>=0&&end>start,'usage renderer extraction must stop at the next real function');
 const context=vm.createContext({esc:s=>String(s).replaceAll('<','&lt;').replaceAll('>','&gt;'),Date});
 vm.runInContext(html.slice(start,end),context);
 const render=usage=>context.renderUsagePanel({usage});

@@ -1762,17 +1762,17 @@
       <div class="wordmark">CallMeIE</div>
       <div class="command-wrap">
         <svg class="search-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m21 21-4.2-4.2M10.8 18a7.2 7.2 0 1 1 0-14.4 7.2 7.2 0 0 1 0 14.4Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
-        <input id="globalSearch" class="command-input" type="search" placeholder="Search or type a command...">
+        <input id="globalSearch" class="command-input" type="text" aria-label="Go to a dashboard section" placeholder="Go to calls, leads, books or settings">
         <span class="kbd">⌘K</span>
       </div>
       <div class="topbar-right">
-        <button id="healthChip" class="chip ok" type="button" onclick="toggleHealthDetail()" title="Toggle health detail">
+        <button id="healthChip" class="chip warn" type="button" onclick="toggleHealthDetail()" title="View checked services; this is not a call-path test">
           <span class="status-dot"></span>
-          <span id="healthLabel">Systems healthy</span>
+          <span id="healthLabel">Health unknown</span>
         </button>
-        <button id="moneyChip" class="chip money-chip" type="button" onclick="navigate('books')">
-          <span>Today net</span>
-          <strong id="netToday">€0.00</strong>
+        <button id="moneyChip" class="chip money-chip" type="button" onclick="navigate('books')" title="Revenue less reported fees and estimated call costs; not profit">
+          <span>Today estimate</span>
+          <strong id="netToday">—</strong>
         </button>
         <button class="btn icon-btn mobile-more-trigger" type="button" onclick="openMoreSheet()" aria-label="More">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14M5 12h14M5 17h14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
@@ -2237,12 +2237,18 @@
   function runCommandSearch(value) {
     const q = String(value || "").trim();
     if (!q) return;
-    if (/lead/i.test(q)) navigate("leads");
-    else if (/call|record/i.test(q)) navigate("calls");
-    else if (/book|stripe|revenue|money/i.test(q)) navigate("books");
-    else if (/setting|theme|token/i.test(q)) navigate("more", "settings");
-    else navigate("leads");
-    showToast(`Searching for "${q}"`);
+    let section = "";
+    if (/^(leads?)$/i.test(q)) section = "leads";
+    else if (/^(calls?|records?|recordings?)$/i.test(q)) section = "calls";
+    else if (/^(books?|stripe|revenue|money)$/i.test(q)) section = "books";
+    else if (/^(settings?|theme|token)$/i.test(q)) section = "settings";
+    if (!section) {
+      showToast("Choose calls, leads, books or settings. This opens a section; it does not search records.");
+      return;
+    }
+    if (section === "settings") navigate("more", "settings");
+    else navigate(section);
+    showToast(`Opened ${section}`);
   }
 
   async function loadChrome() {
@@ -2272,7 +2278,7 @@
       const status = normalStatus(data.overall);
       const chip = qs("#healthChip");
       chip.className = `chip ${status}`;
-      qs("#healthLabel").textContent = status === "ok" ? "Systems healthy" : status === "warn" ? "Needs attention" : "Systems failing";
+      qs("#healthLabel").textContent = status === "ok" ? "Service checks OK" : status === "warn" ? "Needs attention" : "Service check failed";
       setFavicon(status);
       updateThemeColor();
       if (qs("#healthDetail").classList.contains("open")) renderHealthDetail(data);
@@ -2561,17 +2567,17 @@
       <section class="panel">
         <div class="panel-header">
           <div>
-            <h2 class="panel-title">Money pulse</h2>
-            <p class="panel-subtitle">Today</p>
+            <h2 class="panel-title">Money today</h2>
+            <p class="panel-subtitle">Reported revenue and estimated costs; not profit</p>
           </div>
-          ${sparkline()}
         </div>
         <div class="panel-body">
           <div class="money-grid">
             <div class="money-stat"><span>Revenue</span><strong>${eur(today.revenue_minor, currency)}</strong></div>
-            <div class="money-stat"><span>Cost</span><strong>${eur(cost, currency)}</strong></div>
-            <div class="money-stat"><span>Net</span><strong class="ok-text">${eur(net, currency)}</strong></div>
+            <div class="money-stat"><span>Listed costs</span><strong>${eur(cost, currency)}</strong></div>
+            <div class="money-stat"><span>After listed costs</span><strong>${eur(net, currency)}</strong></div>
           </div>
+          <p class="panel-subtitle">Listed costs include reported payment fees and estimated call costs. Other business costs are not included.</p>
           <div class="pulse-row"><span>${esc(last.demos_count || 0)} demos / 7d</span><span>${esc(last.converted_count || 0)} converted</span></div>
           <div class="pulse-row"><span>MRR</span><span class="mono">${eur((ops && ops.mrr_minor) || 0, currency)}</span></div>
         </div>
@@ -2605,13 +2611,6 @@
 
   function refreshUsagePanels() {
     qsa('[data-usage-panel]').forEach(panel => { panel.outerHTML = renderUsagePanel(state.ops); });
-  }
-
-  function sparkline() {
-    return `<svg class="sparkline" viewBox="0 0 140 70" aria-hidden="true">
-      <path d="M4 58 C18 46 22 52 31 38 S48 22 57 31 74 14 85 20 97 34 108 24 124 27 136 16" fill="none" stroke="currentColor" stroke-width="2"/>
-      <path d="M4 58 C18 46 22 52 31 38 S48 22 57 31 74 14 85 20 97 34 108 24 124 27 136 16 V68 H4Z" fill="currentColor" opacity=".08"/>
-    </svg>`;
   }
 
   function renderSystemPanel(health) {
