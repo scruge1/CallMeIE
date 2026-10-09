@@ -53,6 +53,14 @@ def run():
                            ('synthetic-client','fixture-tenant','Fixture tenant','fixture-assistant'))
                 db.execute('INSERT INTO client_tokens(token,tenant_slug,tenant_display_name,assistant_ids,revoked_at) VALUES(?,?,?,?,?)',
                            ('synthetic-revoked','other-tenant','Revoked tenant','fixture-assistant','2026-01-01'))
+                db.execute('INSERT INTO client_tokens(token,tenant_slug,tenant_display_name,assistant_ids) VALUES(?,?,?,?)',
+                           ('synthetic-other','other-tenant','Other tenant','other-assistant'))
+                for call_id,assistant in [('shared-fixture','fixture-assistant'),('shared-fixture','other-assistant'),('private-fixture','fixture-assistant')]:
+                    db.execute('INSERT INTO call_events(call_id,event_type,assistant,summary,detail) VALUES(?,?,?,?,?)',
+                               (call_id,'call-ended',assistant,'Synthetic call','{}'))
+                for tenant,note,actor in [('fixture-tenant','own-note','client'),('other-tenant','other-note','client'),(None,'owner-note','admin')]:
+                    db.execute('INSERT INTO call_notes(call_id,tenant_slug,note,actor) VALUES(?,?,?,?)',
+                               ('shared-fixture',tenant,note,actor))
 
             observed = []
             mode = {'value':'ok'}
@@ -138,12 +146,40 @@ def run():
                     assert today.json()['coverage']=='partial'
                     assert today.json()['source_status']['sms_capability']=='failed'
                     assert today.json()['complete_period'] is False
+                    for credential in ('synthetic-client','synthetic-other'):
+                        header={'Authorization':'Bearer '+credential}
+                        detail=await client.get('/client/api/calls/shared-fixture',headers=header)
+                        assert detail.status_code==200
+                        expected='own-note' if credential=='synthetic-client' else 'other-note'
+                        assert [n['note'] for n in detail.json()['notes']]==[expected]
+                        legacy=await client.get('/client/api/calls/shared-fixture',params={'token':credential})
+                        assert legacy.status_code==200 and legacy.json()['notes']==detail.json()['notes']
+                    admin_detail=await client.get('/admin/api/caller/shared-fixture',headers={'Authorization':'Bearer synthetic-admin'})
+                    assert admin_detail.status_code==200 and len(admin_detail.json()['notes'])==3
+                    wrong_tenant=await client.get('/client/api/calls/private-fixture',headers={'Authorization':'Bearer synthetic-other'})
+                    assert wrong_tenant.status_code==403
+                    for credential in ('synthetic-revoked','wrong','synthetic-admin'):
+                        denied=await client.get('/client/api/calls',headers={'Authorization':'Bearer '+credential})
+                        assert denied.status_code==401
+                    assert (await client.get('/admin/api/operations-summary',headers={'Authorization':'Bearer synthetic-client'})).status_code==401
+                    assert (await client.get('/client/api/today',params={'assistant':'fixture-assistant'},headers={'Authorization':'Bearer synthetic-client'})).status_code==401
+                    for headers,params in [({'Authorization':'Bearer wrong'},{'token':'synthetic-client'}),
+                                           ({'Authorization':'Bearer synthetic-client'},{'token':'synthetic-other'}),
+                                           ({'Authorization':'Basic synthetic'},{'token':'synthetic-client'}),
+                                           ([('Authorization','Bearer synthetic-client'),('Authorization','Bearer synthetic-client')],{})]:
+                        assert (await client.get('/client/api/calls',headers=headers,params=params)).status_code==401
+                    parallel_clients=await asyncio.gather(client.get('/client/api/calls',headers={'Authorization':'Bearer synthetic-client'}),
+                                                          client.get('/client/api/calls',headers={'Authorization':'Bearer synthetic-other'}),client.get('/client/api/calls'))
+                    assert [r.status_code for r in parallel_clients]==[200,200,401]
+                    assert [r.json()['tenant_slug'] for r in parallel_clients[:2]]==['fixture-tenant','other-tenant']
+                    assert server._admin_bearer.get() is None
                 return {'scope':'real imported app, ASGI transport, disposable SQLite, mocked providers',
                         'status':'passed','authorized_usage':True,'auth_before_provider':True,
                         'revoked_mapping_excluded':True,'usage_provider_failure_explicit':True,
                         'flow_timeout_504':True,'flow_malformed_502':True,'flow_success_contract':True,
                         'today_partial_sources_explicit':True,
                         'bearer_and_legacy_auth_compatible':True,'credential_conflicts_rejected':True,'request_auth_isolated':True,
+                        'client_bearer_legacy_revocation_scope_pass':True,'tenant_notes_isolated_admin_view_preserved':True,
                         'production_actions':False}
             result = loop.run_until_complete(checks())
             import json

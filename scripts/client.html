@@ -498,7 +498,8 @@ const STORAGE_TOKEN = "client_token";
 const STORAGE_THEME = "client_theme";
 const STORAGE_TOUR  = "client_tour_completed";
 
-const state = { token: "", tenant: null, currentTab: "calls", calls: [], inbox: [], insights: null, settings: null };
+const state = { token: "", tenant: null, currentTab: "calls", calls: [], inbox: [], insights: null, settings: null,
+  drawerRequest: 0, drawerCallId: '', drawerLoadedId: '', noteSaving: false };
 
 const qs = (s, root = document) => root.querySelector(s);
 const qsa = (s, root = document) => Array.from(root.querySelectorAll(s));
@@ -519,12 +520,20 @@ function endpoint(path, params) {
 }
 
 async function api(path, opts = {}) {
-  const url = endpoint(path, opts.params);
-  const init = { method: opts.method || "GET", headers: opts.headers || {} };
+  let url = endpoint(path, opts.params);
+  const headers = new Headers(opts.headers || {});
+  const explicitToken = opts.params && Object.prototype.hasOwnProperty.call(opts.params, 'token');
+  const suppliedAuth = headers.has('Authorization');
+  const clientBearer = path.startsWith('/client/api/') && !explicitToken && !suppliedAuth && /^[\x21-\x7e]+$/.test(state.token);
+  if (clientBearer || (path.startsWith('/client/api/') && suppliedAuth && !explicitToken)) {
+    const cleanUrl = new URL(url); cleanUrl.searchParams.delete('token'); url = cleanUrl.toString();
+  }
+  if (clientBearer) headers.set('Authorization', 'Bearer ' + state.token);
+  const init = { method: opts.method || "GET", headers };
   if (opts.body) init.body = opts.body;
   const r = await fetch(url, init);
   if (!r.ok) {
-    if (r.status === 401) { logout(); return; }
+    if (r.status === 401) { logout(); throw new Error('Sign-in required'); }
     let detail = "";
     try { detail = JSON.stringify(await r.json()); } catch (_) { detail = await r.text(); }
     throw new Error(`HTTP ${r.status}: ${detail}`);
@@ -567,6 +576,7 @@ function logout() {
   localStorage.removeItem(STORAGE_TOKEN);
   state.token = "";
   state.tenant = null;
+  closeDrawer();
   qs("#loginShell").hidden = false;
   qs("#appShell").hidden = true;
 }
@@ -862,10 +872,15 @@ function jobDetailsBlock(data){
   return `${gas}<h4 style="margin:0 0 8px;">Job details</h4><dl style="display:grid;grid-template-columns:140px 1fr;gap:6px 14px;margin:0 0 16px;font-size:13px;">${body}</dl>`;
 }
 async function openDrawer(callId) {
+  const request = ++state.drawerRequest;
+  state.drawerCallId = callId;
+  state.drawerLoadedId = '';
   qs("#drawerBackdrop").classList.add("open");
   qs("#drawerContent").innerHTML = '<div class="empty">Loading call…</div>';
   try {
     const data = await api(`/client/api/calls/${encodeURIComponent(callId)}`);
+    if (request !== state.drawerRequest || callId !== state.drawerCallId) return;
+    if (!data || data.call_id !== callId) throw new Error('Call details do not match the selected call.');
     qs("#drawerContent").innerHTML = `
       <div style="display:flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px;">
         <div>
@@ -883,7 +898,7 @@ async function openDrawer(callId) {
       ${data.transcript ? `
         <h4 style="margin: 0 0 8px;">Transcript</h4>
         <div style="background:rgba(255,200,80,0.10);border-left:3px solid rgba(255,180,40,0.7);padding:8px 10px;border-radius:4px;font-size:12px;color:var(--text-soft);margin-bottom:10px;">
-          <strong>Note:</strong> automated transcription may show some words incorrectly. The AI checks the callback number with the caller; other details are taken as spoken and confirmed by the team on the callback.
+          <strong>Note:</strong> automated transcripts can contain mistakes. Confirm important details before acting.
         </div>
         <div style="white-space: pre-wrap; font-size: 13px; color: var(--text-soft); margin-bottom: 16px;">${esc(data.transcript)}</div>
       ` : ""}
@@ -895,27 +910,42 @@ async function openDrawer(callId) {
         : `<div class="empty" style="font-size:12px;">No notes saved yet.</div>`
       }</div>
       <textarea id="drawerNote" class="textarea" rows="3" placeholder="Add a note (saved to this call only)…"></textarea>
-      <button class="btn primary" type="button" onclick="saveNote('${esc(callId)}')" style="margin-top: 8px;">Save note</button>`;
+      <button id="drawerSaveNote" class="btn primary" type="button" onclick="saveNote('${esc(callId)}')" style="margin-top: 8px;">Save note</button>`;
+    state.drawerLoadedId = callId;
   } catch (err) {
+    if (request !== state.drawerRequest || callId !== state.drawerCallId) return;
     qs("#drawerContent").innerHTML = `<div class="empty">Could not load call. ${esc(err.message)}</div>`;
   }
 }
 function closeDrawer() {
+  state.drawerRequest += 1;
+  state.drawerCallId = '';
+  state.drawerLoadedId = '';
   qs("#drawerBackdrop").classList.remove("open");
 }
 async function saveNote(callId) {
-  const note = qs("#drawerNote").value.trim();
+  if (state.noteSaving || callId !== state.drawerLoadedId || callId !== state.drawerCallId) return;
+  const input = qs("#drawerNote");
+  if (!input) return;
+  const note = input.value.trim();
   if (!note) return;
+  const request = state.drawerRequest;
+  const button = qs('#drawerSaveNote');
+  state.noteSaving = true;
+  if (button) button.disabled = true;
   try {
     await api(`/client/api/calls/${encodeURIComponent(callId)}/note`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ note }),
     });
-    qs("#drawerNote").value = "";
+    if (request !== state.drawerRequest || callId !== state.drawerCallId) return;
+    if (input.value.trim() !== note) { toast('Note saved. Your new draft is still here.'); return; }
+    input.value = "";
     // 2026-05-13 — reload drawer so saved note appears in Notes list
     await openDrawer(callId);
   } catch (err) { alert("Save failed: " + err.message); }
+  finally { state.noteSaving = false; if (button) button.disabled = false; }
 }
 
 // --- Driver.js tour ---

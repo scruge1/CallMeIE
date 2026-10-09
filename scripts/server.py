@@ -60,7 +60,7 @@ class AdminBearerContext:
         if scope['type'] != 'http':
             return await self.app(scope, receive, send)
         credential = None
-        if scope.get('path', '').startswith('/admin/api/'):
+        if scope.get('path', '').startswith(('/admin/api/', '/client/api/')):
             values = Request(scope).headers.getlist('authorization')
             if values:
                 credential = ''  # malformed/duplicate headers must not fall back
@@ -8290,7 +8290,13 @@ def check_client(token: str) -> dict:
     """Validate client token. Raise 401 if missing/invalid/revoked.
     Updates last_used_at on every call. Returns the client_tokens row dict.
     """
-    if not token:
+    bearer = _admin_bearer.get()  # shared request transport, never an admin grant
+    if bearer is not None:
+        if (not isinstance(token, str) or
+                (token and not hmac.compare_digest(token.encode('utf-8'), bearer.encode('utf-8')))):
+            raise HTTPException(status_code=401, detail="invalid_token")
+        token = bearer
+    if not isinstance(token, str) or not token:
         raise HTTPException(status_code=401, detail="missing_token")
     try:
         with get_db() as conn:
@@ -8313,11 +8319,11 @@ def check_client(token: str) -> dict:
             return dict(row)
     except HTTPException:
         raise
-    except Exception as e:
+    except Exception:
         # client_tokens table may not exist yet (migration 0010 not applied).
         # Return 503 so frontend can show a meaningful error.
         raise HTTPException(status_code=503,
-                            detail=f"client_dashboard_not_ready: {e}")
+                            detail="client_dashboard_not_ready")
 
 
 def _client_assistant_filter(client_row: dict) -> tuple[str, list]:
@@ -8853,15 +8859,14 @@ async def client_call_detail(call_id: str, token: str = Query("")):
             "summary": r["summary"] or "",
         })
 
-    # 2026-05-13 — return saved notes for this call (Adam request: notes were
-    # saving to call_notes table but never displayed back in drawer).
+    # Notes retain their tenant scope even when a call has handoff mirror rows.
     notes_out = []
     try:
         with get_db() as conn:
             note_rows = conn.execute(
                 "SELECT created_at, note, actor, tenant_slug FROM call_notes "
-                "WHERE call_id = ? ORDER BY id ASC",
-                (call_id,),
+                "WHERE call_id = ? AND tenant_slug = ? ORDER BY id ASC",
+                (call_id, c["tenant_slug"]),
             ).fetchall()
         for n in note_rows:
             notes_out.append({
@@ -8870,8 +8875,8 @@ async def client_call_detail(call_id: str, token: str = Query("")):
                 "actor": n["actor"] or "client",
                 "tenant_slug": n["tenant_slug"] or "",
             })
-    except Exception as e:
-        print(f"[client_call_detail] notes fetch failed: {e}")
+    except Exception:
+        print("[client_call_detail] notes unavailable")
 
     return {
         "call_id": call_id,
