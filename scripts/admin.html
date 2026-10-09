@@ -2272,7 +2272,9 @@
       return data;
     } catch (err) {
       qs("#netToday").textContent = "offline";
-      if (state.ops) state.ops = {...state.ops, money: {...state.ops.money, status: 'unavailable'}};
+      state.ops = {...state.ops,
+        usage: {...state.ops?.usage, status: 'unavailable', reason: 'summary_refresh_failed'},
+        money: {...state.ops?.money, status: 'unavailable'}};
       refreshUsagePanels();
       refreshMoneyPanels();
       return null;
@@ -2413,8 +2415,8 @@
             ${renderActionsPanel(actionsData)}
           </div>
           <div class="side-grid">
-            ${renderMoneyPanel(ops)}
-            ${renderUsagePanel(ops)}
+            ${renderMoneyPanel(state.ops || ops)}
+            ${renderUsagePanel(state.ops || ops)}
             ${renderSystemPanel(health)}
             ${renderRecordingsPanel(recordings)}
             ${renderSignalPanel(state.events)}
@@ -2599,10 +2601,13 @@
 
   function renderUsagePanel(ops) {
     const usage = ops && ops.usage;
-    if (!usage || usage.status === 'unavailable') {
+    const observedAt = usage && usage.observed_at;
+    const snapshotTime = new Date(observedAt * 1000);
+    if (!usage || usage.status === 'unavailable' || typeof observedAt !== 'number'
+        || !Number.isFinite(observedAt) || !Number.isFinite(snapshotTime.getTime())) {
       return `<section class="panel" data-usage-panel><div class="panel-header"><h2 class="panel-title">Call usage</h2></div><div class="panel-body">Usage data unavailable. This does not mean zero calls.</div></section>`;
     }
-    const age = Date.now() / 1000 - Number(usage.observed_at);
+    const age = Date.now() / 1000 - observedAt;
     const fresh = usage.status === 'fresh' && Number.isFinite(age) && age >= 0 && age <= 90;
     const rows = (usage.lines || []).map(line => `<div class="pulse-row" style="flex-wrap:wrap;gap:8px">
       <span style="overflow-wrap:anywhere">${line.allocation_status === 'configured_match' ? 'Configured tenant: ' + esc(line.configured_tenant_name || line.configured_tenant_id) : line.allocation_status === 'conflicting' ? 'Conflicting tenant configuration' : line.allocation_status === 'unassigned' ? 'No configured tenant' : 'Tenant configuration unavailable'}</span>
@@ -2614,7 +2619,7 @@
     return `<section class="panel" data-usage-panel><div class="panel-header"><div><h2 class="panel-title">Call usage</h2>
       <p class="panel-subtitle">Today, UTC · ${fresh ? 'Recent snapshot' : 'Stale snapshot'} · partial coverage</p></div></div>
       <div class="panel-body"><p>Provider call time, not confirmed AI handling or billable minutes.</p>
-      <p>Snapshot: ${esc(new Date(Number(usage.observed_at) * 1000).toISOString())}</p>
+      <p>Snapshot: ${esc(snapshotTime.toISOString())}</p>
       ${rows || '<p>No calls returned in this window.</p>'}
       <p>Calls created before midnight are not included.${usage.limit_reached ? ' The 100-call limit was reached.' : ''}</p>
       ${usage.conflicting_calls || usage.rejected_records ? `<p>${esc(usage.conflicting_calls)} conflicting calls and ${esc(usage.rejected_records)} invalid records excluded.</p>` : ''}
