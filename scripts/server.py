@@ -205,6 +205,9 @@ app.add_middleware(
 @app.middleware("http")
 async def security_headers(request: Request, call_next):
     response = await call_next(request)
+    if (request.url.path.startswith(("/admin/api/", "/client/api/"))
+            and response.headers.get("content-type", "").split(";", 1)[0] == "application/json"):
+        response.headers["Cache-Control"] = "private, no-store"
     response.headers.setdefault(
         "Strict-Transport-Security", "max-age=31536000; includeSubDomains"
     )
@@ -7444,7 +7447,7 @@ async def admin_recordings_enriched(token: str = Query(""), limit: int = Query(5
 
 
 @app.get("/admin/api/caller/{call_id}")
-async def admin_caller_timeline(call_id: str, token: str = Query("")):
+def admin_caller_timeline(call_id: str, token: str = Query("")):
     """Gap 16 — full timeline for one call_id (CallRail caller-timeline pattern)."""
     check_admin(token)
     try:
@@ -8563,6 +8566,15 @@ async def _fetch_client_assistant(assistant_id: str) -> dict:
     return {}
 
 
+def _recording_setting_status(assistant: dict) -> str:
+    plan = assistant.get("artifactPlan") or {}
+    if isinstance(plan, dict) and "recordingEnabled" in plan:
+        value = plan["recordingEnabled"]
+    else:
+        value = assistant.get("recordingEnabled")
+    return "verified" if isinstance(value, bool) else "unverified"
+
+
 @app.get("/client/api/me")
 async def client_me(token: str = Query("")):
     """Return current client's tenant identity + relevant assistant config
@@ -8572,19 +8584,21 @@ async def client_me(token: str = Query("")):
     if isinstance(ids, str):
         ids = [s.strip() for s in ids.strip("{}").split(",") if s.strip()]
     has_recording_on = False
+    recording_configuration_status = "unverified"
     if ids:
         a = await _fetch_client_assistant(ids[0])
         has_recording_on = bool((a.get("artifactPlan") or {}).get("recordingEnabled", a.get("recordingEnabled", True)))
+        recording_configuration_status = _recording_setting_status(a)
     return {
         "tenant_slug": c["tenant_slug"],
         "tenant_display_name": c["tenant_display_name"],
         "assistant_ids": ids,
         "has_recording_on": has_recording_on,
-        # Retention values are global system policy (matches public site +
-        # DPA). Hard-coded by design — change here when policy changes,
-        # propagate to privacy.html + vertical sales pages.
+        "recording_configuration_status": recording_configuration_status,
+        # Selected policy targets, not proof of expiry across provider/storage/logs.
         "retention_days_audio": 30,
         "retention_days_transcripts": 90,
+        "retention_enforcement_status": "unverified",
     }
 
 
@@ -8790,7 +8804,7 @@ async def client_calls(
 
 
 @app.get("/client/api/calls/{call_id}")
-async def client_call_detail(call_id: str, token: str = Query("")):
+def client_call_detail(call_id: str, token: str = Query("")):
     """Full timeline + transcript + recording_url for one call.
     At LEAST ONE event for this call must belong to client's tenant whitelist."""
     c = check_client(token)
@@ -9090,6 +9104,7 @@ async def client_settings(token: str = Query("")):
     voice_label = "—"
     greeting = "—"
     recording_on = False
+    recording_configuration_status = "unverified"
     if ids:
         a = await _fetch_client_assistant(ids[0])
         voice = a.get("voice") or {}
@@ -9098,12 +9113,15 @@ async def client_settings(token: str = Query("")):
         voice_label = VOICE_CATALOG.get(vid) or (f"{provider} · {vid[:8]}…" if vid else "—")
         greeting = a.get("firstMessage") or "—"
         recording_on = bool((a.get("artifactPlan") or {}).get("recordingEnabled", a.get("recordingEnabled", True)))
+        recording_configuration_status = _recording_setting_status(a)
     return {
         "tenant": c["tenant_display_name"],
         "voice": voice_label,
         "greeting": greeting,
         "recording_on": recording_on,
+        "recording_configuration_status": recording_configuration_status,
         "retention": "30 days audio / 90 days transcripts",
+        "retention_enforcement_status": "unverified",
         "sub_processors": ["Twilio", "Vapi", "ElevenLabs", "Deepgram", "Hetzner Object Storage (Nuremberg)"],
     }
 

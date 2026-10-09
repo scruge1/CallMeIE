@@ -236,11 +236,14 @@
   .drawer-backdrop {
     position: fixed;
     inset: 0;
+    width: 100%; height: 100%; max-width: none; max-height: none;
+    margin: 0; padding: 0; border: 0;
     background: rgba(15, 23, 42, .42);
     display: none;
     z-index: 50;
   }
   .drawer-backdrop.open { display: block; }
+  .drawer-backdrop::backdrop { background: transparent; }
   .drawer {
     position: fixed;
     right: 0; top: 0; bottom: 0;
@@ -477,13 +480,13 @@
       </section>
   </main>
 
-  <div id="drawerBackdrop" class="drawer-backdrop" onclick="closeDrawer()">
+  <dialog id="drawerBackdrop" class="drawer-backdrop" aria-label="Call details" tabindex="-1" onclick="closeDrawer()" oncancel="event.preventDefault();closeDrawer()" onkeydown="containDrawerFocus(event)">
     <aside id="drawer" class="drawer" onclick="event.stopPropagation()">
       <div id="drawerContent">
         <div class="empty">Loading call…</div>
       </div>
     </aside>
-  </div>
+  </dialog>
 
   <footer class="footer">
     Powered by <a href="https://callmeie.ie" target="_blank" rel="noopener">CallMeIE</a> · DPA at <a href="https://callmeie.ie/legal/dpa.html" target="_blank" rel="noopener">callmeie.ie/legal/dpa.html</a>
@@ -794,9 +797,9 @@ async function loadSettings() {
       <dl style="display: grid; grid-template-columns: 170px 1fr; gap: 8px 16px; margin: 0;">
         <dt class="muted">What callers hear</dt><dd>${esc(voiceName(data.voice))}</dd>
         <dt class="muted">Greeting</dt><dd>${esc(data.greeting || "—")}</dd>
-        <dt class="muted">Call recording</dt><dd>${esc(data.recording_on ? "On" : "Off")}</dd>
-        <dt class="muted">How long calls are kept</dt><dd>${esc(data.retention || "30 days audio / 90 days transcripts")}</dd>
-        <dt class="muted">Emergency handling</dt><dd>Enabled — gas & major-leak safety scripts</dd>
+        <dt class="muted">Recording setting</dt><dd>${esc(data.recording_configuration_status === 'verified' ? (data.recording_on ? "On" : "Off") : 'Not confirmed')}</dd>
+        <dt class="muted">Retention policy target</dt><dd>${esc(data.retention || "Not confirmed")} — ${data.retention_enforcement_status === 'verified' ? 'enforcement verified' : 'enforcement not yet verified'}</dd>
+        <dt class="muted">Emergency handling</dt><dd>${esc(data.emergency_handling || 'Configuration not confirmed')}</dd>
       </dl>
       <details style="margin-top:14px;">
         <summary class="muted" style="cursor:pointer;font-size:12px;">Data processing details</summary>
@@ -871,11 +874,27 @@ function jobDetailsBlock(data){
   const gas = j.gas_emergency ? `<div style="background:#c0261b;color:#fff;font-weight:700;padding:6px 10px;border-radius:6px;margin-bottom:10px;">\u26A0 SUSPECTED GAS — safety script given, ring back now</div>` : "";
   return `${gas}<h4 style="margin:0 0 8px;">Job details</h4><dl style="display:grid;grid-template-columns:140px 1fr;gap:6px 14px;margin:0 0 16px;font-size:13px;">${body}</dl>`;
 }
+function containDrawerFocus(event) {
+  const dialog = qs('#drawerBackdrop');
+  if (event.key !== 'Tab' || !dialog.open) return;
+  const controls = Array.from(dialog.querySelectorAll('a[href],button,textarea,input,select,audio[controls],video[controls],[tabindex="0"]'))
+    .filter(node => node.tabIndex >= 0 && !node.matches(':disabled') && node.getClientRects().length);
+  const active = document.activeElement;
+  if (!controls.length) { event.preventDefault(); dialog.focus(); return; }
+  if (active === dialog || !dialog.contains(active) ||
+      (event.shiftKey && active === controls[0]) || (!event.shiftKey && active === controls[controls.length - 1])) {
+    event.preventDefault(); controls[event.shiftKey ? controls.length - 1 : 0].focus();
+  }
+}
+
 async function openDrawer(callId) {
   const request = ++state.drawerRequest;
   state.drawerCallId = callId;
   state.drawerLoadedId = '';
   qs("#drawerBackdrop").classList.add("open");
+  const dialog = qs('#drawerBackdrop');
+  if (!dialog.open) dialog.showModal();
+  dialog.focus({preventScroll: true});
   qs("#drawerContent").innerHTML = '<div class="empty">Loading call…</div>';
   try {
     const data = await api(`/client/api/calls/${encodeURIComponent(callId)}`);
@@ -922,6 +941,8 @@ function closeDrawer() {
   state.drawerCallId = '';
   state.drawerLoadedId = '';
   qs("#drawerBackdrop").classList.remove("open");
+  const dialog = qs('#drawerBackdrop');
+  if (dialog.open) dialog.close();
 }
 async function saveNote(callId) {
   if (state.noteSaving || callId !== state.drawerLoadedId || callId !== state.drawerCallId) return;

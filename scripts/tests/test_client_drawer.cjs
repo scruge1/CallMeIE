@@ -2,7 +2,7 @@
 const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),vm=require('node:vm');
 const html=fs.readFileSync(path.join(__dirname,'../client.html'),'utf8');
 const start=html.indexOf('async function openDrawer('),end=html.indexOf('// --- Driver.js tour ---',start);assert(start>=0&&end>start);
-function harness(){const requests=[],nodes={'#drawerBackdrop':{classList:{add(){},remove(){}}},'#drawerContent':{innerHTML:''},'#drawerNote':{value:'synthetic note'},'#drawerSaveNote':{}},alerts=[];
+function harness(){const requests=[],nodes={'#drawerBackdrop':{open:false,showModal(){this.open=true;},close(){this.open=false;},focus(){},classList:{add(){},remove(){}}},'#drawerContent':{innerHTML:''},'#drawerNote':{value:'synthetic note'},'#drawerSaveNote':{}},alerts=[];
  const c=vm.createContext({state:{drawerRequest:0,drawerCallId:'',drawerLoadedId:'',noteSaving:false},qs:s=>nodes[s],esc:String,jobDetailsBlock:()=>'',prettyEvent:()=>'',cleanSummary:String,toast:()=>{},alert:t=>alerts.push(t),
  api:(url,opts)=>new Promise((resolve,reject)=>requests.push({url,opts,resolve,reject}))});vm.runInContext(html.slice(start,end),c);return {c,requests,nodes,alerts};}
 const detail=id=>({call_id:id,caller_name:id,events:[],notes:[]});

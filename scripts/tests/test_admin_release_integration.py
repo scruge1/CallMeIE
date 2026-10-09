@@ -7,12 +7,14 @@ import asyncio
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 import importlib
+import inspect
 import os
 from pathlib import Path
 import socket
 import sqlite3
 import sys
 import tempfile
+import threading
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -93,13 +95,45 @@ def run():
                     for endpoint in ('/admin/api/operations-summary','/admin/api/flow-graph'):
                         response = await client.get(endpoint)
                         assert response.status_code==401,(endpoint,response.status_code)
+                        assert response.headers.get('cache-control')=='private, no-store'
                         response = await client.get(endpoint,params={'token':'wrong-synthetic'})
                         assert response.status_code==401
                     assert observed==[], 'provider contacted before authorization'
                     header_response=await client.get('/admin/api/operations-summary',headers={'Authorization':'Bearer synthetic-admin'})
                     assert header_response.status_code==200
+                    assert header_response.headers.get('cache-control')=='private, no-store'
                     assert 'token=' not in str(header_response.request.url)
                     assert server._admin_bearer.get() is None
+                    async def empty_assistant(*args): return {}
+                    async def explicit_assistant(*args): return {'artifactPlan':{'recordingEnabled':False}}
+                    for reader,expected in ((empty_assistant,'unverified'),(explicit_assistant,'verified')):
+                        with patch.object(server,'_fetch_client_assistant',side_effect=reader):
+                            for endpoint in ('/client/api/me','/client/api/settings'):
+                                settings_response=await client.get(endpoint,headers={'Authorization':'Bearer synthetic-client'})
+                                assert settings_response.status_code==200
+                                assert settings_response.json()['recording_configuration_status']==expected
+                                assert settings_response.json()['retention_enforcement_status']=='unverified'
+                    for path in ('/admin/api/caller/{call_id}','/client/api/calls/{call_id}'):
+                        route=next(r for r in server.app.routes if getattr(r,'path',None)==path)
+                        assert not inspect.iscoroutinefunction(route.endpoint), 'blocking detail body must run in framework threadpool'
+                    entered,released=threading.Event(),threading.Event()
+                    def held_storage_read(*args,**kwargs):
+                        entered.set()
+                        if not released.wait(5): raise AssertionError('fixture release timed out')
+                        return None
+                    with patch.object(server,'_hetzner_presigned_for_call',side_effect=held_storage_read):
+                        detail_task=asyncio.create_task(client.get('/client/api/calls/shared-fixture',headers={'Authorization':'Bearer synthetic-client'}))
+                        try:
+                            deadline=asyncio.get_running_loop().time()+2
+                            while not entered.is_set() and asyncio.get_running_loop().time()<deadline:
+                                await asyncio.sleep(0.005)
+                            assert entered.is_set(), 'detail worker did not enter controlled storage read'
+                            concurrent_health=await asyncio.wait_for(client.get('/health'),timeout=1)
+                            assert concurrent_health.status_code==200 and not detail_task.done()
+                        finally:
+                            released.set()
+                            finished=await asyncio.wait_for(detail_task,timeout=3)
+                        assert finished.status_code==200 and finished.json()['notes'][0]['note']=='own-note'
                     for headers,params in (({'Authorization':'Bearer wrong'}, {'token':'synthetic-admin'}),
                                            ({'Authorization':'Bearer synthetic-admin'}, {'token':'wrong'}),
                                            ({'Authorization':'Basic synthetic'}, {'token':'synthetic-admin'})):
@@ -150,6 +184,7 @@ def run():
                         header={'Authorization':'Bearer '+credential}
                         detail=await client.get('/client/api/calls/shared-fixture',headers=header)
                         assert detail.status_code==200
+                        assert detail.headers.get('cache-control')=='private, no-store'
                         expected='own-note' if credential=='synthetic-client' else 'other-note'
                         assert [n['note'] for n in detail.json()['notes']]==[expected]
                         legacy=await client.get('/client/api/calls/shared-fixture',params={'token':credential})
@@ -180,6 +215,9 @@ def run():
                         'today_partial_sources_explicit':True,
                         'bearer_and_legacy_auth_compatible':True,'credential_conflicts_rejected':True,'request_auth_isolated':True,
                         'client_bearer_legacy_revocation_scope_pass':True,'tenant_notes_isolated_admin_view_preserved':True,
+                        'blocking_detail_does_not_block_health':True,
+                        'protected_json_success_and_denial_no_store':True,
+                        'client_config_targets_separate_from_enforcement':True,
                         'production_actions':False}
             result = loop.run_until_complete(checks())
             import json
