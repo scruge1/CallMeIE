@@ -643,7 +643,8 @@ def init_db():
                 event_type TEXT,
                 assistant  TEXT,
                 summary    TEXT,
-                detail     TEXT
+                detail     TEXT,
+                event_key  TEXT
             )
         """))
         conn.execute(_ddl_fix("""
@@ -711,6 +712,13 @@ def init_db():
                 user_agent          TEXT
             )
         """))
+        # Local SQLite uses init_db; production PostgreSQL uses Alembic0012.
+        # Do not silently alter a live PostgreSQL database during application boot.
+        if not _USE_PG:
+            event_columns = {row['name'] for row in conn.execute('PRAGMA table_info(call_events)').fetchall()}
+            if 'event_key' not in event_columns:
+                conn.execute('ALTER TABLE call_events ADD COLUMN event_key TEXT')
+            conn.execute('CREATE UNIQUE INDEX IF NOT EXISTS idx_call_events_event_key ON call_events(event_key)')
         # P5-1 — created_at indexes on hot tables. Admin queries scan
         # ORDER BY created_at DESC LIMIT N (server.py:2671 etc.). Without
         # indexes these are full table scans; sub-second today on small
@@ -1314,11 +1322,16 @@ async def send_telegram(message: str) -> None:
 
 # --- Vapi post-call webhook ---
 from billing.webhook import require_call_report_auth
+from billing.status_events import normalize_status_event, store_status_event, read_status_feed
+from fastapi.concurrency import run_in_threadpool
 
 
 @app.post("/vapi/call-ended", dependencies=[Depends(require_call_report_auth)])
 async def call_ended(request: Request, background_tasks: BackgroundTasks):
-    """Vapi fires this when any call ends. Returns 200 immediately; anomaly diagnosis runs in background.
+    """Persist status metadata or handle a final report on the authenticated route.
+
+    Status receipts wait for an explicit DB commit and have no background work.
+    Final-report anomaly diagnosis retains the existing background path.
 
     2026-05-13 — noise-suppression: Vapi posts MANY webhook types to this URL
     (status-update / transcript / conversation-update / speech-update / hang /
@@ -1330,15 +1343,36 @@ async def call_ended(request: Request, background_tasks: BackgroundTasks):
     Other handler endpoints (/capture-lead, /demo-complete, /check-availability,
     /book-appointment) handle tool-calls separately at their own routes.
     """
-    body = await request.json()
+    try:
+        body = await request.json()
+    except ValueError:
+        return JSONResponse({'error': 'invalid_json'}, status_code=400)
+    if not isinstance(body, dict):
+        return JSONResponse({'error': 'invalid_body'}, status_code=400)
 
     # Vapi wraps payload under `message`: {message: {type, call, artifact, ...}}.
     # Older test bodies put `call` at top-level. Support both.
     msg = body.get("message") or {}
+    if not isinstance(msg, dict):
+        return JSONResponse({'error': 'invalid_message'}, status_code=400)
     msg_type = msg.get("type") or body.get("type") or ""
 
-    # Guard — only end-of-call-report carries the final summary.
-    # Anything else is ignored at 200 OK (no noise rows).
+    if msg_type == 'status-update':
+        try:
+            normalized = normalize_status_event(msg if msg else body)
+        except ValueError as exc:
+            return JSONResponse({'error': str(exc)}, status_code=400)
+        try:
+            # No successful receipt before the DB commit; no notification/archive
+            # work. Keep blocking DB access out of the async request loop.
+            result = await run_in_threadpool(store_status_event, get_db, normalized)
+        except Exception:
+            # Do not echo database errors, payloads or connection credentials.
+            return JSONResponse({'error': 'status_storage_unavailable'}, status_code=503)
+        return JSONResponse(result)
+
+    # Only end-of-call-report carries the final summary. Status metadata was
+    # handled above; remaining informational types produce no noise rows.
     if msg_type and msg_type != "end-of-call-report":
         return JSONResponse({"status": "ok", "ignored_type": msg_type})
 
@@ -7214,6 +7248,10 @@ async def admin_operations_summary(token: str = Query("")):
     vapi_snapshot = await _vapi_calls_window(day_start)
     usage = project_usage(vapi_snapshot, now=int(time.time()), window_start=day_start,
                           tenant_bindings=_usage_tenant_bindings())
+    try:
+        status_feed = await run_in_threadpool(read_status_feed, get_db)
+    except Exception:
+        status_feed = {'status': 'unavailable', 'last_received_at': None, 'coverage_verified': False}
     # Use the same deduplicated, day-clipped observations as the line panel.
     # An older call updated today is not automatically today's call time.
     vapi_mins_today = sum(line["completed_provider_minutes"] for line in usage["lines"])
@@ -7278,6 +7316,7 @@ async def admin_operations_summary(token: str = Query("")):
         },
         "currency": "eur",
         "usage": usage,
+        "status_feed": status_feed,
         "money": {
             "status": "partial" if (payment_rows_valid and payment_currency_valid
                                      and vapi_snapshot.get("status") == "ok"

@@ -2274,6 +2274,7 @@
       qs("#netToday").textContent = "offline";
       state.ops = {...state.ops,
         usage: {...state.ops?.usage, status: 'unavailable', reason: 'summary_refresh_failed'},
+        status_feed: {status: 'unavailable', last_received_at: null, coverage_verified: false},
         money: {...state.ops?.money, status: 'unavailable'}};
       refreshUsagePanels();
       refreshMoneyPanels();
@@ -2600,12 +2601,22 @@
   }
 
   function renderUsagePanel(ops) {
+    const feed = ops && ops.status_feed;
+    const lastReceipt = feed && feed.last_received_at;
+    const receiptDate = new Date(lastReceipt * 1000);
+    const validReceipt = feed && feed.status === 'observed' && typeof lastReceipt === 'number'
+      && Number.isFinite(lastReceipt) && Number.isFinite(receiptDate.getTime())
+      && lastReceipt >= 0 && lastReceipt <= Date.now() / 1000;
+    const feedText = validReceipt ? 'Last status event received: ' + receiptDate.toISOString()
+      : feed && feed.status === 'no_events' ? 'No status events received yet.'
+      : 'Status event data unavailable.';
+    const feedNote = `<p>${esc(feedText)} This is not a connection check or a complete live-call count.</p>`;
     const usage = ops && ops.usage;
     const observedAt = usage && usage.observed_at;
     const snapshotTime = new Date(observedAt * 1000);
     if (!usage || usage.status === 'unavailable' || typeof observedAt !== 'number'
         || !Number.isFinite(observedAt) || !Number.isFinite(snapshotTime.getTime())) {
-      return `<section class="panel" data-usage-panel><div class="panel-header"><h2 class="panel-title">Call usage</h2></div><div class="panel-body">Usage data unavailable. This does not mean zero calls.</div></section>`;
+      return `<section class="panel" data-usage-panel><div class="panel-header"><h2 class="panel-title">Call usage</h2></div><div class="panel-body">Usage data unavailable. This does not mean zero calls.${feedNote}</div></section>`;
     }
     const age = Date.now() / 1000 - observedAt;
     const fresh = usage.status === 'fresh' && Number.isFinite(age) && age >= 0 && age <= 90;
@@ -2620,6 +2631,7 @@
       <p class="panel-subtitle">Today, UTC · ${fresh ? 'Recent snapshot' : 'Stale snapshot'} · partial coverage</p></div></div>
       <div class="panel-body"><p>Provider call time, not confirmed AI handling or billable minutes.</p>
       <p>Snapshot: ${esc(snapshotTime.toISOString())}</p>
+      ${feedNote}
       ${rows || '<p>No calls returned in this window.</p>'}
       <p>${usage.query_scope === 'calls_updated_since_utc_midnight'
         ? 'Calls updated since midnight, including observed calls that cross midnight. Only time within this UTC day is shown. Live-call coverage is not guaranteed.'

@@ -8,6 +8,26 @@ vm.runInContext(html.slice(start,end),context);
 const render=usage=>context.renderUsagePanel({usage});
 function snapshot(changes={}) {return {status:'fresh',observed_at:Math.floor(Date.now()/1000),lines:[{line_id:'line-a',completed_calls:1,completed_provider_minutes:2,observed_active_calls:1,active_provider_minutes_estimate:3,unknown_calls:0}],...changes};}
 test('missing data never says zero calls',()=>{assert.match(render(),/unavailable/);assert.match(render({status:'unavailable'}),/does not mean zero/);});
+test('status feed receipt stays separate from live-call coverage',()=>{
+ const ops={usage:snapshot(),status_feed:{status:'observed',last_received_at:Math.floor(Date.now()/1000)-60}};
+ const output=context.renderUsagePanel(ops);
+ assert.match(output,/Last status event received:/);
+ assert.match(output,/not a connection check or a complete live-call count/);
+});
+test('idle and failed event feed never imply no calls',()=>{
+ for(const status of ['no_events','unavailable']){
+  const output=context.renderUsagePanel({usage:snapshot(),status_feed:{status,last_received_at:null}});
+  assert.match(output,status==='no_events'?/No status events received yet/:/Status event data unavailable/);
+  assert.doesNotMatch(output,/Last status event received:|zero active|Disconnected/);
+ }
+});
+test('invalid and future receipt times remain unavailable',()=>{
+ for(const last_received_at of [null,'bad',NaN,Infinity,1e20,Date.now()/1000+600]){
+  const output=context.renderUsagePanel({usage:snapshot(),status_feed:{status:'observed',last_received_at}});
+  assert.match(output,/Status event data unavailable/);
+  assert.doesNotMatch(output,/Last status event received:/);
+ }
+});
 test('scope and unknown billing remain visible',()=>{const output=render(snapshot());assert.match(output,/partial coverage/);assert.match(output,/not confirmed AI/);assert.match(output,/not yet verified/);assert.match(output,/before midnight/);assert.match(output,/3 min estimated/);});
 
 test('update-time scope states observed carryover without full coverage',()=>{
@@ -31,7 +51,7 @@ test('failed summary refresh cannot leave usage displayed as recent',async()=>{
  const start=html.indexOf('  async function loadOperationsSummary(');
  const end=html.indexOf('  async function loadHealth(',start);
  const panels=[{}],net={textContent:''};
- const c=vm.createContext({Date,Number,esc:String,state:{ops:{usage:snapshot(),money:{status:'partial'}}},
+ const c=vm.createContext({Date,Number,esc:String,state:{ops:{usage:snapshot(),money:{status:'partial'},status_feed:{status:'observed',last_received_at:Date.now()/1000-60}}},
   api:async()=>{throw Error('synthetic unavailable');},qs:()=>net,qsa:()=>panels,
   eur:()=>'',refreshMoneyPanels:()=>{}});
  vm.runInContext(html.slice(start,end)+html.slice(html.indexOf('  function renderUsagePanel('),html.indexOf('  function renderSystemPanel(')),c);
@@ -39,6 +59,8 @@ test('failed summary refresh cannot leave usage displayed as recent',async()=>{
  assert.equal(result,null);
  assert.equal(c.state.ops.usage.status,'unavailable');
  assert.match(panels[0].outerHTML,/Usage data unavailable/);
+ assert.match(panels[0].outerHTML,/Status event data unavailable/);
+ assert.doesNotMatch(panels[0].outerHTML,/Last status event received:/);
  assert.doesNotMatch(panels[0].outerHTML,/Recent snapshot|3 min estimated/);
 });
 

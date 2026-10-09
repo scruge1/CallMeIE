@@ -94,12 +94,29 @@ def run():
                 transport = httpx.ASGITransport(app=server.app,raise_app_exceptions=True)
                 async with real_client(transport=transport,base_url='http://fixture.test') as client:
                     # Actual route registration enforces credentials before JSON
-                    # parsing. Valid ignored/final-empty fixtures have no effects.
+                    # parsing. Status fixtures use only the disposable database.
                     report_headers={'Authorization':'Bearer '+env['VAPI_CALL_REPORT_SECRET']}
                     assert (await client.post('/vapi/call-ended',content='not-json')).status_code==401
                     assert (await client.post('/vapi/call-ended',headers={'Authorization':'Bearer synthetic-wrong'},content='not-json')).status_code==401
                     ignored=await client.post('/vapi/call-ended',headers=report_headers,json={'message':{'type':'status-update','status':'in-progress'}})
-                    assert ignored.status_code==200 and ignored.json()['ignored_type']=='status-update'
+                    assert ignored.status_code==400
+                    status_body={'message':{'type':'status-update','status':'in-progress',
+                                 'timestamp':1760000400123,'call':{'id':'status-fixture',
+                                 'assistantId':'fixture-assistant','phoneNumberId':'fixture-line',
+                                 'customer':{'number':'must-not-store'}},
+                                 'artifact':{'transcript':'must-not-store'}}}
+                    stored=await client.post('/vapi/call-ended',headers=report_headers,json=status_body)
+                    assert stored.status_code==200 and stored.json()['stored'] is True
+                    duplicate=await client.post('/vapi/call-ended',headers=report_headers,json=status_body)
+                    assert duplicate.status_code==200 and duplicate.json()['duplicate'] is True
+                    with server.get_db() as db:
+                        status_rows=db.execute("SELECT detail FROM call_events WHERE event_type='call-status'").fetchall()
+                    assert len(status_rows)==1 and 'must-not-store' not in status_rows[0]['detail']
+                    with patch.object(server,'store_status_event',side_effect=RuntimeError('synthetic storage failure')):
+                        failed=await client.post('/vapi/call-ended',headers=report_headers,json=status_body)
+                    assert failed.status_code==503 and failed.json()=={'error':'status_storage_unavailable'}
+                    assert (await client.post('/vapi/call-ended',headers=report_headers,json=[])).status_code==400
+                    assert (await client.post('/vapi/call-ended',headers=report_headers,content='not-json')).status_code==400
                     empty_final=await client.post('/vapi/call-ended',headers=report_headers,json={'message':{'type':'end-of-call-report'}})
                     assert empty_final.status_code==200 and empty_final.json()['skipped']=='no_call_id_or_assistant'
                     assert observed==[], 'call report boundary contacted provider'
@@ -168,6 +185,9 @@ def run():
                     response = await client.get('/admin/api/operations-summary',params={'token':'synthetic-admin'})
                     assert response.status_code==200
                     payload=response.json()
+                    assert payload['status_feed']['status']=='observed'
+                    assert payload['status_feed']['coverage_verified'] is False
+                    assert isinstance(payload['status_feed']['last_received_at'],(int,float))
                     line=payload['usage']['lines'][0]
                     assert line['configured_tenant_name']=='Fixture tenant'
                     assert line['allocation_status']=='configured_match'
