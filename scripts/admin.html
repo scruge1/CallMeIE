@@ -3747,6 +3747,15 @@
         <audio controls preload="metadata" aria-label="Breeze TTS2 private Irish voice test" style="width:100%"
           src="${esc(endpoint('/admin/api/voice-comparison/breeze-irish-internal', {format: 'mp3'}))}"></audio>
       </div>
+      <div id="breezeHardIrishSample" style="margin:12px 0">
+        <h3>Breeze TTS2 - difficult Irish names and places</h3>
+        <p class="muted">36.08-second pronunciation test. Not yet reviewed. Not enabled on phone assistants.</p>
+        <audio controls preload="metadata" aria-label="Breeze TTS2 difficult Irish names and places" style="width:100%"
+          src="${esc(endpoint('/admin/api/voice-comparison/breeze-hard-irish', {format: 'mp3'}))}"></audio>
+        <details style="margin-top:8px"><summary>Read test script</summary>
+          <p id="breezeHardIrishScript">Caoimhe and Saoirse are calling from Dún Laoghaire. Tadhg Ó Murchadha lives in Graiguenamanagh. Órfhlaith and Dearbhla are in Dún Chaoin. Donnchadh Mac Giolla Phádraig is calling from Ballaghaderreen. Bláthnaid and Fionnuala are in Kilmacanogue. Siobhán Ní Shúilleabháin is in An Cheathrú Rua. Muireann Ní Dhuibhne lives in Cahersiveen. Oisín and Cathal are travelling from Youghal to Loughrea, then through Portlaoise, Leixlip and Tuam. Please confirm: Geashill, Gweedore and Cloughjordan. Was that Caoimhe or Ciara? Was it Saoirse or Sorcha?</p>
+        </details>
+      </div>
       ${refRow("Kokoro", "local video voiceover", "kokoro")}
       ${refRow("Edge - Andrew Multilingual", "video drafts", "premium")}
       ${refRow("Edge - Connor (Irish)", "older Irish reference", "irish")}

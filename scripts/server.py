@@ -3316,6 +3316,7 @@ async def voice_comparison_audio(model_id: str, request: Request, token: str = Q
         "eleven_flash_v2_5": "eleven_flash_v2_5.wav",
         "eleven_v4_turbo": "eleven_v4_turbo.wav",
         "breeze-irish-internal": "breeze-irish-internal.wav",
+        "breeze-hard-irish": "breeze-hard-irish.wav",
         "hotel-routing-plain": "hotel-routing-plain.mp3",
         "hotel-routing-directed": "hotel-routing-directed.mp3",
         "hotel-privacy-plain": "hotel-privacy-plain.mp3",

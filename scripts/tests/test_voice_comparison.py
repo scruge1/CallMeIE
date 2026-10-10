@@ -91,6 +91,49 @@ class VoiceComparisonTests(unittest.TestCase):
         self.assertIn('Internal evaluation only; not enabled on phone assistants.', html)
         self.assertIn("endpoint('/admin/api/voice-comparison/breeze-irish-internal', {format: 'mp3'})", html)
 
+    def test_hard_irish_player_label_order_and_auth(self):
+        import hashlib
+        import re
+        route = '/admin/api/voice-comparison/breeze-hard-irish'
+        for fmt, digest in (
+            ('mp3', 'a697ebfc49128f5ed60d120f4c1919198f67ab9ed2c2e5baff68fb6f61b0a4fe'),
+            ('wav', '6d756275cb1768f90a440b7c6b66280ff5a1e1b51e047b5f7e90a27ab8e46e5d'),
+        ):
+            expected = (SCRIPTS / 'voice-samples' / ('breeze-hard-irish.' + fmt)).read_bytes()
+            self.assertEqual(hashlib.sha256(expected).hexdigest(), digest)
+            for token in ('', 'wrong'):
+                for method in ('GET', 'HEAD'):
+                    response = self.client.request(method, route, params={'token': token, 'format': fmt})
+                    self.assertEqual(response.status_code, 401)
+            params = {'token': 'fixture-only', 'format': fmt}
+            full = self.client.get(route, params=params)
+            self.assertEqual(full.status_code, 200)
+            self.assertEqual(full.content, expected)
+            self.assertEqual(full.headers['cache-control'], 'private, no-store')
+            self.assertEqual(full.headers['content-type'], 'audio/mpeg' if fmt == 'mp3' else 'audio/wav')
+            for header, start, end in (('bytes=0-1', 0, 1), ('bytes=-128', len(expected)-128, len(expected)-1)):
+                ranged = self.client.get(route, params=params, headers={'Range': header})
+                self.assertEqual(ranged.status_code, 206)
+                self.assertEqual(ranged.content, expected[start:end+1])
+                self.assertEqual(ranged.headers['content-range'], f'bytes {start}-{end}/{len(expected)}')
+                self.assertEqual(ranged.headers['cache-control'], 'private, no-store')
+            head = self.client.head(route, params=params)
+            self.assertEqual(head.status_code, 200)
+            self.assertEqual(head.content, b'')
+            self.assertEqual(int(head.headers['content-length']), len(expected))
+            self.assertEqual(head.headers['cache-control'], 'private, no-store')
+        with wave.open(str(SCRIPTS / 'voice-samples' / 'breeze-hard-irish.wav')) as audio:
+            self.assertEqual((audio.getnchannels(), audio.getsampwidth(), audio.getframerate()), (1, 2, 24000))
+            self.assertAlmostEqual(audio.getnframes() / audio.getframerate(), 36.08, places=2)
+        html = (SCRIPTS / 'admin.html').read_text(encoding='utf-8-sig')
+        self.assertIn('Breeze TTS2 - difficult Irish names and places', html)
+        self.assertIn("endpoint('/admin/api/voice-comparison/breeze-hard-irish', {format: 'mp3'})", html)
+        self.assertLess(html.index('id="breezePrivateSample"'), html.index('id="breezeHardIrishSample"'))
+        self.assertLess(html.index('id="breezeHardIrishSample"'), html.index('${refRow("Kokoro"'))
+        self.assertIn('<summary>Read test script</summary>', html)
+        script = re.search(r'<p id="breezeHardIrishScript">([^<]+)</p>', html).group(1)
+        self.assertEqual(hashlib.sha256(script.encode('utf-8')).hexdigest(), '5398dc13697c5b1f1e189b9927736968ce05f5fe9fba9ed9d62c9ed88f44b5d4')
+
     def test_saved_hotel_pairs_auth_bytes_head_and_range(self):
         for situation in ('routing', 'privacy', 'complaint', 'clarity'):
             for delivery in ('plain', 'directed'):
