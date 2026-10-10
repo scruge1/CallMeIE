@@ -534,16 +534,32 @@ async function api(path, opts = {}) {
   if (clientBearer) headers.set('Authorization', 'Bearer ' + state.token);
   const init = { method: opts.method || "GET", headers };
   if (opts.body) init.body = opts.body;
-  const r = await fetch(url, init);
-  if (!r.ok) {
-    if (r.status === 401) { logout(); throw new Error('Sign-in required'); }
-    let detail = "";
-    try { detail = JSON.stringify(await r.json()); } catch (_) { detail = await r.text(); }
-    throw new Error(`HTTP ${r.status}: ${detail}`);
+  // Bound ordinary data reads only. Voice synthesis and mutations can have
+  // side effects; this timeout must not imply their outcome or retry them.
+  const dataRead = new Set(['/client/api/me', '/client/api/calls',
+    '/client/api/inbox', '/client/api/insights', '/client/api/settings']).has(path)
+    || /^\/client\/api\/calls\/[^/]+$/.test(path);
+  const bounded = dataRead && init.method.toUpperCase() === 'GET' && !opts.body;
+  const controller = bounded && !opts.signal ? new AbortController() : null;
+  if (bounded) init.signal = opts.signal || controller.signal;
+  const timer = controller ? setTimeout(() => controller.abort(), 25000) : null;
+  try {
+    const r = await fetch(url, init);
+    if (!r.ok) {
+      if (r.status === 401) { logout(); throw new Error('Sign-in required'); }
+      let detail = "";
+      try { detail = JSON.stringify(await r.json()); } catch (_) { detail = await r.text(); }
+      throw new Error(`HTTP ${r.status}: ${detail}`);
+    }
+    const ct = r.headers.get("Content-Type") || "";
+    if (ct.includes("application/json")) return await r.json();
+    return r;
+  } catch (err) {
+    if (controller && controller.signal.aborted) throw new Error('Request timed out. Use Refresh to try again.');
+    throw err;
+  } finally {
+    if (timer !== null) clearTimeout(timer);
   }
-  const ct = r.headers.get("Content-Type") || "";
-  if (ct.includes("application/json")) return r.json();
-  return r;
 }
 
 // --- Theme ---
