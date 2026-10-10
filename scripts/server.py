@@ -8777,6 +8777,9 @@ async def client_calls(
         "       summary, event_type, detail "
         "FROM call_events "
         f"WHERE {where_assist} AND created_at >= ? "
+        # Interim receipts remain in the detail timeline, not report summaries.
+        # Filter before LIMIT so a burst cannot hide the completed report.
+        "AND (event_type IS NULL OR event_type <> 'call-status') "
     )
     args = params + [cutoff]
     if q:
@@ -8796,7 +8799,7 @@ async def client_calls(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"query_failed: {e}")
 
-    # Group by call_id, take latest row per call as the "summary line"
+    # Group by call_id, take latest report/action row as the summary line.
     grouped: dict[str, dict] = {}
     actioned_ids = set()
     for r in rows:

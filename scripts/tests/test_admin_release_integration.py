@@ -191,6 +191,28 @@ def run():
                     assert 'private-business-canary' not in missed_log.getvalue()
                     assert 'delivery not verified' in missed_log.getvalue() and 'Text-back sent' not in missed_log.getvalue()
                     assert observed==[], 'call report boundary contacted provider'
+                    # Interim receipts must not shadow a report or consume the
+                    # history row limit. They remain available in the timeline.
+                    with server.get_db() as db:
+                        db.execute('INSERT INTO call_events(call_id,event_type,assistant,summary,detail) VALUES(?,?,?,?,?)',
+                            ('status-shadow-fixture','call-ended','fixture-assistant','Completed history fixture',
+                             '{"duration":61,"transcript":"history transcript preserved"}'))
+                        for n in range(120):
+                            db.execute('INSERT INTO call_events(call_id,event_type,assistant,summary,detail) VALUES(?,?,?,?,?)',
+                                ('status-shadow-fixture','call-status','fixture-assistant','Call status: in-progress','{}'))
+                        db.execute('INSERT INTO call_events(call_id,event_type,assistant,summary,detail) VALUES(?,?,?,?,?)',
+                            ('status-only-fixture','call-status','fixture-assistant','Call status: ringing','{}'))
+                        db.commit()
+                    history=await client.get('/client/api/calls?limit=1',headers={'Authorization':'Bearer synthetic-client'})
+                    assert history.status_code==200
+                    assert history.json()['calls'][0]['call_id']=='status-shadow-fixture'
+                    assert history.json()['calls'][0]['summary']=='Completed history fixture'
+                    assert history.json()['calls'][0]['duration']==61 and history.json()['calls'][0]['has_transcript'] is True
+                    with patch.object(server,'_hetzner_presigned_for_call',return_value=None):
+                        detail=await client.get('/client/api/calls/status-shadow-fixture',headers={'Authorization':'Bearer synthetic-client'})
+                    assert detail.status_code==200
+                    assert detail.json()['transcript']=='history transcript preserved'
+                    assert sum(event['event_type']=='call-status' for event in detail.json()['events'])==120
                     for endpoint in ('/admin/api/operations-summary','/admin/api/flow-graph'):
                         response = await client.get(endpoint)
                         assert response.status_code==401,(endpoint,response.status_code)
@@ -347,6 +369,7 @@ def run():
                         'notification_helper_logs_body_free':True,
                         'final_report_log_after_commit_only':True,
                         'missed_call_log_not_delivery_claim':True,
+                        'status_receipts_do_not_shadow_client_history':True,
                         'production_actions':False}
             result = loop.run_until_complete(checks())
             import json
