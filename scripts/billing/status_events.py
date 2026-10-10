@@ -8,6 +8,32 @@ from datetime import datetime, timezone
 STATUSES = frozenset(('scheduled', 'queued', 'ringing', 'in-progress', 'forwarding', 'ended'))
 
 
+def read_terminal_calls(connection_factory, call_ids):
+    """Read terminal markers only for the bounded provider snapshot.
+
+    No payload, transcript, caller, timestamp conversion or event-order guess.
+    An ended marker is absorbing for the same provider call ID. It supplies no
+    duration or coverage guarantee. Database failures propagate to the caller.
+    """
+    if not isinstance(call_ids, (list, tuple)) or len(call_ids) > 100:
+        raise ValueError('invalid_terminal_lookup_scope')
+    identities = sorted({_identifier(value, required=True) for value in call_ids})
+    if not identities:
+        return {'status': 'ok', 'call_ids': []}
+    placeholders = ','.join('?' for _ in identities)
+    with connection_factory() as conn:
+        rows = conn.execute(
+            "SELECT DISTINCT call_id FROM call_events WHERE call_id IN (" + placeholders + ") "
+            "AND (event_type='call-ended' OR (event_type='call-status' "
+            "AND summary='Call status: ended' AND event_key IS NOT NULL))",
+            tuple(identities),
+        ).fetchall()
+    observed = sorted({row['call_id'] for row in rows})
+    if any(identity not in identities for identity in observed):
+        raise ValueError('terminal_lookup_scope_mismatch')
+    return {'status': 'ok', 'call_ids': observed}
+
+
 def _identifier(value, *, required=False):
     if value is None or value == '':
         if required:

@@ -712,13 +712,14 @@ def init_db():
                 user_agent          TEXT
             )
         """))
-        # Local SQLite uses init_db; production PostgreSQL uses Alembic0012.
+        # Local SQLite uses init_db; production PostgreSQL uses Alembic.
         # Do not silently alter a live PostgreSQL database during application boot.
         if not _USE_PG:
             event_columns = {row['name'] for row in conn.execute('PRAGMA table_info(call_events)').fetchall()}
             if 'event_key' not in event_columns:
                 conn.execute('ALTER TABLE call_events ADD COLUMN event_key TEXT')
             conn.execute('CREATE UNIQUE INDEX IF NOT EXISTS idx_call_events_event_key ON call_events(event_key)')
+            conn.execute('CREATE INDEX IF NOT EXISTS idx_call_events_call_type ON call_events(call_id,event_type)')
         # P5-1 — created_at indexes on hot tables. Admin queries scan
         # ORDER BY created_at DESC LIMIT N (server.py:2671 etc.). Without
         # indexes these are full table scans; sub-second today on small
@@ -1322,7 +1323,7 @@ async def send_telegram(message: str) -> None:
 
 # --- Vapi post-call webhook ---
 from billing.webhook import require_call_report_auth
-from billing.status_events import normalize_status_event, store_status_event, read_status_feed, store_final_report
+from billing.status_events import normalize_status_event, store_status_event, read_status_feed, store_final_report, read_terminal_calls
 from fastapi.concurrency import run_in_threadpool
 
 
@@ -7243,8 +7244,14 @@ async def admin_operations_summary(token: str = Query("")):
     # Vapi calls today (Adam asked for current-day cost view)
     from billing.usage import project_usage
     vapi_snapshot = await _vapi_calls_window(day_start)
+    try:
+        observed_ids = [row['id'] for row in vapi_snapshot.get('calls', [])
+                        if isinstance(row, dict) and isinstance(row.get('id'), str) and row['id']]
+        terminal_observations = await run_in_threadpool(read_terminal_calls, get_db, observed_ids)
+    except Exception:
+        terminal_observations = {'status': 'unavailable', 'call_ids': []}
     usage = project_usage(vapi_snapshot, now=int(time.time()), window_start=day_start,
-                          tenant_bindings=_usage_tenant_bindings())
+                          tenant_bindings=_usage_tenant_bindings(), terminal_observations=terminal_observations)
     try:
         status_feed = await run_in_threadpool(read_status_feed, get_db)
     except Exception:

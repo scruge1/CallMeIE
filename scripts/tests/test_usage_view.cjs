@@ -6,7 +6,24 @@ assert(start>=0&&end>start,'usage renderer extraction must stop at the next real
 const context=vm.createContext({esc:s=>String(s).replaceAll('<','&lt;').replaceAll('>','&gt;'),Date});
 vm.runInContext(html.slice(start,end),context);
 const render=usage=>context.renderUsagePanel({usage});
-function snapshot(changes={}) {return {status:'fresh',observed_at:Math.floor(Date.now()/1000),lines:[{line_id:'line-a',completed_calls:1,completed_provider_minutes:2,observed_active_calls:1,active_provider_minutes_estimate:3,unknown_calls:0}],...changes};}
+function snapshot(changes={}) {return {status:'fresh',terminal_guard_status:'ok',observed_at:Math.floor(Date.now()/1000),lines:[{line_id:'line-a',completed_calls:1,completed_provider_minutes:2,observed_active_calls:1,active_state_status:'observed',active_provider_minutes_estimate:3,unknown_calls:0}],...changes};}
+
+test('failed terminal lookup withholds even a supplied active estimate',()=>{
+ const usage=snapshot({terminal_guard_status:'unavailable'});
+ const output=render(usage);
+ assert.match(output,/Active call state unavailable/);
+ assert.match(output,/Call status check unavailable/);
+ assert.doesNotMatch(output,/3 min estimated|1 active at snapshot/);
+});
+
+test('ended receipt without provider timing is not completed usage',()=>{
+ const usage=snapshot();
+ usage.lines[0]={...usage.lines[0],observed_active_calls:0,active_provider_minutes_estimate:0,ended_without_timing_calls:1,unknown_calls:1};
+ const output=render(usage);
+ assert.match(output,/1 ended call awaiting final timing/);
+ assert.match(output,/0 active at snapshot/);
+ assert.match(output,/not confirmed AI/);
+});
 test('missing data never says zero calls',()=>{assert.match(render(),/unavailable/);assert.match(render({status:'unavailable'}),/does not mean zero/);});
 test('status feed receipt stays separate from live-call coverage',()=>{
  const ops={usage:snapshot(),status_feed:{status:'observed',last_received_at:Math.floor(Date.now()/1000)-60}};

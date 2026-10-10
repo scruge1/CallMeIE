@@ -2624,7 +2624,8 @@
       <span style="overflow-wrap:anywhere">${line.allocation_status === 'configured_match' ? 'Configured tenant: ' + esc(line.configured_tenant_name || line.configured_tenant_id) : line.allocation_status === 'conflicting' ? 'Conflicting tenant configuration' : line.allocation_status === 'unassigned' ? 'No configured tenant' : 'Tenant configuration unavailable'}</span>
       <span style="overflow-wrap:anywhere">${line.line_id ? 'Line ID: ' + esc(line.line_id) : 'No line ID'}</span>
       <span>${esc(line.completed_calls)} completed · ${esc(line.completed_provider_minutes)} min</span>
-      <span>${esc(line.observed_active_calls)} active at snapshot · ${fresh && line.active_provider_minutes_estimate != null ? esc(line.active_provider_minutes_estimate) + ' min estimated' : 'estimate unavailable'}</span>
+      <span>${usage.terminal_guard_status === 'ok' && line.active_state_status === 'observed' ? esc(line.observed_active_calls) + ' active at snapshot' : 'Active call state unavailable'} · ${fresh && usage.terminal_guard_status === 'ok' && line.active_state_status === 'observed' && line.active_provider_minutes_estimate != null ? esc(line.active_provider_minutes_estimate) + ' min estimated' : 'estimate unavailable'}</span>
+      ${line.ended_without_timing_calls ? `<span>${esc(line.ended_without_timing_calls)} ended ${line.ended_without_timing_calls === 1 ? 'call' : 'calls'} awaiting final timing</span>` : ''}
       ${line.unknown_calls ? `<span>${esc(line.unknown_calls)} calls with unconfirmed timing</span>` : ''}
     </div>`).join('');
     return `<section class="panel" data-usage-panel><div class="panel-header"><div><h2 class="panel-title">Call usage</h2>
@@ -2632,6 +2633,7 @@
       <div class="panel-body"><p>Provider call time, not confirmed AI handling or billable minutes.</p>
       <p>Snapshot: ${esc(snapshotTime.toISOString())}</p>
       ${feedNote}
+      ${usage.terminal_guard_status !== 'ok' ? '<p>Call status check unavailable. Active estimates are hidden.</p>' : ''}
       ${rows || '<p>No calls returned in this window.</p>'}
       <p>${usage.query_scope === 'calls_updated_since_utc_midnight'
         ? 'Calls updated since midnight, including observed calls that cross midnight. Only time within this UTC day is shown. Live-call coverage is not guaranteed.'

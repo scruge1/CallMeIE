@@ -82,9 +82,9 @@ def run():
                         return httpx.Response(200,json=[{'id':'fixture-assistant','name':'Fixture assistant','model':{},'voice':{}}])
                     now = datetime.now(timezone.utc)
                     return httpx.Response(200,json=[{'id':'fixture-call','assistantId':'fixture-assistant',
-                          'phoneNumberId':'fixture-line','status':'ended',
+                          'phoneNumberId':'fixture-line','status':'in-progress' if mode['value']=='active' else 'ended',
                           'startedAt':(now-timedelta(seconds=120)).isoformat(),
-                          'endedAt':(now-timedelta(seconds=60)).isoformat()}])
+                          'endedAt':None if mode['value']=='active' else (now-timedelta(seconds=60)).isoformat()}])
             async def stripe(*args):
                 return {'data':[]}
             real_client = httpx.AsyncClient
@@ -152,6 +152,22 @@ def run():
                     assert header_response.headers.get('cache-control')=='private, no-store'
                     assert 'token=' not in str(header_response.request.url)
                     assert server._admin_bearer.get() is None
+                    mode['value']='active'
+                    active=await client.get('/admin/api/operations-summary',headers={'Authorization':'Bearer synthetic-admin'})
+                    active_line=active.json()['usage']['lines'][0]
+                    assert active_line['observed_active_calls']==1 and active_line['active_state_status']=='observed'
+                    with patch.object(server,'read_terminal_calls',side_effect=RuntimeError('synthetic lookup failure')):
+                        unavailable=await client.get('/admin/api/operations-summary',headers={'Authorization':'Bearer synthetic-admin'})
+                    failed_line=unavailable.json()['usage']['lines'][0]
+                    assert unavailable.json()['usage']['terminal_guard_status']=='unavailable'
+                    assert failed_line['active_state_status']=='unavailable' and failed_line['active_provider_minutes_estimate'] is None
+                    ended={'type':'status-update','status':'ended','call':{'id':'fixture-call'}}
+                    server.store_status_event(server.get_db,server.normalize_status_event(ended))
+                    suppressed=await client.get('/admin/api/operations-summary',headers={'Authorization':'Bearer synthetic-admin'})
+                    suppressed_line=suppressed.json()['usage']['lines'][0]
+                    assert suppressed_line['observed_active_calls']==0 and suppressed_line['ended_without_timing_calls']==1
+                    assert suppressed_line['completed_provider_minutes']==0
+                    mode['value']='ok'
                     async def empty_assistant(*args): return {}
                     # Small normal forms only: parser compatibility, not attack traffic.
                     no_file = await client.post('/api/docops/extract', data={'description':'fixture'})

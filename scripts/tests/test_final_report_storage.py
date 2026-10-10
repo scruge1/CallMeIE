@@ -9,7 +9,7 @@ import tempfile
 import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from billing.status_events import store_final_report
+from billing.status_events import store_final_report, read_terminal_calls, normalize_status_event, store_status_event
 
 
 class FinalReports(unittest.TestCase):
@@ -28,6 +28,7 @@ class FinalReports(unittest.TestCase):
     @contextmanager
     def connection(self):
         db = sqlite3.connect(self.path, timeout=10)
+        db.row_factory = sqlite3.Row
         try:
             with db:
                 yield db
@@ -106,6 +107,60 @@ class FinalReports(unittest.TestCase):
             store_final_report(self.connection, 'fixture', self.rows)
         with self.connection() as db:
             self.assertEqual(db.execute('SELECT COUNT(*) FROM call_events').fetchone()[0], 0)
+
+    def test_terminal_lookup_retains_end_after_late_progress(self):
+        for status in ('ended','in-progress'):
+            event=normalize_status_event({'type':'status-update','status':status,'call':{'id':'fixture'}})
+            store_status_event(self.connection,event)
+        self.assertEqual(read_terminal_calls(self.connection,['fixture','other']),{'status':'ok','call_ids':['fixture']})
+
+    def test_final_and_historical_rows_are_terminal_without_reading_payloads(self):
+        with self.connection() as db:
+            db.execute("INSERT INTO call_events(call_id,event_type,detail) VALUES('historical','call-ended','private transcript')")
+        store_final_report(self.connection,'fixture',self.rows)
+        result=read_terminal_calls(self.connection,['fixture','historical'])
+        self.assertEqual(result['call_ids'],['fixture','historical'])
+        self.assertNotIn('private',str(result))
+
+    def test_unselected_and_unkeyed_status_rows_do_not_qualify(self):
+        with self.connection() as db:
+            db.execute("INSERT INTO call_events(call_id,event_type,summary) VALUES('fixture','call-status','Call status: ended')")
+            db.execute("INSERT INTO call_events(call_id,event_type) VALUES('other','call-ended')")
+        self.assertEqual(read_terminal_calls(self.connection,['fixture']),{'status':'ok','call_ids':[]})
+
+    def test_empty_terminal_scope_needs_no_connection(self):
+        def forbidden(): raise AssertionError('unexpected database read')
+        self.assertEqual(read_terminal_calls(forbidden,[]),{'status':'ok','call_ids':[]})
+
+    def test_terminal_scope_limits(self):
+        for identities in ('fixture', [None], ['x']*101):
+            with self.subTest(identities=identities), self.assertRaises(ValueError):
+                read_terminal_calls(self.connection,identities)
+
+    def test_terminal_lookup_failure_propagates(self):
+        def broken(): raise RuntimeError('synthetic unavailable database')
+        with self.assertRaises(RuntimeError): read_terminal_calls(broken,['fixture'])
+
+    def test_lookup_index_migration_preserves_rows_and_is_reversible(self):
+        import importlib.util
+        import sqlalchemy as sa
+        from alembic.migration import MigrationContext
+        from alembic.operations import Operations
+        source=Path(__file__).resolve().parents[1]/'alembic/versions/0013_call_event_lookup.py'
+        spec=importlib.util.spec_from_file_location('lookup_migration',source)
+        migration=importlib.util.module_from_spec(spec);spec.loader.exec_module(migration)
+        store_final_report(self.connection,'fixture',self.rows)
+        engine=sa.create_engine('sqlite:///'+str(self.path))
+        try:
+            with engine.begin() as db:
+                with Operations.context(MigrationContext.configure(db)): migration.upgrade()
+                assert db.exec_driver_sql('SELECT COUNT(*) FROM call_events').scalar()==2
+                plan=db.exec_driver_sql("EXPLAIN QUERY PLAN SELECT DISTINCT call_id FROM call_events WHERE call_id='fixture' AND (event_type='call-ended' OR (event_type='call-status' AND summary='Call status: ended' AND event_key IS NOT NULL))").fetchall()
+                self.assertIn('idx_call_events_call_type',str(plan))
+                with Operations.context(MigrationContext.configure(db)): migration.downgrade()
+                assert db.exec_driver_sql('SELECT COUNT(*) FROM call_events').scalar()==2
+        finally:
+            engine.dispose()
 
 
 if __name__ == '__main__':
