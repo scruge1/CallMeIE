@@ -46,7 +46,7 @@ jobs:
         run: |
           mkdir -p "$RUNNER_TEMP/backend-ci/home"
           env -i PATH="$PATH" HOME="$RUNNER_TEMP/backend-ci/home" \
-            TMPDIR="$RUNNER_TEMP/backend-ci" PYTHONUTF8=1 \
+            TMPDIR="$RUNNER_TEMP/backend-ci" PYTHONUTF8=1 PYTHONPATH="$PWD/tests" \
             PYTHONDONTWRITEBYTECODE=1 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 \
             AWS_EC2_METADATA_DISABLED=true \
             DB_PATH="$RUNNER_TEMP/backend-ci/callmeie.sqlite" \

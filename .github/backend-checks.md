@@ -7,6 +7,9 @@ Node 24.21.0 LTS. It runs for every pull request, main push, merge group and man
 request. It has no path filter. The test step receives a clean environment,
 private temporary SQLite paths and socket blocking. Unix sockets remain enabled
 for local async test plumbing. This is a test boundary, not OS containment.
+The pytest process adds only the existing test directory to `PYTHONPATH` for
+the maintainer's sibling fixture imports, as in unittest discovery. Assertions
+and application modules remain unchanged by this import-path compatibility step.
 
 The JavaScript tests use local source and VM fixtures, including stub requests.
 They need no npm packages or application server. Their clean environment has no
