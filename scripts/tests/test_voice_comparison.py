@@ -1,5 +1,7 @@
 """Test the exact audio endpoint without startup jobs or provider calls."""
 import ast
+from contextvars import ContextVar
+import hmac
 import os
 from pathlib import Path
 import unittest
@@ -21,7 +23,8 @@ class VoiceComparisonTests(unittest.TestCase):
         app = FastAPI()
         namespace = {"app": app, "ADMIN_TOKEN": "fixture-only", "Query": Query,
                      "HTTPException": HTTPException, "FileResponse": FileResponse, "Request": Request, "Response": Response,
-                     "os": os, "_SCRIPTS_DIR": str(SCRIPTS)}
+                     "os": os, "_SCRIPTS_DIR": str(SCRIPTS),
+                     "hmac": hmac, "_admin_bearer": ContextVar("fixture_admin_bearer", default=None)}
         namespace.update({name: "fixture" for name in (
             "_TTS_LINE", "_TTS_KOKORO_B64", "_TTS_PREMIUM_B64", "_TTS_IRISH_B64", "_TTS_CLAIRE_B64")})
         import base64
@@ -53,6 +56,40 @@ class VoiceComparisonTests(unittest.TestCase):
         for model in ("unknown", "server.py", "..", "eleven_v4_turbo.wav"):
             r = self.client.get(f"/admin/api/voice-comparison/{model}", params={"token": "fixture-only"})
             self.assertEqual(r.status_code, 404)
+
+    def test_breeze_private_sample_auth_bytes_range_head_and_label(self):
+        import hashlib
+        route = '/admin/api/voice-comparison/breeze-irish-internal'
+        for fmt, digest in (
+            ('wav', '6cabe452a3ca938da692d915add98a3f5aedfa85610e8840fdc9ae0aace1e1eb'),
+            ('mp3', 'c1a4027b6176fed56a683b3eb844df4df6d2415105dfd207401e642ce554b576'),
+        ):
+            expected = (SCRIPTS / 'voice-samples' / ('breeze-irish-internal.' + fmt)).read_bytes()
+            self.assertEqual(hashlib.sha256(expected).hexdigest(), digest)
+            params = {'token': 'fixture-only', 'format': fmt}
+            for token in ('', 'wrong'):
+                self.assertEqual(self.client.get(route, params={'token': token, 'format': fmt}).status_code, 401)
+                self.assertEqual(self.client.head(route, params={'token': token, 'format': fmt}).status_code, 401)
+            full = self.client.get(route, params=params)
+            self.assertEqual(full.status_code, 200)
+            self.assertEqual(full.content, expected)
+            self.assertEqual(full.headers['cache-control'], 'private, no-store')
+            self.assertEqual(full.headers['content-type'], 'audio/mpeg' if fmt == 'mp3' else 'audio/wav')
+            for header, start, end in (('bytes=0-1', 0, 1), ('bytes=-128', len(expected)-128, len(expected)-1)):
+                ranged = self.client.get(route, params=params, headers={'Range': header})
+                self.assertEqual(ranged.status_code, 206)
+                self.assertEqual(ranged.content, expected[start:end+1])
+                self.assertEqual(ranged.headers['content-range'], f'bytes {start}-{end}/{len(expected)}')
+                self.assertEqual(ranged.headers['cache-control'], 'private, no-store')
+            head = self.client.head(route, params=params)
+            self.assertEqual(head.status_code, 200)
+            self.assertEqual(head.content, b'')
+            self.assertEqual(int(head.headers['content-length']), len(expected))
+        html = (SCRIPTS / 'admin.html').read_text(encoding='utf-8-sig')
+        self.assertIn('id="breezePrivateSample"', html)
+        self.assertIn('Breeze TTS2 - private Irish voice test', html)
+        self.assertIn('Internal evaluation only; not enabled on phone assistants.', html)
+        self.assertIn("endpoint('/admin/api/voice-comparison/breeze-irish-internal', {format: 'mp3'})", html)
 
     def test_saved_hotel_pairs_auth_bytes_head_and_range(self):
         for situation in ('routing', 'privacy', 'complaint', 'clarity'):

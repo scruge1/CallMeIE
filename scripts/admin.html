@@ -3741,6 +3741,12 @@
     </section><section class="panel pad" style="margin-top:18px">
       <h3>Video voiceover references</h3>
       <p class="muted">Saved references. Playback costs nothing. These older recordings do not reflect the current V4 phone model.</p>
+      <div id="breezePrivateSample" style="margin:12px 0">
+        <h3>Breeze TTS2 - private Irish voice test</h3>
+        <p class="muted">25.2-second synthetic sample, generated 10 October 2026. Internal evaluation only; not enabled on phone assistants.</p>
+        <audio controls preload="metadata" aria-label="Breeze TTS2 private Irish voice test" style="width:100%"
+          src="${esc(endpoint('/admin/api/voice-comparison/breeze-irish-internal', {format: 'mp3'}))}"></audio>
+      </div>
       ${refRow("Kokoro", "local video voiceover", "kokoro")}
       ${refRow("Edge - Andrew Multilingual", "video drafts", "premium")}
       ${refRow("Edge - Connor (Irish)", "older Irish reference", "irish")}
