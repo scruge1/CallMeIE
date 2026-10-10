@@ -8796,8 +8796,8 @@ async def client_calls(
     try:
         with get_db() as conn:
             rows = conn.execute(sql, tuple(args)).fetchall()
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"query_failed: {e}")
+    except Exception:
+        raise HTTPException(status_code=500, detail="call_history_unavailable")
 
     # Group by call_id, take latest report/action row as the summary line.
     grouped: dict[str, dict] = {}
@@ -8861,8 +8861,8 @@ def client_call_detail(call_id: str, token: str = Query("")):
                 "FROM call_events WHERE call_id = ? ORDER BY id ASC",
                 (call_id,),
             ).fetchall()
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"DB error: {e}")
+    except Exception:
+        raise HTTPException(status_code=500, detail="call_history_unavailable")
     if not events:
         raise HTTPException(status_code=404, detail="call_not_found")
     # Authorization — at least one event for this call must belong to tenant.

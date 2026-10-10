@@ -213,6 +213,15 @@ def run():
                     assert detail.status_code==200
                     assert detail.json()['transcript']=='history transcript preserved'
                     assert sum(event['event_type']=='call-status' for event in detail.json()['events'])==120
+                    fixture_client=server.check_client('synthetic-client')
+                    with patch.object(server,'check_client',return_value=fixture_client), \
+                         patch.object(server,'get_db',side_effect=RuntimeError('private-database-credential-canary')):
+                        for endpoint in ('/client/api/calls','/client/api/calls/status-shadow-fixture'):
+                            failed_history=await client.get(endpoint,headers={'Authorization':'Bearer synthetic-client'})
+                            assert failed_history.status_code==500
+                            assert failed_history.json()=={'error':'call_history_unavailable','status':500}
+                            assert failed_history.headers.get('cache-control')=='private, no-store'
+                            assert 'private-database-credential-canary' not in failed_history.text
                     for endpoint in ('/admin/api/operations-summary','/admin/api/flow-graph'):
                         response = await client.get(endpoint)
                         assert response.status_code==401,(endpoint,response.status_code)
