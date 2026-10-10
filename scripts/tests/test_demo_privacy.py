@@ -9,6 +9,7 @@ import unittest
 from unittest.mock import AsyncMock, Mock
 from fastapi import BackgroundTasks, Request
 from fastapi.responses import JSONResponse
+from billing.status_events import store_final_report
 
 
 class DemoPrivacyTests(unittest.TestCase):
@@ -19,10 +20,15 @@ class DemoPrivacyTests(unittest.TestCase):
           phone TEXT, business_type TEXT, interest TEXT, source TEXT, callback_requested INTEGER DEFAULT 0,
           created_at TEXT DEFAULT CURRENT_TIMESTAMP, demo_completed INTEGER, topics_discussed TEXT,
           interest_level TEXT, pain_point TEXT, estimated_missed_calls_per_week TEXT, next_action TEXT);
-          CREATE TABLE call_events (call_id TEXT,event_type TEXT);''')
+          CREATE TABLE call_events (id INTEGER PRIMARY KEY,call_id TEXT,event_type TEXT,
+            assistant TEXT,summary TEXT,detail TEXT,event_key TEXT UNIQUE);''')
         @contextmanager
         def get_db():
             yield self.db
+        async def fixture_threadpool(function, *args):
+            # Keep this AST fixture's in-memory SQLite on its creating thread.
+            # Real offloading is exercised by the separate imported-app fixture.
+            return function(*args)
         self.sms = AsyncMock()
         self.calendar = Mock()
         self.events = []
@@ -33,7 +39,8 @@ class DemoPrivacyTests(unittest.TestCase):
             get_client=lambda _: {'name':'Demo','owner':'owner','from':'sender'}, OWNER_NUMBER='owner',
             TWILIO_FROM='sender', DEMO_ASSISTANT_IDS={'claire':'demo'},
             CALLMEIE_CALLBACK_CALENDAR_ID='fixture', create_callback_event=self.calendar,
-            _mirror_recording_to_hetzner=Mock(), _delayed_mirror_via_vapi=Mock(), json=json)
+            _mirror_recording_to_hetzner=Mock(), _delayed_mirror_via_vapi=Mock(), json=json,
+            run_in_threadpool=fixture_threadpool,store_final_report=store_final_report)
         source = ast.parse((Path(__file__).resolve().parents[1] / 'server.py').read_text(encoding='utf-8'))
         names = {'call_ended','capture_lead','demo_complete','_parse_vapi_tool_call','_vapi_result','_capture_lead_phone'}
         nodes = [n for n in source.body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name in names]
@@ -56,6 +63,7 @@ class DemoPrivacyTests(unittest.TestCase):
     def test_demo_end_never_sends_unsolicited_sms(self):
         result = asyncio.run(self.ns['call_ended'](self.request(), BackgroundTasks()))
         self.assertEqual(result.status_code,200)
+        self.assertEqual(self.db.execute("SELECT COUNT(*) FROM call_events WHERE event_type='call-ended'").fetchone()[0],1)
         self.sms.assert_not_called()
         self.assertTrue(any(e[1]=='demo-follow-up-suppressed' for e in self.events))
 

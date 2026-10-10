@@ -1,0 +1,5 @@
+# Superseded proposal input. The maintained Dockerfile uses requirements.lock.
+# Retained for history; do not use this input as the current release source.
+# Application requirements plus build metadata shared with the tested CI runtime.
+-r requirements.txt
+packaging==26.3

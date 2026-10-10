@@ -1,5 +1,7 @@
 """Test the exact audio endpoint without startup jobs or provider calls."""
 import ast
+from contextvars import ContextVar
+import hmac
 import os
 from pathlib import Path
 import unittest
@@ -20,6 +22,8 @@ class VoiceComparisonTests(unittest.TestCase):
         self.assertEqual(len(nodes), 5)
         app = FastAPI()
         namespace = {"app": app, "ADMIN_TOKEN": "fixture-only", "Query": Query,
+                     "_admin_bearer": ContextVar('fixture_admin_bearer', default=None),
+                     "hmac": hmac,
                      "HTTPException": HTTPException, "FileResponse": FileResponse, "Request": Request, "Response": Response,
                      "os": os, "_SCRIPTS_DIR": str(SCRIPTS)}
         namespace.update({name: "fixture" for name in (
