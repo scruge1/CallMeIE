@@ -4,10 +4,11 @@ No listener, real credentials, external connection, financial call or live DB.
 Run as a separate process so application module globals remain isolated.
 """
 import asyncio
-from contextlib import contextmanager
+from contextlib import contextmanager, redirect_stdout
 from datetime import datetime, timedelta, timezone
 import importlib
 import inspect
+import io
 import os
 from pathlib import Path
 import socket
@@ -16,7 +17,7 @@ import sys
 import tempfile
 import threading
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import patch, AsyncMock
 
 import httpx
 
@@ -91,6 +92,35 @@ def run():
             server.httpx = SimpleNamespace(AsyncClient=Provider, TimeoutException=httpx.TimeoutException, RequestError=httpx.RequestError)
             server._stripe_get = stripe
             async def checks():
+                # Exercise the actual imported notification helpers. Credentials,
+                # response bodies and recipients are synthetic; no external IO.
+                private='private-notification-canary'
+                captured=io.StringIO()
+                class NotificationProvider:
+                    def __init__(self,**kwargs): pass
+                    async def __aenter__(self): return self
+                    async def __aexit__(self,*args): pass
+                    async def post(self,url,**kwargs):
+                        return httpx.Response(400,json={'message':private,'to':private,'status':'failed'})
+                class UncertainProvider(NotificationProvider):
+                    async def post(self,url,**kwargs):
+                        raise RuntimeError(private+' '+url)
+                with redirect_stdout(captured):
+                    with patch.object(server,'TWILIO_SID',''),patch.object(server,'TWILIO_TOKEN',''),patch.object(server,'TWILIO_FROM',''):
+                        mocked=await server.send_sms(private,private)
+                    assert mocked=={'status':'mocked','ok':True,'http_status':200}
+                    with patch.object(server,'TWILIO_SID','synthetic-sid'),patch.object(server,'TWILIO_TOKEN','synthetic-token'),patch.object(server,'TWILIO_FROM','synthetic-from'),patch.object(server.httpx,'AsyncClient',NotificationProvider):
+                        failed_sms=await server.send_sms(private,private)
+                    assert failed_sms['message']==private and failed_sms['ok'] is False and failed_sms['http_status']==400
+                    with patch.object(server,'TELEGRAM_BOT_TOKEN',''),patch.object(server,'TELEGRAM_CHAT_ID',''):
+                        assert await server.send_telegram(private) is None
+                    with patch.object(server,'TELEGRAM_BOT_TOKEN',private),patch.object(server,'TELEGRAM_CHAT_ID',private):
+                        with patch.object(server.httpx,'AsyncClient',NotificationProvider):
+                            await server.send_telegram(private)
+                        with patch.object(server.httpx,'AsyncClient',UncertainProvider):
+                            await server.send_telegram(private)
+                assert private not in captured.getvalue()
+                assert 'provider HTTP 400' in captured.getvalue() and 'outcome unconfirmed' in captured.getvalue()
                 transport = httpx.ASGITransport(app=server.app,raise_app_exceptions=True)
                 async with real_client(transport=transport,base_url='http://fixture.test') as client:
                     # Actual route registration enforces credentials before JSON
@@ -120,25 +150,46 @@ def run():
                     empty_final=await client.post('/vapi/call-ended',headers=report_headers,json={'message':{'type':'end-of-call-report'}})
                     assert empty_final.status_code==200 and empty_final.json()['skipped']=='no_call_id_or_assistant'
                     final_body={'message':{'type':'end-of-call-report',
-                                'call':{'id':'final-fixture','assistantId':'fixture-assistant','status':'ended','duration':0},
+                                'call':{'id':'final-fixture','assistantId':'fixture-assistant','status':'ended','duration':0,
+                                        'customer':{'number':'private-final-caller-canary'}},
                                 'artifact':{'transcript':'synthetic final transcript',
                                             'assistantActivations':[{'assistantId':'handoff-fixture'}]}}}
                     with patch.object(server,'_delayed_mirror_via_vapi') as archive, \
                          patch.object(server,'score_anomaly',return_value=0), \
                          patch.object(server,'get_client',return_value={'name':'Fixture','owner':'','from':''}):
-                        with patch.object(server,'store_final_report',side_effect=RuntimeError('private synthetic failure')):
+                        failed_log=io.StringIO()
+                        with redirect_stdout(failed_log),patch.object(server,'store_final_report',side_effect=RuntimeError('private synthetic failure')):
                             failed_final=await client.post('/vapi/call-ended',headers=report_headers,json=final_body)
                         assert failed_final.status_code==503 and failed_final.json()=={'error':'final_storage_unavailable'}
                         assert archive.call_count==0
-                        final_results=await asyncio.gather(*[
-                            client.post('/vapi/call-ended',headers=report_headers,json=final_body) for _ in range(8)])
+                        assert 'committed' not in failed_log.getvalue() and 'private-final-caller-canary' not in failed_log.getvalue()
+                        final_log=io.StringIO()
+                        with redirect_stdout(final_log):
+                            final_results=await asyncio.gather(*[
+                                client.post('/vapi/call-ended',headers=report_headers,json=final_body) for _ in range(8)])
                         assert all(r.status_code==200 for r in final_results)
                         assert sum(r.json().get('duplicate',False) for r in final_results)==7
                         assert archive.call_count==1
+                        assert 'private-final-caller-canary' not in final_log.getvalue()
+                        assert final_log.getvalue().count('[Call report] committed')==1
+                        assert final_log.getvalue().count('[Call report] duplicate')==7
                     with server.get_db() as db:
                         final_rows=db.execute("SELECT assistant,detail FROM call_events WHERE call_id='final-fixture' ORDER BY id").fetchall()
                     assert [r['assistant'] for r in final_rows]==['fixture-assistant','handoff-fixture']
                     assert 'synthetic final transcript' in final_rows[0]['detail']
+                    missed_log=io.StringIO()
+                    missed_body={'message':{'type':'end-of-call-report','call':{
+                        'id':'missed-fixture','assistantId':'fixture-assistant','status':'missed',
+                        'duration':0,'customer':{'number':'private-missed-caller-canary'}}}}
+                    with redirect_stdout(missed_log),patch.object(server,'_delayed_mirror_via_vapi'), \
+                         patch.object(server,'score_anomaly',return_value=0), \
+                         patch.object(server,'get_client',return_value={'name':'private-business-canary','owner':'','from':''}), \
+                         patch.object(server,'send_sms',new_callable=AsyncMock,return_value={'ok':False,'http_status':400}) as sms:
+                        missed=await client.post('/vapi/call-ended',headers=report_headers,json=missed_body)
+                    assert missed.status_code==200 and sms.await_count==1
+                    assert 'private-missed-caller-canary' not in missed_log.getvalue()
+                    assert 'private-business-canary' not in missed_log.getvalue()
+                    assert 'delivery not verified' in missed_log.getvalue() and 'Text-back sent' not in missed_log.getvalue()
                     assert observed==[], 'call report boundary contacted provider'
                     for endpoint in ('/admin/api/operations-summary','/admin/api/flow-graph'):
                         response = await client.get(endpoint)
@@ -293,6 +344,9 @@ def run():
                         'protected_json_success_and_denial_no_store':True,
                         'client_config_targets_separate_from_enforcement':True,
                         'normal_small_form_parser_compatible':True,
+                        'notification_helper_logs_body_free':True,
+                        'final_report_log_after_commit_only':True,
+                        'missed_call_log_not_delivery_claim':True,
                         'production_actions':False}
             result = loop.run_until_complete(checks())
             import json

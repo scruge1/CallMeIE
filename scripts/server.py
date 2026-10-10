@@ -1280,7 +1280,7 @@ async def send_sms(to: str, body: str, from_number: str = "") -> dict:
     """Send SMS via Twilio. Uses per-client from_number if provided."""
     sender = from_number or TWILIO_FROM
     if not all([TWILIO_SID, TWILIO_TOKEN, sender]):
-        print(f"[SMS MOCK] To: {to} | {body[:80]}...")
+        print("[SMS] not configured; send mocked")
         return {"status": "mocked", "ok": True, "http_status": 200}
     async with httpx.AsyncClient() as client:
         resp = await client.post(
@@ -1293,7 +1293,7 @@ async def send_sms(to: str, body: str, from_number: str = "") -> dict:
         except Exception:
             result = {"status": "failed", "message": resp.text[:200]}
         if resp.status_code not in (200, 201):
-            print(f"[SMS ERROR] {resp.status_code}: {result}")
+            print(f"[SMS] provider HTTP {resp.status_code}")
         status = result.get("status", "") if isinstance(result, dict) else ""
         ok = resp.status_code in (200, 201) and status not in ("failed", "undelivered")
         if not ok and isinstance(result, dict):
@@ -1309,16 +1309,16 @@ async def send_sms(to: str, body: str, from_number: str = "") -> dict:
 async def send_telegram(message: str) -> None:
     """Send a Telegram message to TELEGRAM_CHAT_ID via the configured bot."""
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
-        print(f"[TELEGRAM MOCK] {message[:120]}")
+        print("[TELEGRAM] not configured; send skipped")
         return
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
     try:
         async with httpx.AsyncClient(timeout=10) as client:
             resp = await client.post(url, json={"chat_id": TELEGRAM_CHAT_ID, "text": message, "parse_mode": "HTML"})
             if resp.status_code != 200:
-                print(f"[TELEGRAM ERROR] {resp.status_code}: {resp.text[:200]}")
-    except Exception as e:
-        print(f"[TELEGRAM ERROR] {e}")
+                print(f"[TELEGRAM] provider HTTP {resp.status_code}")
+    except Exception:
+        print("[TELEGRAM] send outcome unconfirmed")
 
 
 # --- Vapi post-call webhook ---
@@ -1401,8 +1401,6 @@ async def call_ended(request: Request, background_tasks: BackgroundTasks):
     owner = client.get("owner", OWNER_NUMBER)
     from_num = client.get("from", TWILIO_FROM)
 
-    print(f"[Call] assistant={assistant_id} status={status} caller={caller} duration={duration}s")
-
     # 2026-05-13 — pull transcript + artifact bits BEFORE writing the row so we
     # can persist transcript inline in detail JSON (used by /client/api/calls/{id}
     # which reads d.get("transcript") and joins parts).
@@ -1471,6 +1469,7 @@ async def call_ended(request: Request, background_tasks: BackgroundTasks):
         return JSONResponse({'error': 'invalid_final_report'}, status_code=400)
     except Exception:
         return JSONResponse({'error': 'final_storage_unavailable'}, status_code=503)
+    print("[Call report] duplicate" if saved['duplicate'] else "[Call report] committed")
     if saved['duplicate']:
         return JSONResponse(saved)
 
@@ -1524,7 +1523,7 @@ async def call_ended(request: Request, background_tasks: BackgroundTasks):
             f"Reply STOP to opt out.",
             from_number=from_num,
         )
-        print(f"[Missed Call] Text-back sent to {caller} for {business}")
+        print("[Missed call] text-back attempt completed; delivery not verified")
 
     # Owner notification for real client calls (demo complete alerts come from /demo-complete)
     if not is_demo and owner and duration > 10:
