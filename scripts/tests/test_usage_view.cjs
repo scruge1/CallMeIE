@@ -6,10 +6,95 @@ assert(start>=0&&end>start,'usage renderer extraction must stop at the next real
 const context=vm.createContext({esc:s=>String(s).replaceAll('<','&lt;').replaceAll('>','&gt;'),Date});
 vm.runInContext(html.slice(start,end),context);
 const render=usage=>context.renderUsagePanel({usage});
-function snapshot(changes={}) {return {status:'fresh',observed_at:Math.floor(Date.now()/1000),lines:[{line_id:'line-a',completed_calls:1,completed_provider_minutes:2,observed_active_calls:1,active_provider_minutes_estimate:3,unknown_calls:0}],...changes};}
+function snapshot(changes={}) {return {status:'fresh',terminal_guard_status:'ok',observed_at:Math.floor(Date.now()/1000),lines:[{line_id:'line-a',completed_calls:1,completed_provider_minutes:2,observed_active_calls:1,active_state_status:'observed',active_provider_minutes_estimate:3,unknown_calls:0}],...changes};}
+
+test('failed terminal lookup withholds even a supplied active estimate',()=>{
+ const usage=snapshot({terminal_guard_status:'unavailable'});
+ const output=render(usage);
+ assert.match(output,/Active call state unavailable/);
+ assert.match(output,/Call status check unavailable/);
+ assert.doesNotMatch(output,/3 min estimated|1 active at snapshot/);
+});
+
+test('ended receipt without provider timing is not completed usage',()=>{
+ const usage=snapshot();
+ usage.lines[0]={...usage.lines[0],observed_active_calls:0,active_provider_minutes_estimate:0,ended_without_timing_calls:1,unknown_calls:1};
+ const output=render(usage);
+ assert.match(output,/1 ended call awaiting final timing/);
+ assert.match(output,/0 active at snapshot/);
+ assert.match(output,/not confirmed AI/);
+});
 test('missing data never says zero calls',()=>{assert.match(render(),/unavailable/);assert.match(render({status:'unavailable'}),/does not mean zero/);});
+test('status feed receipt stays separate from live-call coverage',()=>{
+ const ops={usage:snapshot(),status_feed:{status:'observed',last_received_at:Math.floor(Date.now()/1000)-60}};
+ const output=context.renderUsagePanel(ops);
+ assert.match(output,/Last status event received:/);
+ assert.match(output,/not a connection check or a complete live-call count/);
+});
+test('idle and failed event feed never imply no calls',()=>{
+ for(const status of ['no_events','unavailable']){
+  const output=context.renderUsagePanel({usage:snapshot(),status_feed:{status,last_received_at:null}});
+  assert.match(output,status==='no_events'?/No status events received yet/:/Status event data unavailable/);
+  assert.doesNotMatch(output,/Last status event received:|zero active|Disconnected/);
+ }
+});
+test('invalid and future receipt times remain unavailable',()=>{
+ for(const last_received_at of [null,'bad',NaN,Infinity,1e20,Date.now()/1000+600]){
+  const output=context.renderUsagePanel({usage:snapshot(),status_feed:{status:'observed',last_received_at}});
+  assert.match(output,/Status event data unavailable/);
+  assert.doesNotMatch(output,/Last status event received:/);
+ }
+});
 test('scope and unknown billing remain visible',()=>{const output=render(snapshot());assert.match(output,/partial coverage/);assert.match(output,/not confirmed AI/);assert.match(output,/not yet verified/);assert.match(output,/before midnight/);assert.match(output,/3 min estimated/);});
+
+test('update-time scope states observed carryover without full coverage',()=>{
+ const output=render(snapshot({query_scope:'calls_updated_since_utc_midnight',carryover_calls_included:true}));
+ assert.match(output,/Calls updated since midnight/);
+ assert.match(output,/observed calls that cross midnight/);
+ assert.match(output,/Live-call coverage is not guaranteed/);
+ assert.doesNotMatch(output,/created before midnight are not included/);
+});
 test('stale snapshot hides live estimate',()=>{const output=render(snapshot({observed_at:Math.floor(Date.now()/1000)-100}));assert.match(output,/Stale snapshot/);assert.match(output,/estimate unavailable/);assert.doesNotMatch(output,/3 min estimated/);});
+
+test('invalid snapshot times show unavailable without throwing',()=>{
+ for(const observed_at of [undefined,null,'bad','123',NaN,Infinity,1e20]){
+  const output=render(snapshot({observed_at}));
+  assert.match(output,/Usage data unavailable/);
+  assert.doesNotMatch(output,/Recent snapshot|3 min estimated|1970/);
+ }
+});
+
+test('failed summary refresh cannot leave usage displayed as recent',async()=>{
+ const start=html.indexOf('  async function loadOperationsSummary(');
+ const end=html.indexOf('  async function loadHealth(',start);
+ const panels=[{}],net={textContent:''};
+ const c=vm.createContext({Date,Number,esc:String,state:{ops:{usage:snapshot(),money:{status:'partial'},status_feed:{status:'observed',last_received_at:Date.now()/1000-60}}},
+  api:async()=>{throw Error('synthetic unavailable');},qs:()=>net,qsa:()=>panels,
+  eur:()=>'',refreshMoneyPanels:()=>{}});
+ vm.runInContext(html.slice(start,end)+html.slice(html.indexOf('  function renderUsagePanel('),html.indexOf('  function renderSystemPanel(')),c);
+ const result=await c.loadOperationsSummary();
+ assert.equal(result,null);
+ assert.equal(c.state.ops.usage.status,'unavailable');
+ assert.match(panels[0].outerHTML,/Usage data unavailable/);
+ assert.match(panels[0].outerHTML,/Status event data unavailable/);
+ assert.doesNotMatch(panels[0].outerHTML,/Last status event received:/);
+ assert.doesNotMatch(panels[0].outerHTML,/Recent snapshot|3 min estimated/);
+});
+
+test('normal later summary refresh restores current usage without a retry loop',async()=>{
+ const start=html.indexOf('  async function loadOperationsSummary(');
+ const end=html.indexOf('  async function loadHealth(',start);
+ const panels=[{}],net={textContent:''};let calls=0;
+ const data={usage:snapshot(),money:{status:'partial'},today:{}};
+ const c=vm.createContext({Date,Number,esc:String,state:{ops:null},api:async()=>{
+  calls++;if(calls===1)throw Error('synthetic unavailable');return data;
+ },qs:()=>net,qsa:()=>panels,eur:()=>'',refreshMoneyPanels:()=>{}});
+ vm.runInContext(html.slice(start,end)+html.slice(html.indexOf('  function renderUsagePanel('),html.indexOf('  function renderSystemPanel(')),c);
+ await c.loadOperationsSummary();assert.equal(calls,1);
+ assert.match(panels[0].outerHTML,/Usage data unavailable/);
+ await c.loadOperationsSummary();assert.equal(calls,2);
+ assert.match(panels[0].outerHTML,/Recent snapshot/);
+});
 test('cap and conflicts are explicit',()=>{const output=render(snapshot({limit_reached:true,conflicting_calls:2,rejected_records:1}));assert.match(output,/100-call limit/);assert.match(output,/2 conflicting calls/);});
 test('line IDs escaped',()=>{const output=render(snapshot({lines:[{line_id:'<script>',completed_calls:0,completed_provider_minutes:0,observed_active_calls:0}]}));assert.doesNotMatch(output,/<script>/);assert.match(output,/&lt;script&gt;/);});
 test('existing summary refresh updates mounted panels without another request',()=>{

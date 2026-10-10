@@ -66,6 +66,19 @@ test('failed initial actions do not claim no urgent work',async()=>{
  const h=harness();h.c.state.currentTab='today';const op=h.run('loadToday()');h.pending[0].reject(Error('actions unavailable'));h.pending[1].resolve([]);await op;
  assert.match(h.nodes['#todayView'].innerHTML,/Today could not load/);assert.doesNotMatch(h.nodes['#todayView'].innerHTML,/No urgent actions/);
 });
+
+test('late Today render uses latest usage and money refresh state',async()=>{
+ const h=harness();h.c.state.currentTab='today';
+ h.c.state.ops={usage:{status:'fresh'},money:{status:'partial'}};
+ const statuses=[];
+ h.c.renderUsagePanel=ops=>{statuses.push(ops.usage.status);return ops.usage.status;};
+ h.c.renderMoneyPanel=ops=>{statuses.push(ops.money.status);return ops.money.status;};
+ const op=h.run('loadToday()');
+ h.c.state.ops={usage:{status:'unavailable'},money:{status:'unavailable'}};
+ h.pending[0].resolve({actions:[]});h.pending[1].resolve([]);await op;
+ assert.match(h.nodes['#todayView'].innerHTML,/unavailable/);
+ assert.deepEqual(statuses,['unavailable','unavailable']);
+});
 test('malformed call records do not replace retained state',async()=>{
  const h=harness();h.mounted();h.c.state.events=[{call_id:'previous'}];const op=h.run('loadCalls()');h.pending[0].resolve([null]);h.pending[1].resolve({});await op;
  assert.equal(h.c.state.events[0].call_id,'previous');assert.match(h.nodes['#callsRefreshStatus'].textContent,/Refresh failed/);

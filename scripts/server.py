@@ -35,7 +35,7 @@ from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 import httpx
-from fastapi import BackgroundTasks, FastAPI, HTTPException, Query, Request
+from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse, Response
 
@@ -60,7 +60,7 @@ class AdminBearerContext:
         if scope['type'] != 'http':
             return await self.app(scope, receive, send)
         credential = None
-        if scope.get('path', '').startswith('/admin/api/'):
+        if scope.get('path', '').startswith(('/admin/api/', '/client/api/')):
             values = Request(scope).headers.getlist('authorization')
             if values:
                 credential = ''  # malformed/duplicate headers must not fall back
@@ -205,6 +205,9 @@ app.add_middleware(
 @app.middleware("http")
 async def security_headers(request: Request, call_next):
     response = await call_next(request)
+    if (request.url.path.startswith(("/admin/api/", "/client/api/"))
+            and response.headers.get("content-type", "").split(";", 1)[0] == "application/json"):
+        response.headers["Cache-Control"] = "private, no-store"
     response.headers.setdefault(
         "Strict-Transport-Security", "max-age=31536000; includeSubDomains"
     )
@@ -640,7 +643,8 @@ def init_db():
                 event_type TEXT,
                 assistant  TEXT,
                 summary    TEXT,
-                detail     TEXT
+                detail     TEXT,
+                event_key  TEXT
             )
         """))
         conn.execute(_ddl_fix("""
@@ -708,6 +712,14 @@ def init_db():
                 user_agent          TEXT
             )
         """))
+        # Local SQLite uses init_db; production PostgreSQL uses Alembic.
+        # Do not silently alter a live PostgreSQL database during application boot.
+        if not _USE_PG:
+            event_columns = {row['name'] for row in conn.execute('PRAGMA table_info(call_events)').fetchall()}
+            if 'event_key' not in event_columns:
+                conn.execute('ALTER TABLE call_events ADD COLUMN event_key TEXT')
+            conn.execute('CREATE UNIQUE INDEX IF NOT EXISTS idx_call_events_event_key ON call_events(event_key)')
+            conn.execute('CREATE INDEX IF NOT EXISTS idx_call_events_call_type ON call_events(call_id,event_type)')
         # P5-1 — created_at indexes on hot tables. Admin queries scan
         # ORDER BY created_at DESC LIMIT N (server.py:2671 etc.). Without
         # indexes these are full table scans; sub-second today on small
@@ -1268,7 +1280,7 @@ async def send_sms(to: str, body: str, from_number: str = "") -> dict:
     """Send SMS via Twilio. Uses per-client from_number if provided."""
     sender = from_number or TWILIO_FROM
     if not all([TWILIO_SID, TWILIO_TOKEN, sender]):
-        print(f"[SMS MOCK] To: {to} | {body[:80]}...")
+        print("[SMS] not configured; send mocked")
         return {"status": "mocked", "ok": True, "http_status": 200}
     async with httpx.AsyncClient() as client:
         resp = await client.post(
@@ -1281,7 +1293,7 @@ async def send_sms(to: str, body: str, from_number: str = "") -> dict:
         except Exception:
             result = {"status": "failed", "message": resp.text[:200]}
         if resp.status_code not in (200, 201):
-            print(f"[SMS ERROR] {resp.status_code}: {result}")
+            print(f"[SMS] provider HTTP {resp.status_code}")
         status = result.get("status", "") if isinstance(result, dict) else ""
         ok = resp.status_code in (200, 201) and status not in ("failed", "undelivered")
         if not ok and isinstance(result, dict):
@@ -1297,22 +1309,30 @@ async def send_sms(to: str, body: str, from_number: str = "") -> dict:
 async def send_telegram(message: str) -> None:
     """Send a Telegram message to TELEGRAM_CHAT_ID via the configured bot."""
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
-        print(f"[TELEGRAM MOCK] {message[:120]}")
+        print("[TELEGRAM] not configured; send skipped")
         return
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
     try:
         async with httpx.AsyncClient(timeout=10) as client:
             resp = await client.post(url, json={"chat_id": TELEGRAM_CHAT_ID, "text": message, "parse_mode": "HTML"})
             if resp.status_code != 200:
-                print(f"[TELEGRAM ERROR] {resp.status_code}: {resp.text[:200]}")
-    except Exception as e:
-        print(f"[TELEGRAM ERROR] {e}")
+                print(f"[TELEGRAM] provider HTTP {resp.status_code}")
+    except Exception:
+        print("[TELEGRAM] send outcome unconfirmed")
 
 
 # --- Vapi post-call webhook ---
-@app.post("/vapi/call-ended")
+from billing.webhook import require_call_report_auth
+from billing.status_events import normalize_status_event, store_status_event, read_status_feed, store_final_report, read_terminal_calls
+from fastapi.concurrency import run_in_threadpool
+
+
+@app.post("/vapi/call-ended", dependencies=[Depends(require_call_report_auth)])
 async def call_ended(request: Request, background_tasks: BackgroundTasks):
-    """Vapi fires this when any call ends. Returns 200 immediately; anomaly diagnosis runs in background.
+    """Persist status metadata or handle a final report on the authenticated route.
+
+    Status receipts wait for an explicit DB commit and have no background work.
+    Final-report anomaly diagnosis retains the existing background path.
 
     2026-05-13 — noise-suppression: Vapi posts MANY webhook types to this URL
     (status-update / transcript / conversation-update / speech-update / hang /
@@ -1324,15 +1344,36 @@ async def call_ended(request: Request, background_tasks: BackgroundTasks):
     Other handler endpoints (/capture-lead, /demo-complete, /check-availability,
     /book-appointment) handle tool-calls separately at their own routes.
     """
-    body = await request.json()
+    try:
+        body = await request.json()
+    except ValueError:
+        return JSONResponse({'error': 'invalid_json'}, status_code=400)
+    if not isinstance(body, dict):
+        return JSONResponse({'error': 'invalid_body'}, status_code=400)
 
     # Vapi wraps payload under `message`: {message: {type, call, artifact, ...}}.
     # Older test bodies put `call` at top-level. Support both.
     msg = body.get("message") or {}
+    if not isinstance(msg, dict):
+        return JSONResponse({'error': 'invalid_message'}, status_code=400)
     msg_type = msg.get("type") or body.get("type") or ""
 
-    # Guard — only end-of-call-report carries the final summary.
-    # Anything else is ignored at 200 OK (no noise rows).
+    if msg_type == 'status-update':
+        try:
+            normalized = normalize_status_event(msg if msg else body)
+        except ValueError as exc:
+            return JSONResponse({'error': str(exc)}, status_code=400)
+        try:
+            # No successful receipt before the DB commit; no notification/archive
+            # work. Keep blocking DB access out of the async request loop.
+            result = await run_in_threadpool(store_status_event, get_db, normalized)
+        except Exception:
+            # Do not echo database errors, payloads or connection credentials.
+            return JSONResponse({'error': 'status_storage_unavailable'}, status_code=503)
+        return JSONResponse(result)
+
+    # Only end-of-call-report carries the final summary. Status metadata was
+    # handled above; remaining informational types produce no noise rows.
     if msg_type and msg_type != "end-of-call-report":
         return JSONResponse({"status": "ok", "ignored_type": msg_type})
 
@@ -1352,25 +1393,13 @@ async def call_ended(request: Request, background_tasks: BackgroundTasks):
     if not call_id and not assistant_id:
         return JSONResponse({"status": "ok", "skipped": "no_call_id_or_assistant"})
 
-    if call_id:
-        try:
-            with get_db() as conn:
-                duplicate = conn.execute(
-                    "SELECT 1 FROM call_events WHERE call_id=? AND event_type='call-ended' LIMIT 1",
-                    (call_id,),
-                ).fetchone()
-            if duplicate:
-                print(f"[Call] duplicate call-ended webhook ignored for {call_id}")
-                return JSONResponse({"status": "ok", "duplicate": True})
-        except Exception as e:
-            print(f"[Call] dedupe check failed: {e}")
+    if not call_id:
+        return JSONResponse({'error': 'missing_call_id'}, status_code=400)
 
     client = get_client(assistant_id)
     business = client["name"]
     owner = client.get("owner", OWNER_NUMBER)
     from_num = client.get("from", TWILIO_FROM)
-
-    print(f"[Call] assistant={assistant_id} status={status} caller={caller} duration={duration}s")
 
     # 2026-05-13 — pull transcript + artifact bits BEFORE writing the row so we
     # can persist transcript inline in detail JSON (used by /client/api/calls/{id}
@@ -1386,7 +1415,7 @@ async def call_ended(request: Request, background_tasks: BackgroundTasks):
     status_pretty = ended_reason or status or "completed"
     summary_text = f"{status_pretty} · {duration_int}s · from {caller}" if caller else f"{status_pretty} · {duration_int}s"
 
-    log_event(call_id, "call-ended", assistant_id,
+    final_rows = [(assistant_id,
               summary_text,
               {
                   "status": status,
@@ -1397,7 +1426,7 @@ async def call_ended(request: Request, background_tasks: BackgroundTasks):
                   "summary": (analysis.get("summary") or "")[:1000] if analysis else "",
                   "structured_data": analysis.get("structuredData") if analysis else None,
                   "messages_count": len(artifact_messages) if isinstance(artifact_messages, list) else 0,
-              })
+              })]
 
     # 2026-05-13 — Handoff attribution. Vapi sends ONE end-of-call-report tagged
     # with the ORIGINATING assistantId. For multi-assistant chains (Claire ->
@@ -1418,9 +1447,7 @@ async def call_ended(request: Request, background_tasks: BackgroundTasks):
         if not aid or aid in seen_aids:
             continue
         seen_aids.add(aid)
-        log_event(
-            call_id,
-            "call-ended",
+        final_rows.append((
             aid,
             summary_text,
             {
@@ -1428,13 +1455,23 @@ async def call_ended(request: Request, background_tasks: BackgroundTasks):
                 "duration": duration,
                 "caller": caller,
                 "handoff_from": assistant_id,
-                "handoff_chain": handoff_chain or [assistant_id],
+                "handoff_chain": list(handoff_chain) or [assistant_id],
                 "transcript": transcript_text[:30000] if transcript_text else "",
                 "ended_reason": ended_reason,
                 "summary": (analysis.get("summary") or "")[:1000] if analysis else "",
                 "is_mirror_row": True,
             },
-        )
+        ))
+
+    try:
+        saved = await run_in_threadpool(store_final_report, get_db, call_id, final_rows)
+    except ValueError:
+        return JSONResponse({'error': 'invalid_final_report'}, status_code=400)
+    except Exception:
+        return JSONResponse({'error': 'final_storage_unavailable'}, status_code=503)
+    print("[Call report] duplicate" if saved['duplicate'] else "[Call report] committed")
+    if saved['duplicate']:
+        return JSONResponse(saved)
 
     # P2 — mirror Vapi recording to durable Hetzner archive (90d retention promise).
     # Vapi includes recordingUrl + stereoRecordingUrl on the call object once
@@ -1486,7 +1523,7 @@ async def call_ended(request: Request, background_tasks: BackgroundTasks):
             f"Reply STOP to opt out.",
             from_number=from_num,
         )
-        print(f"[Missed Call] Text-back sent to {caller} for {business}")
+        print("[Missed call] text-back attempt completed; delivery not verified")
 
     # Owner notification for real client calls (demo complete alerts come from /demo-complete)
     if not is_demo and owner and duration > 10:
@@ -7145,7 +7182,7 @@ async def _vapi_calls_window(start_unix: int) -> dict:
         async with httpx.AsyncClient(timeout=20) as c:
             r = await c.get("https://api.vapi.ai/call",
                             headers={"Authorization": f"Bearer {vk}"},
-                            params={"limit": 100, "createdAtGt": iso})
+                            params={"limit": 100, "updatedAtGe": iso})
     except httpx.RequestError:
         return {"status": "unavailable", "reason": "provider_unreachable", "calls": []}
     if r.status_code != 200:
@@ -7156,12 +7193,13 @@ async def _vapi_calls_window(start_unix: int) -> dict:
         calls = None
     if not isinstance(calls, list):
         return {"status": "unavailable", "reason": "invalid_response", "calls": []}
-    return {"status": "ok", "observed_at": int(_time.time()), "calls": calls}
+    return {"status": "ok", "observed_at": int(_time.time()), "calls": calls,
+            "query_scope": "calls_updated_since_utc_midnight"}
 
 
 @app.get("/admin/api/operations-summary")
 async def admin_operations_summary(token: str = Query("")):
-    """Gaps 8 + 14 + CAC — today's revenue, cost, net, conversion."""
+    """Bounded operations observations; fees/call costs estimated, not billing."""
     check_admin(token)
     import time
     now = int(time.time())
@@ -7176,8 +7214,22 @@ async def admin_operations_summary(token: str = Query("")):
     fees_today_minor = 0
     payments_today = 0
     payments_7d = 0
-    for p in pi_7d.get("data", []):
+    payment_rows_valid = isinstance(pi_7d, dict) and isinstance(pi_7d.get("data"), list)
+    payment_currency_valid = True
+    payment_rows = pi_7d.get("data", []) if payment_rows_valid else []
+    for p in payment_rows:
+        if not isinstance(p, dict):
+            payment_rows_valid = False
+            continue
         if p.get("status") != "succeeded":
+            continue
+        if (not isinstance(p.get("amount"), int) or isinstance(p.get("amount"), bool)
+                or p["amount"] < 0 or not isinstance(p.get("created"), int)
+                or isinstance(p.get("created"), bool)):
+            payment_rows_valid = False
+            continue
+        if not isinstance(p.get("currency"), str) or p["currency"].lower() != "eur":
+            payment_currency_valid = False
             continue
         amt = p.get("amount", 0) or 0
         rev_7d_minor += amt
@@ -7191,23 +7243,22 @@ async def admin_operations_summary(token: str = Query("")):
     # Vapi calls today (Adam asked for current-day cost view)
     from billing.usage import project_usage
     vapi_snapshot = await _vapi_calls_window(day_start)
+    try:
+        observed_ids = [row['id'] for row in vapi_snapshot.get('calls', [])
+                        if isinstance(row, dict) and isinstance(row.get('id'), str) and row['id']]
+        terminal_observations = await run_in_threadpool(read_terminal_calls, get_db, observed_ids)
+    except Exception:
+        terminal_observations = {'status': 'unavailable', 'call_ids': []}
     usage = project_usage(vapi_snapshot, now=int(time.time()), window_start=day_start,
-                          tenant_bindings=_usage_tenant_bindings())
-    vapi_calls = [c for c in vapi_snapshot["calls"] if isinstance(c, dict)]
-    vapi_mins_today = 0.0
-    call_count_today = 0
-    for c in vapi_calls:
-        sa = c.get("startedAt")
-        ea = c.get("endedAt")
-        if sa and ea:
-            try:
-                import datetime as dt
-                s = dt.datetime.fromisoformat(sa.replace("Z","+00:00")).timestamp()
-                e = dt.datetime.fromisoformat(ea.replace("Z","+00:00")).timestamp()
-                vapi_mins_today += (e - s) / 60.0
-                call_count_today += 1
-            except Exception:
-                pass
+                          tenant_bindings=_usage_tenant_bindings(), terminal_observations=terminal_observations)
+    try:
+        status_feed = await run_in_threadpool(read_status_feed, get_db)
+    except Exception:
+        status_feed = {'status': 'unavailable', 'last_received_at': None, 'coverage_verified': False}
+    # Use the same deduplicated, day-clipped observations as the line panel.
+    # An older call updated today is not automatically today's call time.
+    vapi_mins_today = sum(line["completed_provider_minutes"] for line in usage["lines"])
+    call_count_today = sum(line["completed_calls"] for line in usage["lines"])
 
     vapi_cost_today = vapi_mins_today * VAPI_RATE_PER_MIN_EUR
 
@@ -7268,6 +7319,21 @@ async def admin_operations_summary(token: str = Query("")):
         },
         "currency": "eur",
         "usage": usage,
+        "status_feed": status_feed,
+        "money": {
+            "status": "partial" if (payment_rows_valid and payment_currency_valid
+                                     and vapi_snapshot.get("status") == "ok"
+                                     and not usage["rejected_records"] and not usage["conflicting_calls"]
+                                     and not any(line["unknown_calls"] for line in usage["lines"])) else "unavailable",
+            "payment_rows_valid": payment_rows_valid,
+            "payment_currency_valid": payment_currency_valid,
+            "payment_limit_reached": isinstance(pi_7d, dict) and
+                                     (pi_7d.get("has_more") is True or len(payment_rows) >= 100),
+            "payment_fees_basis": "estimated_percentage_plus_fixed_fee",
+            "call_cost_basis": "completed_provider_elapsed_times_configured_rate",
+            "complete_period": False,
+            "profit_verified": False,
+        },
         "rate_card_used": {
             "vapi_per_min_eur": VAPI_RATE_PER_MIN_EUR,
             "twilio_sms_intl_eur": TWILIO_SMS_INTL_RATE_EUR,
@@ -7416,7 +7482,7 @@ async def admin_recordings_enriched(token: str = Query(""), limit: int = Query(5
 
 
 @app.get("/admin/api/caller/{call_id}")
-async def admin_caller_timeline(call_id: str, token: str = Query("")):
+def admin_caller_timeline(call_id: str, token: str = Query("")):
     """Gap 16 — full timeline for one call_id (CallRail caller-timeline pattern)."""
     check_admin(token)
     try:
@@ -8262,7 +8328,13 @@ def check_client(token: str) -> dict:
     """Validate client token. Raise 401 if missing/invalid/revoked.
     Updates last_used_at on every call. Returns the client_tokens row dict.
     """
-    if not token:
+    bearer = _admin_bearer.get()  # shared request transport, never an admin grant
+    if bearer is not None:
+        if (not isinstance(token, str) or
+                (token and not hmac.compare_digest(token.encode('utf-8'), bearer.encode('utf-8')))):
+            raise HTTPException(status_code=401, detail="invalid_token")
+        token = bearer
+    if not isinstance(token, str) or not token:
         raise HTTPException(status_code=401, detail="missing_token")
     try:
         with get_db() as conn:
@@ -8285,11 +8357,11 @@ def check_client(token: str) -> dict:
             return dict(row)
     except HTTPException:
         raise
-    except Exception as e:
+    except Exception:
         # client_tokens table may not exist yet (migration 0010 not applied).
         # Return 503 so frontend can show a meaningful error.
         raise HTTPException(status_code=503,
-                            detail=f"client_dashboard_not_ready: {e}")
+                            detail="client_dashboard_not_ready")
 
 
 def _client_assistant_filter(client_row: dict) -> tuple[str, list]:
@@ -8529,6 +8601,15 @@ async def _fetch_client_assistant(assistant_id: str) -> dict:
     return {}
 
 
+def _recording_setting_status(assistant: dict) -> str:
+    plan = assistant.get("artifactPlan") or {}
+    if isinstance(plan, dict) and "recordingEnabled" in plan:
+        value = plan["recordingEnabled"]
+    else:
+        value = assistant.get("recordingEnabled")
+    return "verified" if isinstance(value, bool) else "unverified"
+
+
 @app.get("/client/api/me")
 async def client_me(token: str = Query("")):
     """Return current client's tenant identity + relevant assistant config
@@ -8538,19 +8619,21 @@ async def client_me(token: str = Query("")):
     if isinstance(ids, str):
         ids = [s.strip() for s in ids.strip("{}").split(",") if s.strip()]
     has_recording_on = False
+    recording_configuration_status = "unverified"
     if ids:
         a = await _fetch_client_assistant(ids[0])
         has_recording_on = bool((a.get("artifactPlan") or {}).get("recordingEnabled", a.get("recordingEnabled", True)))
+        recording_configuration_status = _recording_setting_status(a)
     return {
         "tenant_slug": c["tenant_slug"],
         "tenant_display_name": c["tenant_display_name"],
         "assistant_ids": ids,
         "has_recording_on": has_recording_on,
-        # Retention values are global system policy (matches public site +
-        # DPA). Hard-coded by design — change here when policy changes,
-        # propagate to privacy.html + vertical sales pages.
+        "recording_configuration_status": recording_configuration_status,
+        # Selected policy targets, not proof of expiry across provider/storage/logs.
         "retention_days_audio": 30,
         "retention_days_transcripts": 90,
+        "retention_enforcement_status": "unverified",
     }
 
 
@@ -8756,7 +8839,7 @@ async def client_calls(
 
 
 @app.get("/client/api/calls/{call_id}")
-async def client_call_detail(call_id: str, token: str = Query("")):
+def client_call_detail(call_id: str, token: str = Query("")):
     """Full timeline + transcript + recording_url for one call.
     At LEAST ONE event for this call must belong to client's tenant whitelist."""
     c = check_client(token)
@@ -8825,15 +8908,14 @@ async def client_call_detail(call_id: str, token: str = Query("")):
             "summary": r["summary"] or "",
         })
 
-    # 2026-05-13 — return saved notes for this call (Adam request: notes were
-    # saving to call_notes table but never displayed back in drawer).
+    # Notes retain their tenant scope even when a call has handoff mirror rows.
     notes_out = []
     try:
         with get_db() as conn:
             note_rows = conn.execute(
                 "SELECT created_at, note, actor, tenant_slug FROM call_notes "
-                "WHERE call_id = ? ORDER BY id ASC",
-                (call_id,),
+                "WHERE call_id = ? AND tenant_slug = ? ORDER BY id ASC",
+                (call_id, c["tenant_slug"]),
             ).fetchall()
         for n in note_rows:
             notes_out.append({
@@ -8842,8 +8924,8 @@ async def client_call_detail(call_id: str, token: str = Query("")):
                 "actor": n["actor"] or "client",
                 "tenant_slug": n["tenant_slug"] or "",
             })
-    except Exception as e:
-        print(f"[client_call_detail] notes fetch failed: {e}")
+    except Exception:
+        print("[client_call_detail] notes unavailable")
 
     return {
         "call_id": call_id,
@@ -9057,6 +9139,7 @@ async def client_settings(token: str = Query("")):
     voice_label = "—"
     greeting = "—"
     recording_on = False
+    recording_configuration_status = "unverified"
     if ids:
         a = await _fetch_client_assistant(ids[0])
         voice = a.get("voice") or {}
@@ -9065,12 +9148,15 @@ async def client_settings(token: str = Query("")):
         voice_label = VOICE_CATALOG.get(vid) or (f"{provider} · {vid[:8]}…" if vid else "—")
         greeting = a.get("firstMessage") or "—"
         recording_on = bool((a.get("artifactPlan") or {}).get("recordingEnabled", a.get("recordingEnabled", True)))
+        recording_configuration_status = _recording_setting_status(a)
     return {
         "tenant": c["tenant_display_name"],
         "voice": voice_label,
         "greeting": greeting,
         "recording_on": recording_on,
+        "recording_configuration_status": recording_configuration_status,
         "retention": "30 days audio / 90 days transcripts",
+        "retention_enforcement_status": "unverified",
         "sub_processors": ["Twilio", "Vapi", "ElevenLabs", "Deepgram", "Hetzner Object Storage (Nuremberg)"],
     }
 

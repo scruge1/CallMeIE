@@ -236,11 +236,14 @@
   .drawer-backdrop {
     position: fixed;
     inset: 0;
+    width: 100%; height: 100%; max-width: none; max-height: none;
+    margin: 0; padding: 0; border: 0;
     background: rgba(15, 23, 42, .42);
     display: none;
     z-index: 50;
   }
   .drawer-backdrop.open { display: block; }
+  .drawer-backdrop::backdrop { background: transparent; }
   .drawer {
     position: fixed;
     right: 0; top: 0; bottom: 0;
@@ -477,13 +480,13 @@
       </section>
   </main>
 
-  <div id="drawerBackdrop" class="drawer-backdrop" onclick="closeDrawer()">
+  <dialog id="drawerBackdrop" class="drawer-backdrop" aria-label="Call details" tabindex="-1" onclick="closeDrawer()" oncancel="event.preventDefault();closeDrawer()" onkeydown="containDrawerFocus(event)">
     <aside id="drawer" class="drawer" onclick="event.stopPropagation()">
       <div id="drawerContent">
         <div class="empty">Loading call…</div>
       </div>
     </aside>
-  </div>
+  </dialog>
 
   <footer class="footer">
     Powered by <a href="https://callmeie.ie" target="_blank" rel="noopener">CallMeIE</a> · DPA at <a href="https://callmeie.ie/legal/dpa.html" target="_blank" rel="noopener">callmeie.ie/legal/dpa.html</a>
@@ -498,7 +501,8 @@ const STORAGE_TOKEN = "client_token";
 const STORAGE_THEME = "client_theme";
 const STORAGE_TOUR  = "client_tour_completed";
 
-const state = { token: "", tenant: null, currentTab: "calls", calls: [], inbox: [], insights: null, settings: null };
+const state = { token: "", tenant: null, currentTab: "calls", calls: [], inbox: [], insights: null, settings: null,
+  drawerRequest: 0, drawerCallId: '', drawerLoadedId: '', noteSaving: false };
 
 const qs = (s, root = document) => root.querySelector(s);
 const qsa = (s, root = document) => Array.from(root.querySelectorAll(s));
@@ -519,12 +523,20 @@ function endpoint(path, params) {
 }
 
 async function api(path, opts = {}) {
-  const url = endpoint(path, opts.params);
-  const init = { method: opts.method || "GET", headers: opts.headers || {} };
+  let url = endpoint(path, opts.params);
+  const headers = new Headers(opts.headers || {});
+  const explicitToken = opts.params && Object.prototype.hasOwnProperty.call(opts.params, 'token');
+  const suppliedAuth = headers.has('Authorization');
+  const clientBearer = path.startsWith('/client/api/') && !explicitToken && !suppliedAuth && /^[\x21-\x7e]+$/.test(state.token);
+  if (clientBearer || (path.startsWith('/client/api/') && suppliedAuth && !explicitToken)) {
+    const cleanUrl = new URL(url); cleanUrl.searchParams.delete('token'); url = cleanUrl.toString();
+  }
+  if (clientBearer) headers.set('Authorization', 'Bearer ' + state.token);
+  const init = { method: opts.method || "GET", headers };
   if (opts.body) init.body = opts.body;
   const r = await fetch(url, init);
   if (!r.ok) {
-    if (r.status === 401) { logout(); return; }
+    if (r.status === 401) { logout(); throw new Error('Sign-in required'); }
     let detail = "";
     try { detail = JSON.stringify(await r.json()); } catch (_) { detail = await r.text(); }
     throw new Error(`HTTP ${r.status}: ${detail}`);
@@ -567,6 +579,7 @@ function logout() {
   localStorage.removeItem(STORAGE_TOKEN);
   state.token = "";
   state.tenant = null;
+  closeDrawer();
   qs("#loginShell").hidden = false;
   qs("#appShell").hidden = true;
 }
@@ -784,9 +797,9 @@ async function loadSettings() {
       <dl style="display: grid; grid-template-columns: 170px 1fr; gap: 8px 16px; margin: 0;">
         <dt class="muted">What callers hear</dt><dd>${esc(voiceName(data.voice))}</dd>
         <dt class="muted">Greeting</dt><dd>${esc(data.greeting || "—")}</dd>
-        <dt class="muted">Call recording</dt><dd>${esc(data.recording_on ? "On" : "Off")}</dd>
-        <dt class="muted">How long calls are kept</dt><dd>${esc(data.retention || "30 days audio / 90 days transcripts")}</dd>
-        <dt class="muted">Emergency handling</dt><dd>Enabled — gas & major-leak safety scripts</dd>
+        <dt class="muted">Recording setting</dt><dd>${esc(data.recording_configuration_status === 'verified' ? (data.recording_on ? "On" : "Off") : 'Not confirmed')}</dd>
+        <dt class="muted">Retention policy target</dt><dd>${esc(data.retention || "Not confirmed")} — ${data.retention_enforcement_status === 'verified' ? 'enforcement verified' : 'enforcement not yet verified'}</dd>
+        <dt class="muted">Emergency handling</dt><dd>${esc(data.emergency_handling || 'Configuration not confirmed')}</dd>
       </dl>
       <details style="margin-top:14px;">
         <summary class="muted" style="cursor:pointer;font-size:12px;">Data processing details</summary>
@@ -861,11 +874,32 @@ function jobDetailsBlock(data){
   const gas = j.gas_emergency ? `<div style="background:#c0261b;color:#fff;font-weight:700;padding:6px 10px;border-radius:6px;margin-bottom:10px;">\u26A0 SUSPECTED GAS — safety script given, ring back now</div>` : "";
   return `${gas}<h4 style="margin:0 0 8px;">Job details</h4><dl style="display:grid;grid-template-columns:140px 1fr;gap:6px 14px;margin:0 0 16px;font-size:13px;">${body}</dl>`;
 }
+function containDrawerFocus(event) {
+  const dialog = qs('#drawerBackdrop');
+  if (event.key !== 'Tab' || !dialog.open) return;
+  const controls = Array.from(dialog.querySelectorAll('a[href],button,textarea,input,select,audio[controls],video[controls],[tabindex="0"]'))
+    .filter(node => node.tabIndex >= 0 && !node.matches(':disabled') && node.getClientRects().length);
+  const active = document.activeElement;
+  if (!controls.length) { event.preventDefault(); dialog.focus(); return; }
+  if (active === dialog || !dialog.contains(active) ||
+      (event.shiftKey && active === controls[0]) || (!event.shiftKey && active === controls[controls.length - 1])) {
+    event.preventDefault(); controls[event.shiftKey ? controls.length - 1 : 0].focus();
+  }
+}
+
 async function openDrawer(callId) {
+  const request = ++state.drawerRequest;
+  state.drawerCallId = callId;
+  state.drawerLoadedId = '';
   qs("#drawerBackdrop").classList.add("open");
+  const dialog = qs('#drawerBackdrop');
+  if (!dialog.open) dialog.showModal();
+  dialog.focus({preventScroll: true});
   qs("#drawerContent").innerHTML = '<div class="empty">Loading call…</div>';
   try {
     const data = await api(`/client/api/calls/${encodeURIComponent(callId)}`);
+    if (request !== state.drawerRequest || callId !== state.drawerCallId) return;
+    if (!data || data.call_id !== callId) throw new Error('Call details do not match the selected call.');
     qs("#drawerContent").innerHTML = `
       <div style="display:flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px;">
         <div>
@@ -883,7 +917,7 @@ async function openDrawer(callId) {
       ${data.transcript ? `
         <h4 style="margin: 0 0 8px;">Transcript</h4>
         <div style="background:rgba(255,200,80,0.10);border-left:3px solid rgba(255,180,40,0.7);padding:8px 10px;border-radius:4px;font-size:12px;color:var(--text-soft);margin-bottom:10px;">
-          <strong>Note:</strong> automated transcription may show some words incorrectly. The AI checks the callback number with the caller; other details are taken as spoken and confirmed by the team on the callback.
+          <strong>Note:</strong> automated transcripts can contain mistakes. Confirm important details before acting.
         </div>
         <div style="white-space: pre-wrap; font-size: 13px; color: var(--text-soft); margin-bottom: 16px;">${esc(data.transcript)}</div>
       ` : ""}
@@ -895,27 +929,44 @@ async function openDrawer(callId) {
         : `<div class="empty" style="font-size:12px;">No notes saved yet.</div>`
       }</div>
       <textarea id="drawerNote" class="textarea" rows="3" placeholder="Add a note (saved to this call only)…"></textarea>
-      <button class="btn primary" type="button" onclick="saveNote('${esc(callId)}')" style="margin-top: 8px;">Save note</button>`;
+      <button id="drawerSaveNote" class="btn primary" type="button" onclick="saveNote('${esc(callId)}')" style="margin-top: 8px;">Save note</button>`;
+    state.drawerLoadedId = callId;
   } catch (err) {
+    if (request !== state.drawerRequest || callId !== state.drawerCallId) return;
     qs("#drawerContent").innerHTML = `<div class="empty">Could not load call. ${esc(err.message)}</div>`;
   }
 }
 function closeDrawer() {
+  state.drawerRequest += 1;
+  state.drawerCallId = '';
+  state.drawerLoadedId = '';
   qs("#drawerBackdrop").classList.remove("open");
+  const dialog = qs('#drawerBackdrop');
+  if (dialog.open) dialog.close();
 }
 async function saveNote(callId) {
-  const note = qs("#drawerNote").value.trim();
+  if (state.noteSaving || callId !== state.drawerLoadedId || callId !== state.drawerCallId) return;
+  const input = qs("#drawerNote");
+  if (!input) return;
+  const note = input.value.trim();
   if (!note) return;
+  const request = state.drawerRequest;
+  const button = qs('#drawerSaveNote');
+  state.noteSaving = true;
+  if (button) button.disabled = true;
   try {
     await api(`/client/api/calls/${encodeURIComponent(callId)}/note`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ note }),
     });
-    qs("#drawerNote").value = "";
+    if (request !== state.drawerRequest || callId !== state.drawerCallId) return;
+    if (input.value.trim() !== note) { toast('Note saved. Your new draft is still here.'); return; }
+    input.value = "";
     // 2026-05-13 — reload drawer so saved note appears in Notes list
     await openDrawer(callId);
   } catch (err) { alert("Save failed: " + err.message); }
+  finally { state.noteSaving = false; if (button) button.disabled = false; }
 }
 
 // --- Driver.js tour ---

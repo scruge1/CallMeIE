@@ -16,10 +16,19 @@ test('initial chrome does not assert healthy services or a zero balance',()=>{
 test('money renderer states limited costs, preserves values, and has no invented trend',()=>{
  const c=vm.createContext({eur:(n)=>String(Number(n||0)),esc:String});
  vm.runInContext(extract('  function renderMoneyPanel(', '  function renderUsagePanel('),c);
- const rendered=c.renderMoneyPanel({today:{revenue_minor:1000,settled_fees_minor:100,net_minor:900,vapi_cost_minor:200},last_7_days:{},currency:'eur'});
- assert.match(rendered,/not profit/);assert.match(rendered,/Other business costs are not included/);
+ const rendered=c.renderMoneyPanel({today:{revenue_minor:1000,settled_fees_minor:100,net_minor:900,vapi_cost_minor:200},last_7_days:{},currency:'eur',money:{status:'partial'}});
+ assert.match(rendered,/not profit/);assert.match(rendered,/Payment fees and call costs are estimates/);assert.match(rendered,/not a complete period/);
  assert.match(rendered,/Listed costs<\/span><strong>300/);assert.match(rendered,/After listed costs<\/span><strong>700/);
- assert.doesNotMatch(rendered,/<svg|class="ok-text"|<span>Net<\/span>/);assert.doesNotMatch(html,/function sparkline\(/);
+ assert.doesNotMatch(rendered,/<svg|class="ok-text"|<span>Net<\/span>|<span>MRR<\/span>/);assert.doesNotMatch(html,/function sparkline\(/);
+});
+test('missing or failed money sources do not render synthetic zero amounts',()=>{
+ const c=vm.createContext({eur:n=>String(Number(n||0)),esc:String});vm.runInContext(extract('  function renderMoneyPanel(', '  function renderUsagePanel('),c);
+ for(const ops of [null,{}, {today:{revenue_minor:1234},money:{status:'unavailable'}}]){const rendered=c.renderMoneyPanel(ops);assert.match(rendered,/Missing sources do not mean zero/);assert.equal((rendered.match(/<strong>Unavailable<\/strong>/g)||[]).length,3);}
+});
+test('existing summary refresh updates mounted money panels without another request',()=>{
+ const panels=[{},{}],c=vm.createContext({eur:n=>String(Number(n||0)),esc:String,qsa:()=>panels,state:{ops:{today:{},money:{status:'partial'}}}});
+ vm.runInContext(extract('  function renderMoneyPanel(', '  function renderUsagePanel('),c);c.refreshMoneyPanels();assert(panels.every(p=>p.outerHTML.includes('data-money-panel')));
+ c.state.ops.money.status='unavailable';c.refreshMoneyPanels();assert(panels.every(p=>p.outerHTML.includes('Missing sources do not mean zero')));
 });
 test('healthy service probes do not claim entire systems or phone path tested',async()=>{
  const nodes={'#healthChip':{},'#healthLabel':{},'#healthDetail':{classList:{contains:()=>false}}};

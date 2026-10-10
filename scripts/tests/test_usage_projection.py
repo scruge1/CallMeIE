@@ -23,7 +23,8 @@ def call(**changes):
 
 def project(records, tenant_bindings=None, **changes):
     return usage.project_usage({'status': 'ok', 'observed_at': NOW,
-                                'calls': records, **changes}, now=NOW, window_start=START, tenant_bindings=tenant_bindings)
+                                'calls': records, **changes}, now=NOW, window_start=START, tenant_bindings=tenant_bindings,
+                               terminal_observations={'status':'ok','call_ids':[]})
 
 class ProjectionTests(unittest.TestCase):
     def test_completed_and_unknown_authority(self):
@@ -60,6 +61,19 @@ class ProjectionTests(unittest.TestCase):
     def test_duration_is_clipped_to_period(self):
         line = project([call(startedAt=iso(START - 60), endedAt=iso(START + 60))])['lines'][0]
         self.assertEqual(line['completed_provider_minutes'], 1)
+    def test_call_ended_before_window_is_not_a_today_call(self):
+        result = project([call(startedAt=iso(START-120), endedAt=iso(START-60))])
+        self.assertEqual(result['lines'], [])
+        self.assertEqual(result['outside_window_calls'], 1)
+    def test_call_ending_at_window_boundary_has_no_today_usage(self):
+        self.assertEqual(project([call(startedAt=iso(START-60), endedAt=iso(START))])['lines'], [])
+    def test_update_query_scope_does_not_claim_complete_carryover(self):
+        result = project([call(startedAt=iso(START-60), endedAt=iso(START+60))],
+                         query_scope='calls_updated_since_utc_midnight')
+        self.assertEqual(result['query_scope'], 'calls_updated_since_utc_midnight')
+        self.assertTrue(result['carryover_calls_included'])
+        self.assertEqual(result['coverage'], 'partial')
+        self.assertIsNone(result['billable_minutes'])
     def test_bad_timings_not_zero_confirmed_calls(self):
         for changes in ({'startedAt':'bad'}, {'endedAt':iso(NOW+10)},
                         {'endedAt':iso(NOW-180)}, {'endedAt':'bad'},
@@ -76,6 +90,46 @@ class ProjectionTests(unittest.TestCase):
     def test_private_fields_not_projected(self):
         result = project([call(customer={'number':'private-number'}, transcript='private-body', recordingUrl='private-url')])
         self.assertNotIn('private-', str(result))
+
+class TerminalProjectionTests(unittest.TestCase):
+    def result(self, records, terminal):
+        return usage.project_usage({'status':'ok','observed_at':NOW,'calls':records},
+                                   now=NOW, window_start=START, terminal_observations=terminal)
+
+    def test_committed_end_prevents_active_snapshot_resurrection(self):
+        line=self.result([call(status='in-progress',endedAt=None)], {'status':'ok','call_ids':['a']})['lines'][0]
+        self.assertEqual(line['observed_active_calls'],0)
+        self.assertEqual(line['active_provider_minutes_estimate'],0)
+        self.assertEqual(line['ended_without_timing_calls'],1)
+        self.assertEqual(line['unknown_calls'],1)
+        self.assertEqual(line['completed_provider_minutes'],0)
+        self.assertIsNone(line['billable_minutes'])
+
+    def test_missing_or_failed_terminal_read_withholds_active_estimate(self):
+        for terminal in (None, {}, [], 'bad', {'status':'unavailable','call_ids':[]}, {'status':'ok','call_ids':None}, {'status':'ok','call_ids':[None]}):
+            with self.subTest(terminal=terminal):
+                result=self.result([call(status='in-progress',endedAt=None)],terminal)
+                line=result['lines'][0]
+                self.assertEqual(result['terminal_guard_status'],'unavailable')
+                self.assertEqual(line['active_state_status'],'unavailable')
+                self.assertIsNone(line['active_provider_minutes_estimate'])
+                self.assertEqual(line['unknown_calls'],1)
+
+    def test_terminal_read_failure_does_not_remove_completed_usage(self):
+        line=self.result([call()], {'status':'unavailable','call_ids':[]})['lines'][0]
+        self.assertEqual(line['completed_calls'],1)
+        self.assertEqual(line['completed_provider_minutes'],1)
+
+    def test_completed_duration_still_uses_provider_times(self):
+        line=self.result([call()], {'status':'ok','call_ids':['a']})['lines'][0]
+        self.assertEqual(line['completed_provider_minutes'],1)
+        self.assertEqual(line['ended_without_timing_calls'],0)
+
+    def test_terminal_marker_does_not_affect_another_call_on_same_line(self):
+        line=self.result([call(status='in-progress',endedAt=None)], {'status':'ok','call_ids':['other']})['lines'][0]
+        self.assertEqual(line['observed_active_calls'],1)
+        self.assertEqual(line['active_provider_minutes_estimate'],2)
+
 
 class TenantProjectionTests(unittest.TestCase):
     def bindings(self, *rows): return {'status':'ok', 'rows':list(rows)}
@@ -181,6 +235,12 @@ class FetchTests(unittest.TestCase):
         self.assertEqual(result['status'], 'ok')
         self.assertIsInstance(result['observed_at'], int)
         self.assertEqual(requests[0][1]['limit'], 100)
+    def test_one_update_time_query_includes_midnight_boundary(self):
+        result, requests = fetch(payload=[])
+        self.assertEqual(len(requests), 1)
+        self.assertEqual(set(requests[0][1]), {'limit','updatedAtGe'})
+        self.assertEqual(requests[0][1]['updatedAtGe'], iso(START).replace('+00:00','Z'))
+        self.assertEqual(result['query_scope'], 'calls_updated_since_utc_midnight')
 
 class IntegrationTests(unittest.TestCase):
     def test_operations_uses_one_snapshot_and_real_projection(self):

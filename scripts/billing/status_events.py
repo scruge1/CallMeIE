@@ -1,0 +1,148 @@
+"""Bounded status metadata in the existing call_events store, not billing data."""
+import hashlib
+import json
+import math
+from datetime import datetime, timezone
+
+
+STATUSES = frozenset(('scheduled', 'queued', 'ringing', 'in-progress', 'forwarding', 'ended'))
+
+
+def read_terminal_calls(connection_factory, call_ids):
+    """Read terminal markers only for the bounded provider snapshot.
+
+    No payload, transcript, caller, timestamp conversion or event-order guess.
+    An ended marker is absorbing for the same provider call ID. It supplies no
+    duration or coverage guarantee. Database failures propagate to the caller.
+    """
+    if not isinstance(call_ids, (list, tuple)) or len(call_ids) > 100:
+        raise ValueError('invalid_terminal_lookup_scope')
+    identities = sorted({_identifier(value, required=True) for value in call_ids})
+    if not identities:
+        return {'status': 'ok', 'call_ids': []}
+    placeholders = ','.join('?' for _ in identities)
+    with connection_factory() as conn:
+        rows = conn.execute(
+            "SELECT DISTINCT call_id FROM call_events WHERE call_id IN (" + placeholders + ") "
+            "AND (event_type='call-ended' OR (event_type='call-status' "
+            "AND summary='Call status: ended' AND event_key IS NOT NULL))",
+            tuple(identities),
+        ).fetchall()
+    observed = sorted({row['call_id'] for row in rows})
+    if any(identity not in identities for identity in observed):
+        raise ValueError('terminal_lookup_scope_mismatch')
+    return {'status': 'ok', 'call_ids': observed}
+
+
+def _identifier(value, *, required=False):
+    if value is None or value == '':
+        if required:
+            raise ValueError('missing_call_id')
+        return None
+    if (not isinstance(value, str) or len(value) > 128
+            or any(ord(char) < 33 or ord(char) > 126 for char in value)):
+        raise ValueError('invalid_identifier')
+    return value
+
+
+def normalize_status_event(message):
+    """Retain only identifiers/status/provider timestamp; no caller or artifacts.
+
+    Provider timestamp is optional and numeric in the official SDK. Preserve its
+    raw value without guessing units or treating receipt time as event order.
+    Missing identifiers remain unknown, not inferred from another call.
+    """
+    if not isinstance(message, dict) or message.get('type') != 'status-update':
+        raise ValueError('invalid_status_event')
+    call = message.get('call')
+    if not isinstance(call, dict):
+        raise ValueError('invalid_call')
+    status = message.get('status')
+    if not isinstance(status, str) or status not in STATUSES:
+        raise ValueError('invalid_status')
+    stamp = message.get('timestamp')
+    if stamp is not None and (isinstance(stamp, bool) or not isinstance(stamp, (int, float))
+                              or stamp < 0 or stamp > 10**16 or not math.isfinite(stamp)):
+        raise ValueError('invalid_timestamp')
+    detail = {
+        'schema': 'call-status-v1',
+        'call_id': _identifier(call.get('id'), required=True),
+        'assistant_id': _identifier(call.get('assistantId')),
+        'line_id': _identifier(call.get('phoneNumberId')),
+        'status': status,
+        'provider_timestamp': stamp,
+    }
+    encoded = json.dumps(detail, sort_keys=True, separators=(',', ':'), allow_nan=False)
+    return detail, encoded, hashlib.sha256(encoded.encode('utf-8')).hexdigest()
+
+
+def store_status_event(connection_factory, normalized):
+    """Atomic insert/dedupe. Return only after explicit commit; failures propagate.
+
+    The unique event_key index is required. A missing migration is an error,
+    never permission to fall back to a racy select-before-insert.
+    """
+    detail, encoded, key = normalized
+    with connection_factory() as conn:
+        row = conn.execute(
+            'INSERT INTO call_events(call_id,event_type,assistant,summary,detail,event_key) '
+            'VALUES(?,?,?,?,?,?) ON CONFLICT(event_key) DO NOTHING RETURNING id',
+            (detail['call_id'], 'call-status', detail['assistant_id'],
+             'Call status: ' + detail['status'], encoded, key),
+        ).fetchone()
+        conn.commit()
+    return {'status': 'ok', 'stored': row is not None, 'duplicate': row is None}
+
+
+def read_status_feed(connection_factory):
+    """Last persisted receipt only: not heartbeat, active count or delivery coverage."""
+    with connection_factory() as conn:
+        row = conn.execute(
+            "SELECT created_at FROM call_events WHERE event_type='call-status' ORDER BY id DESC LIMIT 1"
+        ).fetchone()
+    if row is None:
+        return {'status': 'no_events', 'last_received_at': None, 'coverage_verified': False}
+    raw = row['created_at']
+    stamp = raw if isinstance(raw, datetime) else datetime.fromisoformat(raw)
+    # Existing call_events created_at is UTC, timestamp without timezone in PG.
+    if stamp.tzinfo is None:
+        stamp = stamp.replace(tzinfo=timezone.utc)
+    return {'status': 'observed', 'last_received_at': stamp.timestamp(), 'coverage_verified': False}
+
+
+def store_final_report(connection_factory, call_id, rows):
+    """Commit the origin and all handoff rows together, once per call.
+
+    Existing NULL-key historical reports remain duplicates. The origin key is
+    call-bound, not assistant-bound: changed attribution cannot replay a report.
+    This does not provide durable recovery of later notification/archive work.
+    """
+    call_id = _identifier(call_id, required=True)
+    if not rows:
+        raise ValueError('missing_final_rows')
+    key = hashlib.sha256(('call-ended-v1:' + call_id).encode('utf-8')).hexdigest()
+    with connection_factory() as conn:
+        # Retain old dedupe semantics for reports stored before event_key existed.
+        old = conn.execute(
+            "SELECT 1 FROM call_events WHERE call_id=? AND event_type='call-ended' LIMIT 1",
+            (call_id,),
+        ).fetchone()
+        if old:
+            conn.commit()
+            return {'status': 'ok', 'stored': False, 'duplicate': True}
+        assistant, summary, detail = rows[0]
+        inserted = conn.execute(
+            'INSERT INTO call_events(call_id,event_type,assistant,summary,detail,event_key) '
+            'VALUES(?,?,?,?,?,?) ON CONFLICT(event_key) DO NOTHING RETURNING id',
+            (call_id, 'call-ended', assistant, summary, json.dumps(detail), key),
+        ).fetchone()
+        if inserted is not None:
+            for assistant, summary, detail in rows[1:]:
+                conn.execute(
+                    'INSERT INTO call_events(call_id,event_type,assistant,summary,detail) VALUES(?,?,?,?,?)',
+                    (call_id, 'call-ended', assistant, summary, json.dumps(detail)),
+                )
+        # Explicit commit is necessary: the legacy proxy suppresses context-exit
+        # commit errors. Never acknowledge a successful report before this.
+        conn.commit()
+    return {'status': 'ok', 'stored': inserted is not None, 'duplicate': inserted is None}

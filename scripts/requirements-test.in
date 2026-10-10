@@ -1,2 +1,7 @@
 pytest==9.1.1
 pytest-socket==0.8.1
+# Retain the previously accepted test/build metadata pins during runtime refresh.
+iniconfig==2.3.1
+packaging==26.3
+pluggy==1.6.0
+pygments==2.21.0

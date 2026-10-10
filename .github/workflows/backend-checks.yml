@@ -29,9 +29,11 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
-          python-version: '3.11.16'
+          python-version: '3.11.17'
           cache: pip
           cache-dependency-path: scripts/requirements-ci.txt
+      - name: Check runtime and CI lock alignment
+        run: python check_ci_runtime_lock.py
       - name: Install hash-locked dependencies
         env:
           PIP_CONFIG_FILE: /dev/null
@@ -53,6 +55,13 @@ jobs:
             --strict-markers --disable-socket --allow-unix-socket \
             --basetemp "$RUNNER_TEMP/backend-ci/pytest-temp" \
             --junitxml "$RUNNER_TEMP/backend-ci/pytest-results.xml" -q
+      - name: Run existing imported-app fixture
+        run: |
+          env -i PATH="$PATH" HOME="$RUNNER_TEMP/backend-ci/home" \
+            TMPDIR="$RUNNER_TEMP/backend-ci" PYTHONUTF8=1 \
+            PYTHONDONTWRITEBYTECODE=1 AWS_EC2_METADATA_DISABLED=true \
+            python tests/test_admin_release_integration.py \
+            2>&1 | tee "$RUNNER_TEMP/backend-ci/imported-app-results.json"
       - name: Run existing JavaScript source tests
         run: |
           env -i PATH="$PATH" HOME="$RUNNER_TEMP/backend-ci/home" \
@@ -66,5 +75,6 @@ jobs:
           path: |
             ${{ runner.temp }}/backend-ci/pytest-results.xml
             ${{ runner.temp }}/backend-ci/javascript-results.tap
+            ${{ runner.temp }}/backend-ci/imported-app-results.json
           if-no-files-found: warn
           retention-days: 7
