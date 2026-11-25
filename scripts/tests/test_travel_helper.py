@@ -321,20 +321,48 @@ class TravelHelperTests(unittest.TestCase):
             self.assertEqual(json.loads(row["error"])["error"], "wait_for_lookup_result_before_sending_directions")
         self.assertFalse(self.sms_calls)
 
-    def test_directions_tool_has_source_dependency_and_deterministic_speech(self):
+    def test_directions_tool_excludes_pre_execution_speech_and_retains_fixed_outcomes(self):
         tools = helper.tool_definitions("test-helper", "test-secret")
         tool = next(t for t in tools if t["function"]["name"] == "sendDirections")
         self.assertIs(tool["async"], False)
         self.assertIn("source_reference", tool["function"]["parameters"]["required"])
-        self.assertIn("bot_say", tool["function"]["parameters"]["required"])
-        self.assertEqual(tool["function"]["parameters"]["properties"]["bot_say"]["type"], "string")
-        self.assertEqual(tool["function"]["parameters"]["properties"]["bot_say"]["maxLength"], 550)
+        self.assertNotIn("bot_say", tool["function"]["parameters"]["required"])
+        self.assertNotIn("bot_say", tool["function"]["parameters"]["properties"])
+        self.assertIs(tool["function"]["parameters"]["additionalProperties"], False)
         self.assertEqual(tool["messages"], [
             {"type": "request-start", "content": ""},
             {"type": "request-complete", "role": "assistant", "content": "The directions text has been submitted. Open the link when it arrives.", "endCallAfterSpokenEnabled": False},
             {"type": "request-failed", "role": "assistant", "content": "I cannot confirm a directions text was sent. I will not retry it automatically. Would you like spoken directions?", "endCallAfterSpokenEnabled": False},
         ])
         self.assertTrue(all("messages" not in t for t in tools if t["function"]["name"] != "sendDirections"))
+
+    def test_published_directions_outcome_envelope_requires_real_sms_receipt(self):
+        response = self.client.post(self.admin("/publish-tools"))
+        self.assertEqual(response.status_code, 200, response.text)
+        tool = next(t for t in self.vapi_assistant["model"]["tools"] if t.get("function", {}).get("name") == "sendDirections")
+        self.assertNotIn("bot_say", tool["function"]["parameters"]["properties"])
+        self.assertEqual(next(m["content"] for m in tool["messages"] if m["type"] == "request-start"), "")
+        # Check the actual webhook envelope which selects Vapi's fixed outcome.
+        # These local checks do not claim that speech was played on a live call.
+        scenarios = (
+            ("accepted", {"ok": True, "sid": "SM" + "a" * 32, "status": "queued"}, None, "result"),
+            ("missing-sid", {"ok": True, "status": "queued"}, None, "error"),
+            ("mocked", {"ok": True, "sid": "SM" + "a" * 32, "status": "queued", "mocked": True}, None, "error"),
+            ("failed", {"ok": True, "sid": "SM" + "a" * 32, "status": "undelivered"}, None, "error"),
+            ("unknown", {"ok": True, "sid": "SM" + "a" * 32, "status": "queued"}, httpx.ReadTimeout("response lost"), "error"),
+        )
+        for label, provider_result, provider_error, envelope in scenarios:
+            with self.subTest(outcome=label):
+                self.sms_response = provider_result
+                self.sms_error = provider_error
+                result = self.result(self.directions(call_id="receipt-" + label))
+                self.assertEqual(set(self.last_row) & {"result", "error"}, {envelope})
+                if envelope == "result":
+                    self.assertEqual(result["status"], "accepted")
+                    self.assertIs(result["delivery_confirmed"], False)
+                else:
+                    self.assertNotIn(result["status"], ("accepted", "delivered"))
+        self.assertEqual(len(self.sms_calls), len(scenarios))
 
     def test_fresh_tool_id_cannot_resend_uncertain_same_sms(self):
         self.sms_error = httpx.ReadTimeout("response lost")
