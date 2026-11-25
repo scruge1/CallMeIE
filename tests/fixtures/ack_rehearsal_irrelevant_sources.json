@@ -1,0 +1,31 @@
+{
+  "schema": "callmeie.lookup-observed-regression/v1",
+  "evidence_sha256": "2cde015d1e94686b1f156b0b9db2db8682463591a68ff7f01d58e0bc4c28d997",
+  "request": {
+    "query": "British Museum visitor entrance address and opening hours",
+    "visit_date": "2026-11-26"
+  },
+  "search_items": [
+    {
+      "url": "https://ticketing.britishmuseum.org/26013/29834",
+      "title": "Use the dropdown list below to select another date",
+      "markdown": "# Virtual Visits, Thursday 18 March 2027 9:20am\n\nSchool workshops take place online."
+    },
+    {
+      "url": "https://ticketing.britishmuseum.org/26013/29828",
+      "title": "Use the dropdown list below to select another date",
+      "markdown": "# Virtual Visits, Thursday 25 February 2027 9:20am\n\nSchool workshops take place online."
+    },
+    {
+      "url": "https://ticketing.britishmuseum.org/21397/27195",
+      "title": "Friday 13 November 2026",
+      "markdown": "# Page Not Found"
+    }
+  ],
+  "unsupported_directions": {
+    "destination": "The British Museum, Great Russell Street, London",
+    "source_reference": "c7bed3137870861e41bb",
+    "travel_mode": "walking"
+  },
+  "fixture_note": "Minimal public excerpts from the observed failed lookup; full evidence is retained separately under evidence_sha256. Session query tokens and private run identifiers are omitted."
+}

@@ -98,7 +98,11 @@ class TravelHelperTests(unittest.TestCase):
 
     def directions(self, args=None, tool_id="tool-1", call_id="call-1"):
         if call_id not in self.direction_references:
-            self.direction_references[call_id] = self.lookup(call_id, "directions-source-" + call_id)["sources"][0]["reference"]
+            # These destination/receipt cases vary the venue fixture. Search for
+            # that venue, not the unrelated default Example venue phone query.
+            query = self.search_response[0]["title"]
+            result = self.result(self.event("lookupTravel", {"query": query}, "directions-source-" + call_id, call_id))
+            self.direction_references[call_id] = result["sources"][0]["reference"]
         values = {"destination": "Example venue, London", "travel_mode": "walking"} if args is None else args
         return self.event("sendDirections", {"source_reference": self.direction_references[call_id], **values}, tool_id, call_id)
 
