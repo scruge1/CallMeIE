@@ -10030,8 +10030,12 @@ async def client_request_edit(
 
 
 # Adam's dedicated personal message workspace.
-from personal_agent import install as _install_personal_agent
+from personal_agent import install as _install_personal_agent, provider_call as _personal_vapi_provider
 _install_personal_agent(app, get_db, check_admin)
+import travel_helper as _travel_helper
+_travel_helper.install(app, get_db, check_admin, send_sms=send_sms,
+                       transfer=_travel_helper.control_transfer_adapter(_personal_vapi_provider),
+                       vapi_provider=_personal_vapi_provider)
 
 # Scoped visual hotel demo; no provider routes or data mutation.
 from client_demo import install as _install_client_demo

@@ -1247,3 +1247,12 @@ remain unchanged. Phone voice-picker, reset and direct-preview defaults use V4
 Turbo. The admin studio defaults to V4 Turbo and also offers V4. The provider's
 authenticated model list confirms both are available. Keep saved Flash comparison
 audio as historical evidence; preview choices do not change live phone models.
+
+
+## Private travel helpers and personal assistant handoffs
+
+The existing personal-agent configuration accepts optional owner-configured `assistant_handoffs`. The normal publisher retains message tools and publishes native assistant handoffs. Older admin clients preserve saved routes when the field is omitted; an explicit empty array removes them. Private helper identities and assistant IDs stay in authenticated runtime configuration.
+
+`travel_helper.py` reuses `send_sms`, the authenticated Vapi reader, and `call_events` for current public lookup sources and durable action receipts. Only `travel_helper_settings` is additive. Configure a helper through `/admin/api/travel-helper/{slug}/config`, then publish its scoped tools through `/publish-tools`. Firecrawl uses `FIRECRAWL_API_KEY` from the existing secret store. SMS uses the current caller mobile and registered `CALLMEIE` sender; web simulations cannot send texts or transfer calls. Booking transfers require caller agreement and a fresh source containing the number. Accepted sends/transfers are distinct from delivery/connection. Uncertain actions are not retried automatically.
+
+Deployment remains the existing Coolify application and locked dependencies. Roll back by removing the private personal handoff and disabling its helper, then reverting the code commit if required. Retain the additive configuration and event records. Verification: `pytest scripts/tests/test_personal_agent.py scripts/tests/test_personal_agent_handoffs.py scripts/tests/test_travel_helper.py`.
