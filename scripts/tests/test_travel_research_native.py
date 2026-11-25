@@ -2,6 +2,7 @@
 import copy
 from concurrent.futures import Future
 import json
+import io
 import os
 from pathlib import Path
 import tempfile
@@ -40,7 +41,7 @@ class NativeTests(unittest.TestCase):
         self.executor.start(); self.addCleanup(self.executor.stop)
         self.brief = {"question": "What are the opening and closing times?", "visit_date": "2026-11-26",
                       "location": "Tower of London", "travel_mode": "walking",
-                      "required_fields": ["opening_time", "closing_time"]}
+                      "required_fields": ["opening_time", "closing_time"], "official_hosts": ["venue.example"]}
         self.request = {"request_id": "travel-research:fixture", "revision": 1,
                         "brief": self.brief, "brief_hash": digest(self.brief), "deadline": self.now + 120}
         self.claim = {**self.request, "execution_id": "fixture-execution"}
@@ -145,6 +146,16 @@ class NativeTests(unittest.TestCase):
             self.assertNotIn(argument, command)
         self.assertIn('web_search="disabled"', native.command(self.cfg, self.root, "verification"))
         self.assertEqual(command[-1], "-")
+
+    def test_utf8_gate_payload_survives_windows_cp1252_text_stdin(self):
+        payload = {"config": {"profile_pin": "fixture"}, "prompt": "Adult £38.00; King’s Cross – London."}
+        stream = io.TextIOWrapper(io.BytesIO((canonical(payload) + "\n").encode("utf-8")), encoding="cp1252")
+        with patch.object(native, "PROFILE_PIN", "fixture"), patch.object(native.sys, "argv", ["native", "--native-gate"]), \
+                patch.object(native.sys, "stdin", stream), patch.object(native, "native_gate", return_value=0) as gate:
+            with self.assertRaises(SystemExit) as exited:
+                native.main()
+        self.assertEqual(exited.exception.code, 0)
+        self.assertEqual(gate.call_args.args[0], payload)
 
     def test_only_request_gate_receives_scoped_backend_secret(self):
         env = {"TRAVEL_RESEARCH_WORKER_SECRET": "scope", "VAPI_API_KEY": "vapi", "TWILIO_AUTH_TOKEN": "twilio",

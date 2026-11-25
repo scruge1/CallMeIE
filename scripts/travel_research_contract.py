@@ -2,8 +2,9 @@
 import hashlib
 import json
 import re
+from urllib.parse import urlsplit
 
-PROFILE_PIN = "9f85d5e789e0e6ec2a1946660c528a47ea80bb6978c549cedba3a62933118665"  # Reviewed native profile; runtime enablement and health remain separate gates.
+PROFILE_PIN = "5202931e25b57b24faf22cd57d45f2c4773c8ecd5938dc4a4c43e76ed164a149"  # Reviewed native profile; runtime enablement and health remain separate gates.
 RESULT_SCHEMA = "travel-research.result/v2"
 FIELDS = ("opening_time", "closing_time", "last_admission", "adult_price_without_donation",
           "optional_donation_price", "visitor_entrance", "visitor_address", "dated_availability",
@@ -54,8 +55,18 @@ def validate_candidate(candidate, brief):
     fields = required_fields(brief)
     urls = candidate["proposed_urls"]
     require(isinstance(urls, list) and 1 <= len(urls) <= 4 and len(set(urls)) == len(urls), "invalid_proposed_urls")
+    hosts = brief.get("official_hosts")
+    require(isinstance(hosts, list) and hosts and all(isinstance(host, str) and host for host in hosts),
+            "trusted_source_policy_required")
     for url in urls:
         short(url, 1800)
+        try:
+            parsed = urlsplit(url)
+            allowed = (parsed.scheme == "https" and parsed.hostname in hosts and parsed.port in (None, 443)
+                       and not parsed.username and not parsed.password and not parsed.fragment)
+        except ValueError:
+            allowed = False
+        require(allowed, "candidate_url_outside_trusted_hosts")
     require(isinstance(candidate["claims"], list) and len(candidate["claims"]) <= len(fields), "candidate_claim_limit")
     seen = set()
     for claim in candidate["claims"]:
@@ -110,30 +121,52 @@ def validate_maps_anchor(destination, address_quote):
 
 
 def candidate_schema(fields):
+    """Expose existing validator bounds before generation, including URL policy."""
     def obj(properties):
         return {"type": "object", "properties": properties, "required": list(properties), "additionalProperties": False}
-    string = {"type": "string"}
-    strings = {"type": "array", "items": string}
-    claim = obj({"field": {"type": "string", "enum": fields}, "text": string, "qualifiers": string,
-                 "proposed_source_urls": strings})
-    return obj({"visit_date": string, "claims": {"type": "array", "items": claim}, "proposed_urls": strings,
-                "uncertainties": strings, "tool_errors": strings})
+    def string(maximum):
+        return {"type": "string", "minLength": 1, "maxLength": maximum}
+    url = {**string(1800), "description": "HTTPS public information page on an exact hostname in the original brief's official_hosts; no credentials, fragment, or port except 443. Subdomains are not implicitly trusted."}
+    claim = obj({"field": {"type": "string", "enum": fields}, "text": string(500), "qualifiers": string(300),
+                 "proposed_source_urls": {"type": "array", "minItems": 1, "maxItems": 4, "items": url,
+                     "description": "A nonempty subset of the exact URLs selected in proposed_urls. Never cite a failed or unfetched booking page as support."}})
+    notes = {"type": "array", "maxItems": 6, "items": string(300)}
+    schema = obj({"visit_date": {**string(10), "minLength": 10, "description": "Copy the exact original brief visit_date."},
+                  "claims": {"type": "array", "maxItems": len(fields), "items": claim,
+                             "description": "At most one claim per requested field; do not duplicate or invent fields."},
+                  "proposed_urls": {"type": "array", "minItems": 1, "maxItems": 4, "items": url,
+                      "description": "Select only 1 to 4 distinct successfully retrieved official information pages in total. These are the sole pages the trusted backend will fetch. Omit failed, unfetched, checkout, login or booking-transaction URLs; put failures in tool_errors and uncertainty instead. Prefer pages covering several requested fields."},
+                  "uncertainties": notes, "tool_errors": notes})
+    schema["description"] = ("Bounded research candidate, not verified facts. Respect original brief official_hosts exactly. "
+        "Choose no more than four source URLs for the entire result, and make every claim source URL a member of that chosen list. "
+        "A failed booking fetch proves neither availability nor absence; record the failure and keep availability unverified. "
+        "All text must be nonblank and within the stated limits.")
+    return schema
 
 
 def result_schema(fields):
     """Schema for the verifier's raw output; trusted adapter adds hash envelope."""
     def obj(properties):
         return {"type": "object", "properties": properties, "required": list(properties), "additionalProperties": False}
-    string = {"type": "string"}
-    claim = obj({"field": {"type": "string", "enum": fields}, "text": string, "qualifiers": string,
-                 "source_reference": string, "quote": string})
-    missing = obj({"field": {"type": "string", "enum": fields}, "reason": string})
-    destination = obj({"text": string, "source_reference": string, "quote": string})
-    return obj({"status": {"type": "string", "enum": ["complete", "partial", "failed"]},
-                "claims": {"type": "array", "items": claim}, "missing_coverage": {"type": "array", "items": missing},
-                "uncertainties": {"type": "array", "items": string},
+    def string(maximum):
+        return {"type": "string", "minLength": 1, "maxLength": maximum}
+    reference = {**string(64), "description": "An exact reference from the supplied trusted_snapshots; a candidate URL or failed fetch is not a snapshot."}
+    claim = obj({"field": {"type": "string", "enum": fields}, "text": string(220), "qualifiers": string(180),
+                 "source_reference": reference, "quote": string(500)})
+    missing = obj({"field": {"type": "string", "enum": fields}, "reason": string(300)})
+    destination = obj({"text": string(200), "source_reference": reference, "quote": string(500)})
+    schema = obj({"status": {"type": "string", "enum": ["complete", "partial", "failed"]},
+                "claims": {"type": "array", "maxItems": len(fields), "items": claim},
+                "missing_coverage": {"type": "array", "maxItems": len(fields), "items": missing},
+                "uncertainties": {"type": "array", "maxItems": 6, "items": string(300)},
                 "destination": {"description": DESTINATION_RULE,
                                 "anyOf": [{"type": "null"}, destination]}})
+    schema["description"] = ("Every original requested field appears exactly once in claims or missing_coverage. "
+        "Use only supplied trusted snapshots and exact quotes; unsupported or failed-fetch facts belong in missing_coverage. "
+        "Complete means no missing fields; partial means useful supported facts plus missing fields; failed has no claims and null destination. "
+        "Keep spoken claim text, qualifiers, missing-field explanations and uncertainties together within 750 characters, "
+        "including brief punctuation and labels, so the backend's 900-character spoken-summary budget is respected.")
+    return schema
 
 
 def failed_result(brief, reason):

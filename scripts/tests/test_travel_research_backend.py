@@ -21,7 +21,7 @@ from fastapi.testclient import TestClient
 
 import travel_research as research
 from travel_research_contract import (RESULT_SCHEMA, digest, failed_result, validate_verifier_output,
-                                      verification_input, verifier_output, result_schema)
+                                      verification_input, verifier_output, result_schema, candidate_schema, validate_candidate)
 
 
 import travel_helper as helper
@@ -119,6 +119,7 @@ class BackendTests(unittest.TestCase):
         self.assertEqual(stored["identity"]["customer"], self.call["customer"])
         self.assertEqual(stored["identity"]["original_customer_number"], self.call["customer"]["number"])
         self.assertEqual(stored["brief"]["required_fields"], self.args["required_fields"])
+        self.assertEqual(stored["brief"]["official_hosts"], list(self.policy.official_hosts))
         self.assertNotIn("consent", saved)
 
     def test_callback_only_is_allowed_but_no_consent_is_rejected(self):
@@ -265,6 +266,56 @@ class BackendTests(unittest.TestCase):
         for change in changes:
             altered = deepcopy(envelope); change(altered["result"]); altered["result_hash"] = digest(altered["result"])
             with self.subTest(change=change), self.assertRaises(HTTPException): self.service.result(altered)
+
+    def test_actual_qualification_five_url_failure_remains_rejected_and_schema_now_bounds_it(self):
+        # Exact URL list from failed native qualification v1, raw output SHA
+        # b1c26106deeb664def7d1f3633294afcf180264b20ce4b350a3f5ef09cca29c5.
+        # This is a structural regression fixture, never verified travel data.
+        urls = ["https://www.hrp.org.uk/tower-of-london/visit/opening-and-closing-times/",
+                "https://www.hrp.org.uk/tower-of-london/visit/tickets-and-prices/",
+                "https://www.hrp.org.uk/tower-of-london/visit/",
+                "https://www.hrp.org.uk/tower-of-london/whats-on/ceremony-of-the-keys/",
+                "https://booking.hrp.org.uk/TOL/tickets/select?is-return=false&market=HRP&product=TOL"]
+        candidate = self.candidate(); candidate["proposed_urls"] = urls
+        candidate["claims"][0]["proposed_source_urls"] = [urls[0]]
+        brief = {"visit_date": "2026-11-26", "required_fields": self.args["required_fields"],
+                 "official_hosts": ["hrp.org.uk", "www.hrp.org.uk"]}
+        with self.assertRaisesRegex(ValueError, "invalid_proposed_urls"):
+            validate_candidate(candidate, brief)
+        schema = candidate_schema(brief["required_fields"])
+        self.assertGreater(len(urls), schema["properties"]["proposed_urls"]["maxItems"])
+        self.assertIn("official_hosts", schema["description"])
+        # Staying within four URLs must not permit the failed, unapproved booking host.
+        candidate["proposed_urls"] = [urls[0], urls[1], urls[2], urls[4]]
+        with self.assertRaisesRegex(ValueError, "candidate_url_outside_trusted_hosts"):
+            validate_candidate(candidate, brief)
+
+    def test_candidate_membership_and_trusted_host_boundaries_remain_enforced(self):
+        claim = self.claimed(); candidate = self.candidate()
+        candidate["claims"][0]["proposed_source_urls"].append("https://venue.example/unselected")
+        with self.assertRaisesRegex(ValueError, "claim_url_not_proposed"):
+            validate_candidate(candidate, claim["brief"])
+        for url in ("https://booking.venue.example/tickets", "https://venue.example@evil.example/", "https://venue.example/visit#invented"):
+            candidate = self.candidate(); candidate["proposed_urls"] = [url]
+            candidate["claims"][0]["proposed_source_urls"] = [url]
+            with self.subTest(url=url), self.assertRaisesRegex(ValueError, "candidate_url_outside_trusted_hosts"):
+                validate_candidate(candidate, claim["brief"])
+
+    def test_output_schemas_expose_runtime_bounds_before_generation(self):
+        fields = self.args["required_fields"]
+        candidate = candidate_schema(fields)["properties"]
+        result = result_schema(fields)["properties"]
+        self.assertEqual(candidate["claims"]["maxItems"], len(fields))
+        self.assertEqual(candidate["claims"]["items"]["properties"]["field"]["enum"], fields)
+        self.assertEqual(candidate["claims"]["items"]["properties"]["text"]["maxLength"], 500)
+        self.assertEqual(candidate["claims"]["items"]["properties"]["qualifiers"]["maxLength"], 300)
+        self.assertEqual(candidate["uncertainties"]["maxItems"], 6)
+        self.assertEqual(candidate["tool_errors"]["items"]["maxLength"], 300)
+        self.assertEqual(result["claims"]["maxItems"], len(fields))
+        for name, limit in (("text", 220), ("qualifiers", 180), ("quote", 500)):
+            self.assertEqual(result["claims"]["items"]["properties"][name]["maxLength"], limit)
+        self.assertEqual(result["uncertainties"]["maxItems"], 6)
+        self.assertIn("trusted_snapshots", result["claims"]["items"]["properties"]["source_reference"]["description"])
 
     def test_maps_rejects_bare_gate_and_unanchored_postcode_at_both_boundaries(self):
         self.page += " Other labels: West Gate, London EC3N 4AB. Main Entrance, London EC3N 4AB."

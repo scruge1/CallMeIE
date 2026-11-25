@@ -211,7 +211,7 @@ class Research:
         brief = {"schema": "travel-research.brief/v2", "timezone": "Europe/London",
                  "visit_date": visit, "question": text_arg(args, "question", 800),
                  "location": text_arg(args, "location", 200), "travel_mode": mode,
-                 "required_fields": fields}
+                 "required_fields": fields, "official_hosts": list(self.policy.official_hosts)}
         record = {"schema": "travel-research.request/v1", "request_id": key, "revision": revision + 1,
                   "identity": identity, "brief": brief, "brief_hash": digest(brief), "state": "queued",
                   "created_at": self.clock(), "deadline": self.clock() + self.policy.deadline_seconds,

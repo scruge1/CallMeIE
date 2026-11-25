@@ -847,7 +847,7 @@ def main():
     mode = sys.argv[1:]
     if mode not in (["--native-gate"], ["--request-gate"]):
         raise SystemExit("fixed internal gate required")
-    payload = json.loads(sys.stdin.readline())
+    payload = json.loads(sys.stdin.buffer.readline())
     cfg = payload["config"]
     if PROFILE_PIN is None or cfg["profile_pin"] != PROFILE_PIN:
         raise SystemExit("retrieval profile unqualified")
