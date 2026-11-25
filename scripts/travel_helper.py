@@ -6,12 +6,14 @@ silently mocked, and no helper identity or caller contact belongs in source.
 import asyncio
 import hashlib
 import hmac
+import html
 import inspect
 import json
 import os
 import re
 import secrets
 import time
+import unicodedata
 from datetime import datetime, timezone
 from urllib.parse import urlencode, urlsplit
 
@@ -24,6 +26,7 @@ MOBILE_RE = re.compile(r"(?:\+3538[35679]\d{7}|\+447[1-9]\d{8})\Z")
 BOOKING_RE = re.compile(r"\+44(?:[123]\d{9}|80[08]\d{7}|7[1-9]\d{8})\Z")
 SOURCE_TTL = 1800
 WEB_CALL_TYPES = {"webCall", "vapi.websocketCall"}
+POSTCODE_RE = re.compile(r"\b(?:GIR\s*0AA|[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2})\b", re.I)
 API_ROOT = "https://api.callmeie.ie"
 CONFIG_FIELDS = {"assistant_id", "parent_assistant_id", "phone_number_id", "label", "area", "enabled"}
 
@@ -150,6 +153,61 @@ def source_contains_phone(source, number):
     text = source.get("text", "")
     candidates = re.findall(r"(?<!\d)(?:\+44(?:\s*\(0\))?|0044|0)(?:[\s().-]*\d){9,10}(?!\d)", text)
     return number in {normalise_phone(p) for p in candidates}
+
+
+def destination_text(value):
+    """Normalize typography/address spelling without fuzzy place-name matching."""
+    value = html.unescape(value)
+    value = re.sub(r"(?:https?://|www\.)[^\s)>\]]+", " ", value, flags=re.I)
+    value = unicodedata.normalize("NFKD", value.casefold())
+    value = "".join(c for c in value if not unicodedata.combining(c))
+    value = value.replace("'", "").replace("’", "").replace("‘", "").replace("&", " and ")
+    # Only a trailing St abbreviation denotes a street. St Paul's/St Pancras
+    # must retain their name rather than silently becoming Street Paul's.
+    value = re.sub(r"\bst\.?(?=\s*(?:[,;\n]|$))", "street", value)
+    for short, full in (("rd", "road"), ("ave", "avenue"), ("sq", "square"), ("ln", "lane")):
+        value = re.sub(r"\b" + short + r"\b", full, value)
+    value = POSTCODE_RE.sub(lambda m: re.sub(r"\s", "", m.group()), value)
+    return " ".join(re.findall(r"[a-z0-9]+", value))
+
+
+def source_supports_destination(source, destination):
+    # Source URLs and query parameters alone never establish a destination.
+    evidence = destination_text(str(source.get("title", "")) + "\n" + str(source.get("text", "")))
+    if re.search(r"https?://|www\.", destination, re.I):
+        return False
+    postcodes = POSTCODE_RE.findall(destination)
+    if any(" " + destination_text(code) + " " not in " " + evidence + " " for code in postcodes):
+        return False
+    remaining = POSTCODE_RE.sub("", destination)
+    generic = {"london", "uk", "united kingdom", "england", "great britain"}
+    nonspecific = generic | {"museum", "station", "park", "hotel", "restaurant", "venue", "shop"}
+    anchors = []
+    for part in re.split(r"[,;]", remaining):
+        part = destination_text(part)
+        if not part or part in generic:
+            continue
+        if part.startswith("the "):
+            part = part[4:]
+        if not part or part in nonspecific or not any(len(word) >= 3 for word in part.split()):
+            return False
+        if " " + part + " " not in " " + evidence + " ":
+            return False
+        anchors.append(part)
+    return bool(anchors)
+
+
+def directions_source(get_db, slug, config, call, args, destination):
+    reference = text_arg(args, "source_reference", 30)
+    with get_db() as db:
+        row = db.execute("SELECT detail FROM call_events WHERE event_key=? AND call_id=? AND assistant=? AND event_type='travel-helper-source'", (event_key("source", slug, call["id"], reference), call["id"], config["assistant_id"])).fetchone()
+    record = decode(row["detail"]) if row is not None else {}
+    if record.get("helper") != slug or float(record.get("checked_at", 0)) < time.time() - SOURCE_TTL:
+        raise ValueError("lookup_destination_again")
+    source = record.get("source") or {}
+    if not source_supports_destination(source, destination):
+        raise ValueError("destination_not_supported_by_source_use_sourced_name_and_address")
+    return source
 
 
 async def firecrawl_search(query, area):
@@ -292,6 +350,7 @@ async def dispatch(get_db, slug, config, call, name, args, providers):
 
     if name == "sendDirections":
         destination = text_arg(args, "destination", 300)
+        directions_source(get_db, slug, config, call, args, destination)
         mode = args.get("travel_mode", "walking")
         origin = text_arg(args, "start_location", 300) if args.get("start_location") else None
         url = maps_url(destination, mode, origin)
@@ -303,7 +362,7 @@ async def dispatch(get_db, slug, config, call, name, args, providers):
         result = await invoke(providers["sms"], to, body, from_number=os.environ.get("PERSONAL_AGENT_SMS_FROM", "CALLMEIE"))
         sid = result.get("sid", "") if isinstance(result, dict) else ""
         status = result.get("status", "") if isinstance(result, dict) else ""
-        if status == "mocked" or not re.fullmatch(r"SM[0-9a-fA-F]{32}", sid):
+        if not isinstance(result, dict) or status == "mocked" or result.get("mocked") or not re.fullmatch(r"SM[0-9a-fA-F]{32}", sid):
             raise ValueError("sms_not_accepted_by_provider")
         if result.get("ok") is False or status in ("failed", "undelivered", "canceled"):
             return finish(get_db, effect_id, {"status": "failed", "error": "sms_delivery_failed", "provider_id": sid, "map_url": url})
@@ -340,12 +399,15 @@ async def dispatch(get_db, slug, config, call, name, args, providers):
 
 
 def tool_definitions(slug, secret):
-    def function(name, description, properties, required, timeout=25):
-        return {"type": "function", "async": False, "function": {"name": name, "description": description, "parameters": {"type": "object", "properties": properties, "required": required, "additionalProperties": False}}, "server": {"url": API_ROOT + "/vapi/travel-helper/" + slug, "headers": {"x-travel-helper-secret": secret}, "timeoutSeconds": timeout}}
+    def function(name, description, properties, required, timeout=25, messages=None):
+        tool = {"type": "function", "async": False, "function": {"name": name, "description": description, "parameters": {"type": "object", "properties": properties, "required": required, "additionalProperties": False}}, "server": {"url": API_ROOT + "/vapi/travel-helper/" + slug, "headers": {"x-travel-helper-secret": secret}, "timeoutSeconds": timeout}}
+        if messages is not None:
+            tool["messages"] = messages
+        return tool
     string = lambda description: {"type": "string", "description": description}
     return [
         function("lookupTravel", "Check current public travel or venue information. Search official sources for hours, prices, address or booking telephone. Include the venue and area; availability must be confirmed by the source.", {"query": string("Precise place and information needed; prefer the official venue source."), "visit_date": string("Relevant visit date, if known.")}, ["query"], 30),
-        function("sendDirections", "Text the caller a Google Maps navigation link for a verified destination when they request directions. Uses caller ID. Only ask for and read back a mobile if caller ID is missing or is not a mobile. Never replace a valid caller mobile. Omit start_location for directions from the phone's current location.", {"destination": string("Verified place name and full address."), "travel_mode": {"type": "string", "enum": ["walking", "transit", "driving", "bicycling"]}, "start_location": string("Only for planning from a different explicitly requested start."), "confirmed_mobile": string("E.164 Irish/UK mobile only if caller ID is missing or unsuitable."), "mobile_confirmed": {"type": "boolean", "description": "True only after reading back a fallback mobile and hearing agreement."}}, ["destination", "travel_mode"]),
+        function("sendDirections", "Text a Google Maps link only after lookupTravel has returned a source supporting the destination. Never batch this with lookupTravel. Use only the place/address printed in that source; omit unsupported address details. Uses caller ID. Ask for and confirm a fallback mobile before this tool only if caller ID is missing or unsuitable. Never replace a valid caller mobile. Omit start_location for the phone's current location.", {"source_reference": string("reference from a completed lookupTravel result in this call supporting the destination."), "destination": string("Source-backed place and address, comma-separated. Include only verified components; a distinctive sourced venue name plus London is allowed if no street address is shown."), "travel_mode": {"type": "string", "enum": ["walking", "transit", "driving", "bicycling"]}, "start_location": string("Only for planning from a different explicitly requested start."), "confirmed_mobile": string("E.164 Irish/UK mobile only if caller ID is missing or unsuitable."), "mobile_confirmed": {"type": "boolean", "description": "True only after reading back a fallback mobile and hearing agreement."}}, ["source_reference", "destination", "travel_mode"], messages=[{"type": "request-complete", "role": "assistant", "content": "The directions text has been submitted. Open the link when it arrives.", "endCallAfterSpokenEnabled": False}, {"type": "request-failed", "role": "assistant", "content": "I cannot confirm a directions text was sent. I will not retry it automatically. Would you like spoken directions?", "endCallAfterSpokenEnabled": False}]),
         function("transferToBooking", "Connect the caller to a booking telephone found in a recent lookup source, only after they agree to the transfer. Use the lookup's source reference and exact number. This does not buy or reserve tickets.", {"source_reference": string("reference from this call's lookupTravel result containing the phone."), "phone_number": string("Exact UK booking phone number printed in that source."), "confirmed": {"type": "boolean", "description": "Caller has explicitly agreed to be connected now."}}, ["source_reference", "phone_number", "confirmed"]),
     ]
 
@@ -435,6 +497,7 @@ def install(app, get_db, check_admin, *, send_sms=None, transfer=None, search=No
         tool_calls = message.get("toolCallList")
         if not isinstance(tool_calls, list) or not 1 <= len(tool_calls) <= 8:
             raise HTTPException(422, "invalid_tool_calls")
+        has_lookup = any(isinstance(item, dict) and isinstance(item.get("function"), dict) and item["function"].get("name") == "lookupTravel" for item in tool_calls)
         results = []
         for item in tool_calls:
             if not isinstance(item, dict) or not isinstance(item.get("id"), str) or not ID_RE.fullmatch(item["id"]):
@@ -452,6 +515,8 @@ def install(app, get_db, check_admin, *, send_sms=None, transfer=None, search=No
             identifier, result = reserve(get_db, slug, config["assistant_id"], call["id"], item["id"], name, args)
             if result is None:
                 try:
+                    if name == "sendDirections" and has_lookup:
+                        raise ValueError("wait_for_lookup_result_before_sending_directions")
                     result = await dispatch(get_db, slug, config, call, name, args, providers)
                 except (httpx.TimeoutException, httpx.NetworkError):
                     result = {"status": "uncertain", "error": "provider_result_unknown_do_not_retry"}
@@ -461,7 +526,13 @@ def install(app, get_db, check_admin, *, send_sms=None, transfer=None, search=No
                     # A provider may have accepted the action before disconnecting.
                     result = {"status": "uncertain", "error": "operation_outcome_unknown_do_not_retry"}
                 result = finish(get_db, identifier, result)
-            results.append({"toolCallId": item["id"], "result": json.dumps(result)})
+            # Vapi's deterministic request-failed speech is selected by the
+            # top-level error key, not a status nested inside a result string.
+            accepted_sms = (result.get("status") in ("accepted", "delivered")
+                            and bool(re.fullmatch(r"SM[0-9a-fA-F]{32}", result.get("provider_id", "")))
+                            and not result.get("error") and not result.get("mocked"))
+            field = "error" if name == "sendDirections" and not accepted_sms else "result"
+            results.append({"toolCallId": item["id"], field: json.dumps(result)})
         return {"results": results}
 
     app.include_router(router)

@@ -1,6 +1,7 @@
 """Exercise call ownership, provider effects, source binding and retries locally."""
 import copy
 from contextlib import contextmanager
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -56,6 +57,7 @@ class TravelHelperTests(unittest.TestCase):
         self.search_response = [{"title": "Example venue — official booking", "url": "https://venue.example/visit", "markdown": "Our booking line is 020 7123 4567. Open 10am to 6pm. Tickets from £25 online."}]
         self.vapi_assistant = {"id": "helper-id", "model": {"provider": "openai", "model": "existing-model", "messages": [{"role": "system", "content": "Existing prompt"}], "toolIds": ["saved-other-tool"], "tools": [{"type": "endCall"}, {"type": "function", "function": {"name": "otherTool"}}]}}
         self.vapi_readback_modifier = None
+        self.direction_references = {}
 
         async def sms(to, body, from_number=""):
             self.sms_calls.append({"to": to, "body": body, "from": from_number})
@@ -94,13 +96,21 @@ class TravelHelperTests(unittest.TestCase):
     def event(self, name="sendDirections", args=None, tool_id="tool-1", call_id="call-1"):
         return {"message": {"type": "tool-calls", "call": {"id": call_id, "assistantId": "parent-id", "phoneNumberId": "phone-id", "type": "inboundPhoneCall", "customer": {"number": "+353871234567"}, "monitor": {"controlUrl": "https://phone-call-websocket.aws-us-west-2-backend-production1.vapi.ai/call-1/control"}}, "toolCallList": [{"id": tool_id, "function": {"name": name, "arguments": json.dumps(args or {"destination": "Example venue, London", "travel_mode": "walking"})}}]}}
 
+    def directions(self, args=None, tool_id="tool-1", call_id="call-1"):
+        if call_id not in self.direction_references:
+            self.direction_references[call_id] = self.lookup(call_id, "directions-source-" + call_id)["sources"][0]["reference"]
+        values = {"destination": "Example venue, London", "travel_mode": "walking"} if args is None else args
+        return self.event("sendDirections", {"source_reference": self.direction_references[call_id], **values}, tool_id, call_id)
+
     def post(self, event):
         return self.client.post("/vapi/travel-helper/test-helper", json=event, headers={"x-travel-helper-secret": self.secret})
 
     def result(self, event):
         response = self.post(event)
         self.assertEqual(response.status_code, 200, response.text)
-        return json.loads(response.json()["results"][0]["result"])
+        self.last_row = response.json()["results"][0]
+        self.assertEqual(set(self.last_row) & {"result", "error"}, {"error"} if "error" in self.last_row else {"result"})
+        return json.loads(self.last_row.get("result", self.last_row.get("error")))
 
     def lookup(self, call_id="call-1", tool_id="lookup-1"):
         return self.result(self.event("lookupTravel", {"query": "Example venue London official booking phone"}, tool_id, call_id))
@@ -124,7 +134,7 @@ class TravelHelperTests(unittest.TestCase):
         self.assertEqual(helper.settings(self.db, "test-helper")["webhook_secret"], self.secret)
 
     def test_wrong_auth_assistant_and_phone_rejected(self):
-        event = self.event()
+        event = self.directions()
         self.assertEqual(self.client.post("/vapi/travel-helper/test-helper", json=event).status_code, 401)
         event["message"]["call"]["assistantId"] = "unrelated-assistant"
         self.assertEqual(self.post(event).status_code, 403)
@@ -135,7 +145,8 @@ class TravelHelperTests(unittest.TestCase):
 
     def test_maps_encoded_destination_and_default_device_location(self):
         destination = "King's Cross & St Pancras, London"
-        result = self.result(self.event(args={"destination": destination, "travel_mode": "walking"}))
+        self.search_response[0]["title"] = "King’s Cross & St Pancras"
+        result = self.result(self.directions(args={"destination": destination, "travel_mode": "walking"}))
         query = parse_qs(urlsplit(result["map_url"]).query)
         self.assertEqual(query["destination"], [destination])
         self.assertEqual(query["api"], ["1"])
@@ -147,70 +158,169 @@ class TravelHelperTests(unittest.TestCase):
         self.assertIs(result["delivery_confirmed"], False)
 
     def test_explicit_route_planning_origin(self):
-        result = self.result(self.event(args={"destination": "Tower Bridge, London", "travel_mode": "transit", "start_location": "Paddington Station, London"}))
+        self.search_response[0]["title"] = "Tower Bridge"
+        result = self.result(self.directions(args={"destination": "Tower Bridge, London", "travel_mode": "transit", "start_location": "Paddington Station, London"}))
         self.assertEqual(parse_qs(urlsplit(result["map_url"]).query)["origin"], ["Paddington Station, London"])
 
     def test_model_cannot_override_known_caller_recipient(self):
-        result = self.result(self.event(args={"destination": "Example, London", "confirmed_mobile": "+447911123456", "mobile_confirmed": True}))
+        result = self.result(self.directions(args={"destination": "Example, London", "confirmed_mobile": "+447911123456", "mobile_confirmed": True}))
         self.assertEqual(result["error"], "recipient_must_match_caller")
         self.assertFalse(self.sms_calls)
 
     def test_unknown_caller_requires_confirmed_valid_mobile(self):
-        event = self.event(args={"destination": "Example, London", "confirmed_mobile": "+353861234567"})
+        event = self.directions(args={"destination": "Example, London", "confirmed_mobile": "+353861234567"})
         event["message"]["call"]["customer"] = {}
         self.assertEqual(self.result(event)["error"], "ask_for_and_confirm_mobile")
         event["message"]["toolCallList"][0]["id"] = "tool-2"
-        event["message"]["toolCallList"][0]["function"]["arguments"] = json.dumps({"destination": "Example, London", "confirmed_mobile": "+353861234567", "mobile_confirmed": True})
+        event["message"]["toolCallList"][0]["function"]["arguments"] = json.dumps({"source_reference": self.direction_references["call-1"], "destination": "Example venue, London", "confirmed_mobile": "+353861234567", "mobile_confirmed": True})
         self.assertEqual(self.result(event)["status"], "accepted")
         self.assertEqual(self.sms_calls[0]["to"], "+353861234567")
 
     def test_landline_caller_can_supply_confirmed_mobile(self):
-        event = self.event(args={"destination": "Example, London", "confirmed_mobile": "+447911123456", "mobile_confirmed": True})
+        event = self.directions(args={"destination": "Example, London", "confirmed_mobile": "+447911123456", "mobile_confirmed": True})
         event["message"]["call"]["customer"]["number"] = "+442071234567"
         self.assertEqual(self.result(event)["status"], "accepted")
         self.assertEqual(self.sms_calls[0]["to"], "+447911123456")
 
     def test_mocked_provider_never_claims_success(self):
         self.sms_response = {"status": "mocked", "ok": True, "http_status": 200}
-        result = self.result(self.event())
+        result = self.result(self.directions())
         self.assertEqual(result["status"], "error")
         self.assertEqual(result["error"], "sms_not_accepted_by_provider")
+        self.assertIn("error", self.last_row)
+        self.assertNotIn("result", self.last_row)
+
+    def test_explicit_mock_flag_cannot_fake_a_real_sid(self):
+        self.sms_response["mocked"] = True
+        result = self.result(self.directions())
+        self.assertEqual(result["error"], "sms_not_accepted_by_provider")
+        self.assertIn("error", self.last_row)
+        self.assertNotIn("result", self.last_row)
 
     def test_failed_provider_delivery_remains_failed(self):
         self.sms_response["status"] = "undelivered"
-        self.assertEqual(self.result(self.event())["status"], "failed")
+        self.assertEqual(self.result(self.directions())["status"], "failed")
+        self.assertIn("error", self.last_row)
 
     def test_provider_delivery_proof_distinct_from_accepted(self):
         self.sms_response["status"] = "delivered"
-        result = self.result(self.event())
+        result = self.result(self.directions())
         self.assertEqual(result["status"], "delivered")
         self.assertIs(result["delivery_confirmed"], True)
+        self.assertIn("result", self.last_row)
+        self.assertNotIn("error", self.last_row)
 
     def test_duplicate_tool_does_not_send_twice(self):
-        first = self.result(self.event())
-        second = self.result(self.event())
+        first = self.result(self.directions())
+        second = self.result(self.directions())
         self.assertEqual(first, second)
         self.assertEqual(len(self.sms_calls), 1)
 
     def test_changed_payload_reused_tool_id_is_rejected(self):
-        self.result(self.event())
-        result = self.result(self.event(args={"destination": "Other destination, London"}))
+        self.result(self.directions())
+        result = self.result(self.directions(args={"destination": "Other destination, London"}))
         self.assertEqual(result["error"], "idempotency_conflict")
         self.assertEqual(len(self.sms_calls), 1)
 
     def test_timeout_retained_as_uncertain_and_never_retried(self):
         self.sms_error = httpx.ReadTimeout("response lost")
-        first = self.result(self.event())
+        first = self.result(self.directions())
         self.sms_error = None
-        self.assertEqual(self.result(self.event()), first)
+        self.assertEqual(self.result(self.directions()), first)
         self.assertEqual(first["status"], "uncertain")
         self.assertEqual(len(self.sms_calls), 1)
+        self.assertIn("error", self.last_row)
+        self.assertNotIn("result", self.last_row)
+
+    def test_directions_require_a_completed_lookup_reference(self):
+        result = self.result(self.event())
+        self.assertEqual(result["error"], "invalid_source_reference")
+        self.assertIn("error", self.last_row)
+        self.assertFalse(self.sms_calls)
+
+    def test_directions_reject_another_calls_source(self):
+        source = self.lookup("other-call")["sources"][0]
+        event = self.event(args={"source_reference": source["reference"], "destination": "Example venue, London", "travel_mode": "walking"})
+        self.assertEqual(self.result(event)["error"], "lookup_destination_again")
+        self.assertFalse(self.sms_calls)
+
+    def test_directions_reject_stale_source(self):
+        event = self.directions()
+        with self.db() as db:
+            row = db.execute("SELECT id,detail FROM call_events WHERE event_type='travel-helper-source'").fetchone()
+            detail = json.loads(row["detail"])
+            detail["checked_at"] = time.time() - helper.SOURCE_TTL - 1
+            db.execute("UPDATE call_events SET detail=? WHERE id=?", (json.dumps(detail), row["id"]))
+        self.assertEqual(self.result(event)["error"], "lookup_destination_again")
+        self.assertFalse(self.sms_calls)
+
+    def test_directions_accept_sourced_address_and_postcode_formatting(self):
+        self.search_response[0].update(title="The British Museum", markdown="The British Museum\nGreat Russell Street\nLondon WC1B 3DG")
+        destination = "British Museum, Great Russell St, London WC1B3DG, UK"
+        result = self.result(self.directions(args={"destination": destination, "travel_mode": "walking"}))
+        self.assertEqual(result["status"], "accepted")
+        self.assertIn("result", self.last_row)
+        self.assertEqual(parse_qs(urlsplit(result["map_url"]).query)["destination"], [destination])
+
+    def test_directions_reject_unsourced_venue_address_and_postcode(self):
+        self.search_response[0].update(title="British Museum", markdown="Great Russell Street\nLondon WC1B 3DG")
+        for index, destination in enumerate(("Tate Modern, London", "British Museum, Wrong Road, London", "British Museum, Great Russell Street, London SW1A 1AA", "London, UK")):
+            result = self.result(self.directions(args={"destination": destination, "travel_mode": "walking"}, tool_id="unsupported-" + str(index)))
+            self.assertEqual(result["error"], "destination_not_supported_by_source_use_sourced_name_and_address")
+            self.assertIn("error", self.last_row)
+        self.assertFalse(self.sms_calls)
+
+    def test_directions_do_not_use_url_only_destination_evidence(self):
+        self.search_response = [{"title": "Visitor information", "url": "https://venue.example/British-Museum-London-WC1B3DG", "markdown": "See https://venue.example/British-Museum-London-WC1B3DG for information."}]
+        result = self.result(self.directions(args={"destination": "British Museum, London WC1B3DG", "travel_mode": "walking"}))
+        self.assertEqual(result["error"], "destination_not_supported_by_source_use_sourced_name_and_address")
+        self.assertFalse(self.sms_calls)
+
+    def test_directions_do_not_use_www_url_only_destination_evidence(self):
+        self.search_response = [{"title": "Visitor information", "url": "https://venue.example/visit", "markdown": "See www.british-museum.org/London-WC1B3DG for information."}]
+        result = self.result(self.directions(args={"destination": "British Museum, London WC1B3DG", "travel_mode": "walking"}))
+        self.assertEqual(result["error"], "destination_not_supported_by_source_use_sourced_name_and_address")
+        self.assertFalse(self.sms_calls)
+
+    def test_saint_in_venue_name_is_not_normalised_to_street(self):
+        self.search_response[0].update(title="St Paul’s Cathedral", markdown="St Paul’s Churchyard, London EC4M 8AD")
+        self.assertEqual(self.result(self.directions(args={"destination": "St Paul's Cathedral, St Paul's Churchyard, London EC4M8AD", "travel_mode": "walking"}))["status"], "accepted")
+        result = self.result(self.directions(args={"destination": "Street Paul's Cathedral, London", "travel_mode": "walking"}, tool_id="wrong-saint"))
+        self.assertEqual(result["error"], "destination_not_supported_by_source_use_sourced_name_and_address")
+        self.assertEqual(len(self.sms_calls), 1)
+
+    def test_lookup_and_directions_in_same_batch_never_send(self):
+        reference = hashlib.sha256(self.search_response[0]["url"].encode()).hexdigest()[:20]
+        for index, reverse in enumerate((False, True)):
+            call_id = "batch-call-" + str(index)
+            event = self.event("lookupTravel", {"query": "Example venue official address London"}, "batch-lookup", call_id)
+            send = self.event("sendDirections", {"source_reference": reference, "destination": "Example venue, London", "travel_mode": "walking"}, "batch-send", call_id)["message"]["toolCallList"][0]
+            event["message"]["toolCallList"].append(send)
+            if reverse:
+                event["message"]["toolCallList"].reverse()
+            response = self.post(event)
+            self.assertEqual(response.status_code, 200)
+            row = next(row for row in response.json()["results"] if row["toolCallId"] == "batch-send")
+            self.assertNotIn("result", row)
+            self.assertEqual(json.loads(row["error"])["error"], "wait_for_lookup_result_before_sending_directions")
+        self.assertFalse(self.sms_calls)
+
+    def test_directions_tool_has_source_dependency_and_deterministic_speech(self):
+        tools = helper.tool_definitions("test-helper", "test-secret")
+        tool = next(t for t in tools if t["function"]["name"] == "sendDirections")
+        self.assertIs(tool["async"], False)
+        self.assertIn("source_reference", tool["function"]["parameters"]["required"])
+        self.assertEqual(tool["messages"], [
+            {"type": "request-complete", "role": "assistant", "content": "The directions text has been submitted. Open the link when it arrives.", "endCallAfterSpokenEnabled": False},
+            {"type": "request-failed", "role": "assistant", "content": "I cannot confirm a directions text was sent. I will not retry it automatically. Would you like spoken directions?", "endCallAfterSpokenEnabled": False},
+        ])
+        self.assertTrue(all("messages" not in t for t in tools if t["function"]["name"] != "sendDirections"))
 
     def test_fresh_tool_id_cannot_resend_uncertain_same_sms(self):
         self.sms_error = httpx.ReadTimeout("response lost")
-        self.assertEqual(self.result(self.event())["status"], "uncertain")
+        self.assertEqual(self.result(self.directions())["status"], "uncertain")
         self.sms_error = None
-        self.assertEqual(self.result(self.event(tool_id="new-model-tool-id"))["status"], "uncertain")
+        self.assertEqual(self.result(self.directions(tool_id="new-model-tool-id"))["status"], "uncertain")
         self.assertEqual(len(self.sms_calls), 1)
 
     def test_fresh_tool_id_cannot_redial_uncertain_same_number(self):
@@ -276,7 +386,7 @@ class TravelHelperTests(unittest.TestCase):
 
     def test_web_simulation_cannot_send_or_transfer(self):
         for index, kind in enumerate(("webCall", "vapi.websocketCall")):
-            event = self.event(tool_id="web-send-" + str(index))
+            event = self.directions(tool_id="web-send-" + str(index))
             event["message"]["call"]["type"] = kind
             self.assertEqual(self.result(event)["error"], "outbound_action_requires_bound_phone_call")
         self.assertFalse(self.sms_calls)
@@ -304,7 +414,7 @@ class TravelHelperTests(unittest.TestCase):
 
     def test_reuses_existing_event_store_and_only_adds_config_table(self):
         self.lookup()
-        self.result(self.event())
+        self.result(self.directions())
         with self.db() as db:
             tables = {r["name"] for r in db.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
             rows = db.execute("SELECT event_key,event_type,assistant FROM call_events").fetchall()
