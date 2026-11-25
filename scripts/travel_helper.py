@@ -398,6 +398,17 @@ async def dispatch(get_db, slug, config, call, name, args, providers):
     raise ValueError("unsupported_tool")
 
 
+def directions_failure_context(result):
+    """Keep a call-capability refusal distinct from a recoverable missing mobile."""
+    if result.get("error") == "outbound_action_requires_bound_phone_call":
+        return {**result, "retry_allowed": False, "guidance": "Texting is unavailable on this call. Another mobile number cannot fix this. Do not ask for another number or call sendDirections again. Continue with verified information or spoken directions."}
+    if result.get("error") == "ask_for_and_confirm_mobile":
+        return {**result, "retry_allowed": False, "retry_condition": "caller_confirms_valid_mobile", "guidance": "Caller ID did not provide a usable mobile. Ask for an Irish or UK mobile, read it back and wait for explicit confirmation. Do not call sendDirections again before confirmation. After confirmation, call it once with a valid E.164 confirmed_mobile and mobile_confirmed=true."}
+    if result.get("status") == "uncertain":
+        return {**result, "retry_allowed": False, "guidance": "The original text attempt may have been accepted, but its outcome is unknown. Do not call sendDirections again or ask for another number to retry. Ask the caller to check for the original text and continue with verified information or spoken directions."}
+    return result
+
+
 def tool_definitions(slug, secret):
     def function(name, description, properties, required, timeout=25, messages=None):
         tool = {"type": "function", "async": False, "function": {"name": name, "description": description, "parameters": {"type": "object", "properties": properties, "required": required, "additionalProperties": False}}, "server": {"url": API_ROOT + "/vapi/travel-helper/" + slug, "headers": {"x-travel-helper-secret": secret}, "timeoutSeconds": timeout}}
@@ -407,7 +418,7 @@ def tool_definitions(slug, secret):
     string = lambda description: {"type": "string", "description": description}
     return [
         function("lookupTravel", "Check current public travel or venue information. Search official sources for hours, prices, address or booking telephone. Include the venue and area; availability must be confirmed by the source.", {"query": string("Precise place and information needed; prefer the official venue source."), "visit_date": string("Relevant visit date, if known.")}, ["query"], 30),
-        function("sendDirections", "Text a Google Maps link only after lookupTravel has returned a source supporting the destination. Never batch this with lookupTravel. Use only the place/address printed in that source; omit unsupported address details. Uses caller ID. Ask for and confirm a fallback mobile before this tool only if caller ID is missing or unsuitable. Never replace a valid caller mobile. Omit start_location for the phone's current location.", {"source_reference": string("reference from a completed lookupTravel result in this call supporting the destination."), "destination": string("Source-backed place and address, comma-separated. Include only verified components; a distinctive sourced venue name plus London is allowed if no street address is shown."), "travel_mode": {"type": "string", "enum": ["walking", "transit", "driving", "bicycling"]}, "start_location": string("Only for planning from a different explicitly requested start."), "confirmed_mobile": string("E.164 Irish/UK mobile only if caller ID is missing or unsuitable."), "mobile_confirmed": {"type": "boolean", "description": "True only after reading back a fallback mobile and hearing agreement."}}, ["source_reference", "destination", "travel_mode"], messages=[{"type": "request-complete", "role": "assistant", "content": "The directions text has been submitted. Open the link when it arrives.", "endCallAfterSpokenEnabled": False}, {"type": "request-failed", "role": "assistant", "content": "I cannot confirm a directions text was sent. I will not retry it automatically. Would you like spoken directions?", "endCallAfterSpokenEnabled": False}]),
+        function("sendDirections", "Text a Google Maps link only after lookupTravel has returned a source supporting the destination. Never batch this with lookupTravel. Use only the place/address printed in that source; omit unsupported address details. Uses caller ID. Ask for and confirm a fallback mobile before this tool only if caller ID is missing or unsuitable. Never replace a valid caller mobile. Omit start_location for the phone's current location.", {"bot_say": {"type": "string", "maxLength": 550, "description": "Speak one or two brief sentences giving the caller the requested source-backed hours, visit date or address from the completed lookup, or explicit uncertainty. Never claim any text was sent or submitted. Give no separate acknowledgement. Vapi speaks this before the tool and strips it from server arguments."}, "source_reference": string("reference from a completed lookupTravel result in this call supporting the destination."), "destination": string("Source-backed place and address, comma-separated. Include only verified components; a distinctive sourced venue name plus London is allowed if no street address is shown."), "travel_mode": {"type": "string", "enum": ["walking", "transit", "driving", "bicycling"]}, "start_location": string("Only for planning from a different explicitly requested start."), "confirmed_mobile": string("E.164 Irish/UK mobile only if caller ID is missing or unsuitable."), "mobile_confirmed": {"type": "boolean", "description": "True only after reading back a fallback mobile and hearing agreement."}}, ["bot_say", "source_reference", "destination", "travel_mode"], messages=[{"type": "request-start", "content": ""}, {"type": "request-complete", "role": "assistant", "content": "The directions text has been submitted. Open the link when it arrives.", "endCallAfterSpokenEnabled": False}, {"type": "request-failed", "role": "assistant", "content": "I cannot confirm a directions text was sent. I will not retry it automatically. Would you like spoken directions?", "endCallAfterSpokenEnabled": False}]),
         function("transferToBooking", "Connect the caller to a booking telephone found in a recent lookup source, only after they agree to the transfer. Use the lookup's source reference and exact number. This does not buy or reserve tickets.", {"source_reference": string("reference from this call's lookupTravel result containing the phone."), "phone_number": string("Exact UK booking phone number printed in that source."), "confirmed": {"type": "boolean", "description": "Caller has explicitly agreed to be connected now."}}, ["source_reference", "phone_number", "confirmed"]),
     ]
 
@@ -525,7 +536,13 @@ def install(app, get_db, check_admin, *, send_sms=None, transfer=None, search=No
                 except Exception:
                     # A provider may have accepted the action before disconnecting.
                     result = {"status": "uncertain", "error": "operation_outcome_unknown_do_not_retry"}
+                if name == "sendDirections":
+                    result = directions_failure_context(result)
                 result = finish(get_db, identifier, result)
+            elif name == "sendDirections":
+                # Older cached receipts receive the same controlled recovery
+                # context without repeating or changing any provider effect.
+                result = directions_failure_context(result)
             # Vapi's deterministic request-failed speech is selected by the
             # top-level error key, not a status nested inside a result string.
             accepted_sms = (result.get("status") in ("accepted", "delivered")

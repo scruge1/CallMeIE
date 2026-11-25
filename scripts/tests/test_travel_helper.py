@@ -170,10 +170,23 @@ class TravelHelperTests(unittest.TestCase):
     def test_unknown_caller_requires_confirmed_valid_mobile(self):
         event = self.directions(args={"destination": "Example, London", "confirmed_mobile": "+353861234567"})
         event["message"]["call"]["customer"] = {}
-        self.assertEqual(self.result(event)["error"], "ask_for_and_confirm_mobile")
+        first = self.result(event)
+        self.assertEqual(first["error"], "ask_for_and_confirm_mobile")
+        self.assertIs(first["retry_allowed"], False)
+        self.assertEqual(first["retry_condition"], "caller_confirms_valid_mobile")
+        self.assertIn("wait for explicit confirmation", first["guidance"])
+        self.assertNotIn("unavailable on this call", first["guidance"])
+        self.assertFalse(self.sms_calls)
         event["message"]["toolCallList"][0]["id"] = "tool-2"
-        event["message"]["toolCallList"][0]["function"]["arguments"] = json.dumps({"source_reference": self.direction_references["call-1"], "destination": "Example venue, London", "confirmed_mobile": "+353861234567", "mobile_confirmed": True})
+        args = {"source_reference": self.direction_references["call-1"], "destination": "Example venue, London", "confirmed_mobile": "+353861234567", "mobile_confirmed": False}
+        event["message"]["toolCallList"][0]["function"]["arguments"] = json.dumps(args)
+        self.assertIs(self.result(event)["retry_allowed"], False)
+        self.assertFalse(self.sms_calls)
+        event["message"]["toolCallList"][0]["id"] = "tool-3"
+        args["mobile_confirmed"] = True
+        event["message"]["toolCallList"][0]["function"]["arguments"] = json.dumps(args)
         self.assertEqual(self.result(event)["status"], "accepted")
+        self.assertEqual(len(self.sms_calls), 1)
         self.assertEqual(self.sms_calls[0]["to"], "+353861234567")
 
     def test_landline_caller_can_supply_confirmed_mobile(self):
@@ -228,6 +241,9 @@ class TravelHelperTests(unittest.TestCase):
         self.sms_error = None
         self.assertEqual(self.result(self.directions()), first)
         self.assertEqual(first["status"], "uncertain")
+        self.assertIs(first["retry_allowed"], False)
+        self.assertIn("outcome is unknown", first["guidance"])
+        self.assertNotIn("retry_condition", first)
         self.assertEqual(len(self.sms_calls), 1)
         self.assertIn("error", self.last_row)
         self.assertNotIn("result", self.last_row)
@@ -310,7 +326,11 @@ class TravelHelperTests(unittest.TestCase):
         tool = next(t for t in tools if t["function"]["name"] == "sendDirections")
         self.assertIs(tool["async"], False)
         self.assertIn("source_reference", tool["function"]["parameters"]["required"])
+        self.assertIn("bot_say", tool["function"]["parameters"]["required"])
+        self.assertEqual(tool["function"]["parameters"]["properties"]["bot_say"]["type"], "string")
+        self.assertEqual(tool["function"]["parameters"]["properties"]["bot_say"]["maxLength"], 550)
         self.assertEqual(tool["messages"], [
+            {"type": "request-start", "content": ""},
             {"type": "request-complete", "role": "assistant", "content": "The directions text has been submitted. Open the link when it arrives.", "endCallAfterSpokenEnabled": False},
             {"type": "request-failed", "role": "assistant", "content": "I cannot confirm a directions text was sent. I will not retry it automatically. Would you like spoken directions?", "endCallAfterSpokenEnabled": False},
         ])
@@ -388,7 +408,29 @@ class TravelHelperTests(unittest.TestCase):
         for index, kind in enumerate(("webCall", "vapi.websocketCall")):
             event = self.directions(tool_id="web-send-" + str(index))
             event["message"]["call"]["type"] = kind
-            self.assertEqual(self.result(event)["error"], "outbound_action_requires_bound_phone_call")
+            result = self.result(event)
+            self.assertEqual(result["error"], "outbound_action_requires_bound_phone_call")
+            self.assertIs(result["retry_allowed"], False)
+            self.assertIn("Texting is unavailable on this call", result["guidance"])
+            self.assertIn("Another mobile number cannot fix this", result["guidance"])
+            self.assertNotIn("retry_condition", result)
+        self.assertFalse(self.sms_calls)
+
+    def test_bound_call_rejection_cannot_recover_by_confirming_another_mobile(self):
+        event = self.directions()
+        event["message"]["call"]["type"] = "vapi.websocketCall"
+        event["message"]["call"].pop("phoneNumberId")
+        event["message"]["call"]["customer"] = {}
+        first = self.result(event)
+        self.assertIs(first["retry_allowed"], False)
+        self.assertIn("Do not ask for another number or call sendDirections again", first["guidance"])
+        self.assertIn("Continue with verified information or spoken directions", first["guidance"])
+        event["message"]["toolCallList"][0]["id"] = "new-id-after-failure"
+        args = json.loads(event["message"]["toolCallList"][0]["function"]["arguments"])
+        args.update(confirmed_mobile="+447700900124", mobile_confirmed=True)
+        event["message"]["toolCallList"][0]["function"]["arguments"] = json.dumps(args)
+        self.assertEqual(self.result(event), first)
+        self.assertIn("error", self.last_row)
         self.assertFalse(self.sms_calls)
 
     def test_known_web_simulations_can_lookup_without_phone(self):
