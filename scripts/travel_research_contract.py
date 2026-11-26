@@ -146,7 +146,69 @@ def candidate_schema(fields):
     return schema
 
 
-def result_schema(fields):
+def _evidence_quotes(page, fields, candidate, url, count_limit, char_limit):
+    """Select bounded source spans using the validator's whitespace equivalence."""
+    lines, offset = [], 0
+    for line in page.splitlines(keepends=True):
+        start, end = offset, offset + len(line)
+        offset = end
+        if line.strip():
+            lines.append((start, end))
+    spans = {}
+    def remember(text, position):
+        text = " ".join(text.split())
+        if text and '"' not in text and len(text) <= 500:
+            spans.setdefault(text, position)
+    for i, (start, end) in enumerate(lines):
+        for _, stop in lines[i:i + 4]:
+            text = page[start:stop].strip()
+            if len(text) > 500:
+                break
+            if text:
+                remember(text, start)
+        # Long prose lines may still contain complete short sentences. Never
+        # truncate a line or splice separated source text to satisfy the limit.
+        for match in re.finditer(r"[^.!?\n]+[.!?](?=\s|$)", page[start:end]):
+            text = match.group().strip()
+            if 12 <= len(text) <= 500:
+                remember(text, start + match.start())
+    words = lambda text: set(re.findall(r"[^\W_]+", text.casefold()))
+    stopwords = set("a an and are as at be by for from in is it its of on or the this to with your tonight published unverified".split())
+    anchors = {field: words(field.replace("_", " ")) for field in fields}
+    for claim in (candidate or {}).get("claims", []):
+        if claim.get("field") in anchors and url in claim.get("proposed_source_urls", []):
+            anchors[claim["field"]].update(words(claim.get("text", "")))
+    from datetime import date
+    try:
+        weekday = date.fromisoformat((candidate or {}).get("visit_date", "")).strftime("%A").casefold()
+    except (TypeError, ValueError):
+        weekday = ""
+    for field in ("opening_time", "closing_time", "last_admission", "dated_availability"):
+        if field in anchors:
+            anchors[field].update({"hours", weekday} - {""})
+    anchors = {field: {word for word in values - stopwords if len(word) >= 2}
+               for field, values in anchors.items()}
+    tokenized = {text: words(text) for text in spans}
+    def rank(text, tokens):
+        return (-sum(min(len(word), 10) for word in tokenized[text] & tokens), len(text), spans[text])
+    selected, used = [], 0
+    def add(text):
+        nonlocal used
+        if text not in selected and len(selected) < count_limit and used + len(text) <= char_limit:
+            selected.append(text)
+            used += len(text)
+    # Give every requested fact first access to the finite evidence budget.
+    for tokens in anchors.values():
+        matches = [text for text in spans if tokenized[text] & tokens]
+        for text in sorted(matches, key=lambda text: rank(text, tokens))[:2]:
+            add(text)
+    all_tokens = set().union(*anchors.values())
+    for text in sorted(spans, key=lambda text: rank(text, all_tokens)):
+        add(text)
+    return selected
+
+
+def result_schema(fields, *, snapshots=None, candidate=None):
     """Schema for the verifier's raw output; trusted adapter adds hash envelope."""
     def obj(properties):
         return {"type": "object", "properties": properties, "required": list(properties), "additionalProperties": False}
@@ -180,6 +242,23 @@ def result_schema(fields):
             "named programme and its relevance in other_fact, and dated suitability in dated_availability. "
             "Venue logistics alone are insufficient. If either is missing, return failed with no claims, "
             "all requested fields missing, null destination and an honest uncertainty explaining the failure.")
+    if snapshots:
+        require(len(snapshots) <= 4 and len({source["reference"] for source in snapshots}) == len(snapshots),
+                "invalid_schema_sources")
+        claim_choices, destination_choices = [], []
+        for source in snapshots:
+            quotes = _evidence_quotes(source["page_text"], fields, candidate, source["url"],
+                                      96 // len(snapshots), 24000 // len(snapshots))
+            if not quotes:
+                continue
+            bound = {"source_reference": {**reference, "enum": [source["reference"]]},
+                     "quote": {**quote, "enum": quotes,
+                               "description": "Select a supplied source span that supports this claim; whitespace is normalized. Never edit it."}}
+            claim_choices.append(obj({**claim["properties"], **bound}))
+            destination_choices.append(obj({**destination["properties"], **bound}))
+        require(claim_choices, "no_bounded_source_evidence")
+        schema["properties"]["claims"]["items"] = {"anyOf": claim_choices}
+        schema["properties"]["destination"]["anyOf"] = [{"type": "null"}, *destination_choices]
     return schema
 
 
