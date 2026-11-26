@@ -4,7 +4,7 @@ import json
 import re
 from urllib.parse import urlsplit
 
-PROFILE_PIN = "5202931e25b57b24faf22cd57d45f2c4773c8ecd5938dc4a4c43e76ed164a149"  # Reviewed native profile; runtime enablement and health remain separate gates.
+PROFILE_PIN = "9b0f1f28c66ad143b2ed3877b45c3944b6300e69b510630df7d709ce08a2f2ac"  # Reviewed native profile; runtime enablement and health remain separate gates.
 RESULT_SCHEMA = "travel-research.result/v2"
 FIELDS = ("opening_time", "closing_time", "last_admission", "adult_price_without_donation",
           "optional_donation_price", "visitor_entrance", "visitor_address", "dated_availability",
@@ -151,10 +151,16 @@ def result_schema(fields):
     def string(maximum):
         return {"type": "string", "minLength": 1, "maxLength": maximum}
     reference = {**string(64), "description": "An exact reference from the supplied trusted_snapshots; a candidate URL or failed fetch is not a snapshot."}
-    claim = obj({"field": {"type": "string", "enum": fields}, "text": string(220), "qualifiers": string(180),
-                 "source_reference": reference, "quote": string(500)})
+    quote = {**string(500), "description": (
+        "Copy the shortest contiguous supporting span exactly from this snapshot. "
+        "Do not rewrite, splice, pad or invent characters to fit the limit. For a table, "
+        "use the relevant complete row or the header through that row, preserving column "
+        "meaning; do not clip into an unrelated row. If no intact span fits, mark the field unverified.")}
+    claim = obj({"field": {"type": "string", "enum": fields}, "text": string(220),
+                 "qualifiers": {**string(180), "description": "A concise applicable qualification, including relevant age, ticket and visit scope; never a punctuation-only placeholder."},
+                 "source_reference": reference, "quote": quote})
     missing = obj({"field": {"type": "string", "enum": fields}, "reason": string(300)})
-    destination = obj({"text": string(200), "source_reference": reference, "quote": string(500)})
+    destination = obj({"text": string(200), "source_reference": reference, "quote": quote})
     schema = obj({"status": {"type": "string", "enum": ["complete", "partial", "failed"]},
                 "claims": {"type": "array", "maxItems": len(fields), "items": claim},
                 "missing_coverage": {"type": "array", "maxItems": len(fields), "items": missing},
@@ -163,6 +169,7 @@ def result_schema(fields):
                                 "anyOf": [{"type": "null"}, destination]}})
     schema["description"] = ("Every original requested field appears exactly once in claims or missing_coverage. "
         "Use only supplied trusted snapshots and exact quotes; unsupported or failed-fetch facts belong in missing_coverage. "
+        "A visitor entrance must apply to the requested visit; an evening-event meeting point does not establish ordinary daytime admission. "
         "Complete means no missing fields; partial means useful supported facts plus missing fields; failed has no claims and null destination. "
         "Keep spoken claim text, qualifiers, missing-field explanations and uncertainties together within 750 characters, "
         "including brief punctuation and labels, so the backend's 900-character spoken-summary budget is respected.")

@@ -1,0 +1,15 @@
+{
+  "schema": "callmeie.retained-v3-quote-regression/v1",
+  "original_verifier_output_sha256": "849d5cc7765d83af298b468f993fedb4dbb73617c5e9fb770b0f57b4643753fc",
+  "original_source_content_hash": "3bd430afb6d95d842960778055425a2ef8beeeb5e05c4a1420537eda4b2d8f01",
+  "source_url": "https://www.hrp.org.uk/tower-of-london/visit/tickets-and-prices/",
+  "source_excerpt": "| Ticket type | No donation | Donation |\n| --- | --- | --- |\n| Members<br>[Unlimited entry from £65 per year](https://www.hrp.org.uk/membership/ \"Membership\")<br>Show tooltip<br>Close <br>### Members<br>[Unlimited entry from £65 per year](https://www.hrp.org.uk/membership/ \"Membership\") | Free | Free |\n| Adult<br>Show tooltip<br>Close <br>### Adult<br>age 18-64 | £38.00 | £41.80 |\n| Child age 5-15<br>Show tooltip<br>Close <br>### Child age 5-15<br>Children aged 5-15 must be accompanied by an adult. | £19.00 | £21.00 |\n",
+  "claim": {
+    "field": "optional_donation_price",
+    "qualifiers": "Optional 10% donation.",
+    "quote": "| Ticket type | No donation | Donation |\n| --- | --- | --- |\n| Members<br>[Unlimited entry from £65 per year](https://www.hrp.org.uk/membership/ \"Membership\")<br>Show tooltip<br>Close <br>### Members<br>[Unlimited entry from £65 per year](https://www.hrp.org.uk/membership/ \"Membership\") | Free | Free |\n| Adult<br>Show tooltip<br>Close <br>### Adult<br>age 18-64 | £38.00 | £41.80 |\n| Child age 5-15<br>Show tooltip<br>Close <br>### Child age 5-15<br>Children aged 5-15 must be accompanied by an mah",
+    "source_reference": "source-2",
+    "text": "Adult (18–64): £41.80 with donation, £3.80 extra."
+  },
+  "expected_error": "verifier_quote_not_in_snapshot"
+}

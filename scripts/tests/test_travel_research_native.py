@@ -180,6 +180,16 @@ class NativeTests(unittest.TestCase):
             client = native.Transport("fixture-secret")
             client.post("sources", {});self.assertEqual(opener.open.call_args.kwargs["timeout"], 35)
             client.post("heartbeat", {});self.assertEqual(opener.open.call_args.kwargs["timeout"], 2)
+            for operation in ("heartbeat", "pending", "claim", "receipt", "sources", "result"):
+                client.post(operation, {})
+                request = opener.open.call_args.args[0]
+                self.assertEqual(request.full_url, native.ENDPOINT + operation)
+                self.assertEqual(request.get_method(), "POST")
+                self.assertEqual(request.get_header("User-agent"), "CallMeIE-Owned-Evidence/1.0")
+                self.assertEqual(request.get_header("Content-type"), "application/json")
+                self.assertEqual(request.get_header("X-research-worker-secret"), "fixture-secret")
+                self.assertEqual(request.data, b"{}")
+                self.assertEqual(opener.open.call_args.kwargs["timeout"], 35 if operation == "sources" else 2)
 
     def test_web_wrapper_audit_allows_only_literal_public_research(self):
         parsed = native.literal_web_arguments("text(await tools.web__run({system2_search_query:[{q:'Tower hours'}],response_length:'short'}));")
@@ -462,6 +472,41 @@ class NativeTests(unittest.TestCase):
             envelope=native.run_request(self.cfg,self.claim,self.root,self.transport,Mock())
         self.assertEqual(envelope["result"]["status"],"failed");self.assertIsNone(envelope["result"]["verification"])
         self.assertEqual({x["field"] for x in envelope["result"]["missing_coverage"]},set(self.brief["required_fields"]))
+
+    def test_quote_mismatch_retains_private_diagnostic_and_failed_immutable_return(self):
+        # The actual v3 verifier copied a 500-character table quote then invented
+        # its final three characters. Keep that failure; never repair its quote.
+        fixture=json.loads((Path(__file__).resolve().parents[2]/"tests/fixtures/retained_v3_quote_mismatch.json").read_text("utf-8"))
+        page=fixture["source_excerpt"]
+        self.brief["required_fields"]=["optional_donation_price"]
+        self.claim["brief_hash"]=digest(self.brief)
+        self.candidate["claims"][0]["field"]="optional_donation_price"
+        self.snapshots[0].update(reference="source-2",page_text=page,content_hash=digest(page))
+        self.verified["claims"]=[copy.deepcopy(fixture["claim"])]
+        with patch.object(native,"run_stage",side_effect=self.fake_stage) as stage:
+            envelope=native.run_request(self.cfg,self.claim,self.root,self.transport,Mock())
+        diagnostic=native.read(self.root/"request-failure.json")
+        self.assertEqual(stage.call_count,2)
+        self.assertEqual(diagnostic["phase"],"verification_validation")
+        self.assertEqual(diagnostic["validation_code"],"verifier_quote_not_in_snapshot")
+        self.assertEqual(diagnostic["invalid_quote_fields"],["optional_donation_price"])
+        self.assertNotIn("£38",canonical(diagnostic))
+        self.assertEqual(envelope["result"]["status"],"failed")
+        self.assertIsNone(envelope["result"]["verification"])
+        self.assertEqual(self.verified["claims"][0]["quote"],fixture["claim"]["quote"])
+        before=(self.root/"return.json").read_bytes()
+        self.assertEqual(native.recover_return(self.root,self.claim,"do not replace"),envelope)
+        self.assertEqual((self.root/"return.json").read_bytes(),before)
+
+    def test_provider_failure_text_is_not_copied_to_diagnostic_or_return(self):
+        private="PRIVATE_PROVIDER_MESSAGE_WITH_SECRET"
+        with patch.object(native,"run_stage",side_effect=ValueError(private)):
+            envelope=native.run_request(self.cfg,self.claim,self.root,self.transport,Mock())
+        diagnostic=native.read(self.root/"request-failure.json")
+        self.assertEqual(diagnostic["phase"],"research")
+        self.assertIsNone(diagnostic["validation_code"])
+        self.assertNotIn(private,canonical(diagnostic))
+        self.assertNotIn(private,canonical(envelope))
 
     def test_failed_verifier_has_no_verification_success_envelope(self):
         self.verified={key:value for key,value in failed_result(self.brief,"No supported facts.").items() if key not in ("schema","verification")}

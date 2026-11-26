@@ -111,7 +111,7 @@ class Transport:
             def redirect_request(self, req, fp, code, msg, headers, newurl):
                 raise ValueError("research_redirect_forbidden")
         request = urllib.request.Request(ENDPOINT + operation, data=canonical(body).encode(),
-            headers={"Content-Type": "application/json", "x-research-worker-secret": self.secret}, method="POST")
+            headers={"Content-Type": "application/json", "x-research-worker-secret": self.secret, "User-Agent": "CallMeIE-Owned-Evidence/1.0"}, method="POST")
         try:
             with urllib.request.build_opener(NoRedirect).open(request, timeout=35 if operation == "sources" else 2) as response:
                 raw = response.read(200001)
@@ -527,7 +527,15 @@ supported claim or missing_coverage with an honest reason. Check the precise vis
 date and all price/donation/fee/last-entry distinctions; dated schedules outrank
 conflicting generic copy. Do not infer availability. Include relevant source/tool
 failures and conflicts as uncertainty. Each claim cites a snapshot reference and
-an exact supporting quote. Destination is null unless both visitor entrance and
+an exact supporting quote. Copy the shortest contiguous supporting span verbatim;
+never rewrite, splice, pad or invent characters to fit its limit. For a table,
+prefer its complete relevant row or header-through-row span, preserving column
+meaning without clipping into another row. Keep all applicable adult age, ticket
+and donation qualifications; do not use punctuation-only placeholder qualifiers.
+Check the requested kind of visit as well as its date: an evening-event meeting
+point does not establish ordinary daytime admission. If the applicable visitor
+entrance remains unverified, mark it missing and leave destination null.
+Destination is null unless both visitor entrance and
 address are verified; its text must appear in the supporting quote. A complete
 status requires all requested fields supported;
 partial requires useful supported facts; failed means no useful verified facts.
@@ -611,12 +619,18 @@ def run_request(cfg, claim, directory, transport, job_class):
     candidate_shape, verification_shape = schemas(claim["brief"])
     store(directory / "research.schema.json", candidate_shape, exclusive=True)
     store(directory / "verification.schema.json", verification_shape, exclusive=True)
+    phase = "research"
     try:
         candidate = run_stage(cfg, claim, directory, "research", RESEARCH_PROMPT + canonical(claim["brief"]), transport, job_class)
+        phase = "candidate_validation"
         validate_candidate(candidate, claim["brief"])
+        phase = "source_fetch"
         sources, inputs = fetch_sources(claim, directory, candidate, transport)
+        phase = "verification"
         verified = run_stage(cfg, claim, directory, "verification", VERIFY_PROMPT + canonical(inputs), transport, job_class)
+        phase = "verification_validation"
         validate_verifier_output(verified, claim["brief"], sources["snapshots"])
+        phase = "verification_receipt"
         receipt = read(directory / "verification.receipt.json")
         require(receipt["completed"] is True and receipt["output_hash"] == digest(verified), "verifier_receipt_mismatch")
         result = {"schema": RESULT_SCHEMA, **verified, "verification": {
@@ -625,6 +639,21 @@ def run_request(cfg, claim, directory, transport, job_class):
         if verified["status"] == "failed":
             result["verification"] = None
     except Exception as exc:
+        # These validators raise fixed contract codes. Provider/model exception
+        # text is deliberately excluded from both this diagnostic and the return.
+        code = str(exc) if type(exc) is ValueError and phase in ("candidate_validation", "verification_validation") else None
+        diagnostic = {"schema": "travel-research.request-failure/v1", **binding(claim),
+                      "at": time.time(), "phase": phase, "error_type": type(exc).__name__,
+                      "validation_code": code}
+        if code == "verifier_quote_not_in_snapshot":
+            normalize = lambda text: " ".join(text.split()).casefold()
+            pages = {source["reference"]: source["page_text"] for source in sources["snapshots"]}
+            diagnostic["invalid_quote_fields"] = [item["field"] for item in verified["claims"]
+                if isinstance(item, dict) and item.get("field") in required_fields(claim["brief"])
+                and isinstance(item.get("quote"), str) and
+                (item.get("source_reference") not in pages or
+                 normalize(item["quote"]) not in normalize(pages[item["source_reference"]]))]
+        store(directory / "request-failure.json", diagnostic, exclusive=True)
         result = failed_result(claim["brief"], "Research unavailable: " + type(exc).__name__ + ". No absence or availability conclusion was verified.")
     envelope = persist_return(directory, claim, result)
     try:
