@@ -180,7 +180,17 @@ class Research:
                 and (args["sms_consent"] or args["callback_consent"]),
                 "explicit_delivery_consent_required")
         evidence = text_arg(args, "consent_evidence", 400)
-        number = recipient(call, args) if args["sms_consent"] else callback_recipient(call, args)
+        sms_enabled = args["sms_consent"]
+        original_number = (call.get("customer") or {}).get("number")
+        sms_unavailable_reason = None
+        if (sms_enabled and args["callback_consent"]
+                and isinstance(original_number, str) and CALLBACK_LANDLINE_RE.fullmatch(original_number)
+                and not args.get("confirmed_mobile")):
+            # A private workflow's default text must not block its requested
+            # callback to the same original landline. No alternate is inferred.
+            sms_enabled = False
+            sms_unavailable_reason = "original_caller_is_landline_callback_preserved"
+        number = recipient(call, args) if sms_enabled else callback_recipient(call, args)
         revision = args.get("expected_revision")
         require(type(revision) is int and revision >= 0, "invalid_revision")
         visit = text_arg(args, "visit_date", 10)
@@ -216,7 +226,8 @@ class Research:
         record = {"schema": "travel-research.request/v1", "request_id": key, "revision": revision + 1,
                   "identity": identity, "brief": brief, "brief_hash": digest(brief), "state": "queued",
                   "created_at": self.clock(), "deadline": self.clock() + self.policy.deadline_seconds,
-                  "consent": {"sms": args["sms_consent"], "callback": args["callback_consent"], "evidence": evidence,
+                  "consent": {"sms": sms_enabled, "sms_requested": args["sms_consent"], "sms_unavailable_reason": sms_unavailable_reason,
+                              "callback": args["callback_consent"], "evidence": evidence,
                               "token": secrets.token_urlsafe(32), "at": self.clock()},
                   "supersedes": {"revision": old["revision"], "execution_id": old.get("execution_id")} if old else None}
         if old:

@@ -122,6 +122,24 @@ class BackendTests(unittest.TestCase):
         self.assertEqual(stored["brief"]["official_hosts"], list(self.policy.official_hosts))
         self.assertNotIn("consent", saved)
 
+    def test_default_sms_on_original_landline_keeps_requested_callback(self):
+        for number in ("+35361788870", "+442079460123"):
+            call = {**self.call, "id": "landline-" + number[-4:], "customer": {"number": number}}
+            saved = self.intake(call=call)
+            record = self.service.read(saved["request_id"])
+            self.assertEqual(record["identity"]["customer"]["number"], number)
+            self.assertTrue(record["consent"]["callback"])
+            self.assertTrue(record["consent"]["sms_requested"])
+            self.assertFalse(record["consent"]["sms"])
+            self.assertEqual(record["consent"]["sms_unavailable_reason"], "original_caller_is_landline_callback_preserved")
+
+    def test_landline_sms_only_does_not_infer_callback_or_another_number(self):
+        call = {**self.call, "customer": {"number": "+35361788870"}}
+        with self.assertRaisesRegex(ValueError, "ask_for_and_confirm_mobile"):
+            self.intake(args={**self.args, "callback_consent": False}, call=call)
+        with self.assertRaisesRegex(ValueError, "ask_for_and_confirm_mobile"):
+            self.intake(args={**self.args, "confirmed_mobile": "+447700900123", "mobile_confirmed": False}, call=call)
+
     def test_callback_only_is_allowed_but_no_consent_is_rejected(self):
         saved = self.intake({**self.args, "sms_consent": False})
         self.assertFalse(self.service.read(saved["request_id"])["consent"]["sms"])
@@ -133,7 +151,7 @@ class BackendTests(unittest.TestCase):
             saved = self.intake({**self.args, "sms_consent": False}, call)
             self.assertEqual(self.service.read(saved["request_id"])["identity"]["customer"]["number"], number)
             with self.assertRaises((HTTPException, ValueError)):
-                self.intake({**self.args, "sms_consent": True}, {**call, "id": "sms-" + number[1:]})
+                self.intake({**self.args, "sms_consent": True, "callback_consent": False}, {**call, "id": "sms-" + number[1:]})
             with self.assertRaises((HTTPException, ValueError)):
                 self.intake({**self.args, "sms_consent": False, "confirmed_mobile": "+447700900999", "mobile_confirmed": True}, {**call, "id": "alternate-" + number[1:]})
 
