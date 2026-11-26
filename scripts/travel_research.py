@@ -209,7 +209,8 @@ class Research:
         except ValueError as exc:
             raise HTTPException(422, str(exc))
         brief = {"schema": "travel-research.brief/v2", "timezone": "Europe/London",
-                 "visit_date": visit, "question": text_arg(args, "question", 800),
+                 "visit_date": visit, "requested_at": datetime.fromtimestamp(self.clock(), ZoneInfo("Europe/London")).isoformat(),
+                 "question": text_arg(args, "question", 800),
                  "location": text_arg(args, "location", 200), "travel_mode": mode,
                  "required_fields": fields, "official_hosts": list(self.policy.official_hosts)}
         record = {"schema": "travel-research.request/v1", "request_id": key, "revision": revision + 1,
@@ -609,6 +610,9 @@ def validate_result(result, record, now, proof=None, *, delivery=False):
         require(any(s.get("state") in ("exited", "unknown") for s in record.get("stages", {}).values()), "terminal_failure_receipt_required")
         return
     require(bool(result["claims"]) and (result["status"] == "complete") == (not missing), "result_coverage_status_mismatch")
+    if {"other_fact", "dated_availability"} <= set(fields):
+        require({"other_fact", "dated_availability"} <= set(found),
+                "recommendation_requires_programme_and_dated_availability")
     stages = record.get("stages", {})
     require(all(stages.get(k, {}).get("state") == "exited" and stages[k].get("completed") is True
                 and stages[k].get("exit_code") == 0 for k in ("research", "verification")), "two_completed_native_stages_required")
@@ -629,7 +633,9 @@ def validate_result(result, record, now, proof=None, *, delivery=False):
     destination = result["destination"]
     if destination is not None:
         exact(destination, {"text", "source_reference", "quote"})
-        require("visitor_entrance" in found and "visitor_address" in found, "destination_requires_entrance_and_address")
+        require("visitor_address" in found
+                and ("visitor_entrance" not in fields or "visitor_entrance" in found),
+                "destination_requires_address_and_requested_entrance")
         require(isinstance(destination["text"], str) and 0 < len(destination["text"]) <= 200
                 and isinstance(destination["quote"], str) and 0 < len(destination["quote"]) <= 500, "invalid_destination")
         source = sources.get(destination["source_reference"])
@@ -692,6 +698,38 @@ def render_summary(result, field_labels=False):
     return text
 
 
+def render_callback_summary(result):
+    """Speak verified content, with the requested recommendation before logistics.
+
+    The original renderer still owns result validation and its conservative
+    length budget. Structured missing coverage remains in the stored result.
+    """
+    if result["status"] == "failed":
+        return "I could not verify the details you asked for, so I have no confirmed answer."
+    claims = sorted(result["claims"], key=lambda claim: claim["field"] != "other_fact")
+    bare_time_prefixes = {"opening_time": "It opens at ", "closing_time": "It closes at ",
+                          "last_admission": "Last admission is at "}
+    parts = []
+    for claim in claims:
+        text = claim["text"].rstrip(" .")
+        if (claim["field"] in bare_time_prefixes
+                and re.fullmatch(r"\d{1,2}(?::\d{2})?(?:\s*[ap]\.?m\.?)?", text, re.I)):
+            text = bare_time_prefixes[claim["field"]] + text
+        parts.append(text + ". " + claim["qualifiers"].rstrip(" .") + ".")
+    spoken = {normalized(claim[key].rstrip(" .")) for claim in claims for key in ("text", "qualifiers")}
+    uncertainties = []
+    for item in result["uncertainties"]:
+        text = item.rstrip(" .")
+        if normalized(text) not in spoken:
+            uncertainties.append(text + ".")
+            spoken.add(normalized(text))
+    if uncertainties:
+        parts.append(" ".join(uncertainties))
+    elif result["missing_coverage"] and not result["uncertainties"]:
+        parts.append("Some requested details remain unverified.")
+    return " ".join(parts)
+
+
 def render_sms(result, mode):
     require(result["status"] != "failed" and result["destination"] is not None, "no_verified_maps_destination")
     # Current-location navigation: no stale original location is embedded.
@@ -714,19 +752,19 @@ def callback_payload(record, profile, reservation):
     sms_text = ("The provider reports that your directions text was delivered." if sms["status"] == "delivered" else
                 "I've submitted your directions text. Delivery isn't confirmed yet." if sms["status"] == "accepted" else
                 "I can't confirm that the directions text was sent." if sms["status"] in ("unknown", "failed") else "")
-    visit = date.fromisoformat(record["brief"]["visit_date"])
-    human_date = visit.strftime("%A") + " " + str(visit.day) + " " + visit.strftime("%B %Y")
-    speech = "This is CallMeIE with the details you asked me to check for " + human_date + ". " + render_summary(record["result"], field_labels=True)
+    speech = "Hi, it's your London helper. Here's what I found. " + render_callback_summary(record["result"])
     if sms_text:
         speech += " " + sms_text
+    speech += " Bye for now."
     require(len(speech) <= 1200, "callback_speech_budget_exceeded")
     metadata = {"project": "CallMeIE", "purpose": "verified-travel-callback",
                 **{k: reservation[k] for k in ("request_id", "revision", "brief_hash", "execution_id", "result_hash", "attempt_id")}}
     assistant = {"firstMessage": speech, "firstMessageMode": "assistant-speaks-first", "firstMessageInterruptionsEnabled": False, "maxDurationSeconds": 90,
+                 "endCallPhrases": ["bye for now"],
                  "serverMessages": [], "voice": deepcopy(profile["voice"]),
                  "metadata": metadata,
                  "model": {"provider": profile["model"]["provider"], "model": profile["model"]["model"],
-                           "messages": [{"role": "system", "content": "Read only the provided checked summary and actual SMS status. Do not add facts, make bookings, send messages or promise another call. After the caller acknowledges, end politely with the native endCall tool; never pronounce tool names. Summary: " + speech}],
+                           "messages": [{"role": "system", "content": "This is a single-message callback. Read only the provided checked summary and actual SMS status, ending with Bye for now. Do not ask for acknowledgement or another question. Do not add facts, make bookings, send messages or promise another call. The closing phrase ends the call after speech finishes; never pronounce tool names. Summary: " + speech}],
                            "tools": [{"type": "endCall"}]}}
     if profile.get("transcriber"):
         assistant["transcriber"] = deepcopy(profile["transcriber"])
@@ -736,15 +774,20 @@ def callback_payload(record, profile, reservation):
 
 def tool_definition(slug, secret):
     strings = {k: {"type": "string"} for k in ("question", "visit_date", "location", "consent_evidence", "confirmed_mobile")}
+    strings["question"]["description"] = "Preserve the complete original request, including the actual recommendation or named exhibition wanted, visit time, interests and transport preferences or alternatives. Do not replace that goal with a venue logistics checklist."
+    strings["visit_date"]["description"] = "Exact YYYY-MM-DD date resolved in Europe/London, including tonight/today/tomorrow. Keep this precision internally; do not read out a long date unless needed to resolve ambiguity."
+    strings["location"]["description"] = "Caller-stated location when relevant. If no starting point was supplied, record 'starting point not supplied'; do not invent a location or ask for one solely for a current-location Maps link."
+    strings["consent_evidence"]["description"] = "Truthful authorization basis: the actual caller request, any explicitly configured private-helper delivery defaults, and any opt-outs. Do not invent or quote a yes that the caller did not say."
+    strings["confirmed_mobile"]["description"] = "Confirmed E.164 fallback mobile only when caller ID is missing or unsuitable. Never replace a suitable original caller number."
     return {"type": "function", "async": False,
-            "function": {"name": "requestTravelResearch", "description": "Save a short London research request only after reading back the exact date, complete question, requested facts, location and travel mode and hearing agreement. Obtain separate yes/no consent for a Maps SMS and one short callback; at least one must be requested. Record the caller's consent words. A callback-only request is allowed. Use the original caller mobile; confirm a fallback only when caller ID is unsuitable. The fixed successful tool acknowledgement ends this call after durable storage. Do not speak a separate acknowledgement or narrate a tool name.",
+            "function": {"name": "requestTravelResearch", "description": "Save the complete London research request once the caller has finished. Preserve the requested recommendation and select only relevant required_fields. Follow this helper's configured delivery policy and all caller opt-outs; do not repeat permission questions for delivery already requested or explicitly configured as a private default. Record the real authorization basis, not invented consent words. At least one delivery channel must be authorized. Use the original suitable caller number; an original landline can receive a callback-only request without collecting a mobile. Confirm an alternate mobile only when genuinely needed. The fixed success message follows durable storage and ends this call; do not add a separate acknowledgement or narrate a tool name.",
                          "parameters": {"type": "object", "additionalProperties": False,
-                                        "properties": {**strings, "required_fields": {"type": "array", "items": {"type": "string", "enum": list(FIELDS)}, "minItems": 1}, "travel_mode": {"type": "string", "enum": ["walking", "transit", "driving", "bicycling"]}, "expected_revision": {"type": "integer", "minimum": 0}, "sms_consent": {"type": "boolean"}, "callback_consent": {"type": "boolean"}, "mobile_confirmed": {"type": "boolean"}},
+                                        "properties": {**strings, "required_fields": {"type": "array", "description": "Only facts needed to answer the actual request, not every available field. Use other_fact for a recommendation or named exhibition. Add dated_availability, closing_time, price, visitor_address or route only when relevant. Do not substitute logistics for the requested recommendation.", "items": {"type": "string", "enum": list(FIELDS)}, "minItems": 1}, "travel_mode": {"type": "string", "description": "Primary requested mode. Tube or bus with walking uses transit; preserve walking and taxi alternatives in question. Do not ask again for a mode already supplied.", "enum": ["walking", "transit", "driving", "bicycling"]}, "expected_revision": {"type": "integer", "minimum": 0}, "sms_consent": {"type": "boolean", "description": "Directions SMS authorized by the actual request or explicitly configured private-helper default, unless declined. False for an unsuitable SMS number without a confirmed fallback; an original landline can still receive a callback."}, "callback_consent": {"type": "boolean", "description": "One callback authorized by the actual request or explicitly configured private-helper default, unless declined. Do not ask again for an already requested callback."}, "mobile_confirmed": {"type": "boolean", "description": "True only when an alternate mobile was actually read back and confirmed; private delivery defaults do not confirm a new number."}},
                                         "required": ["question", "visit_date", "location", "travel_mode", "required_fields", "expected_revision", "sms_consent", "callback_consent", "consent_evidence"]}},
             "server": {"url": "https://api.callmeie.ie/vapi/travel-helper/" + slug, "headers": {"x-travel-helper-secret": secret}, "timeoutSeconds": 10},
             "messages": [{"type": "request-start", "content": ""},
-                         {"type": "request-complete", "role": "assistant", "content": "Your request is saved. I'll check the information and use the follow-up options you agreed to. Goodbye.", "endCallAfterSpokenEnabled": True},
-                         {"type": "request-failed", "role": "assistant", "content": "I cannot save a research follow-up right now, so I cannot promise a callback. We can continue on this call.", "endCallAfterSpokenEnabled": False}]}
+                         {"type": "request-complete", "role": "assistant", "content": "Saved. I'll check it and get back to you. Bye.", "endCallAfterSpokenEnabled": True},
+                         {"type": "request-failed", "role": "assistant", "content": "I can't arrange the follow-up right now. I can help here.", "endCallAfterSpokenEnabled": False}]}
 
 
 def install(app, service):

@@ -14,8 +14,10 @@ DESTINATION_RULE = (
     "Return a destination only when its exact sourced text contains one full UK postcode "
     "also present in the visitor_address quote, plus a distinctive sourced venue or street "
     "component from that address quote. A postcode alone, London plus a postcode, or a "
-    "generic or directional gate/entrance label is insufficient. Confirm the address and "
-    "entrance concern the venue in the original brief. Otherwise return null and explain "
+    "generic or directional gate/entrance label is insufficient. Confirm the address "
+    "concerns the venue selected to answer the original brief. A verified visitor entrance is "
+    "additionally required only when visitor_entrance is explicitly requested. If these "
+    "requirements are not met, return null and explain "
     "in uncertainties that a sufficiently specific Maps destination could not be verified."
 )
 
@@ -173,6 +175,11 @@ def result_schema(fields):
         "Complete means no missing fields; partial means useful supported facts plus missing fields; failed has no claims and null destination. "
         "Keep spoken claim text, qualifiers, missing-field explanations and uncertainties together within 750 characters, "
         "including brief punctuation and labels, so the backend's 900-character spoken-summary budget is respected.")
+    if {"other_fact", "dated_availability"} <= set(fields):
+        schema["description"] += (" For this recommendation request, complete or partial requires both a verified "
+            "named programme and its relevance in other_fact, and dated suitability in dated_availability. "
+            "Venue logistics alone are insufficient. If either is missing, return failed with no claims, "
+            "all requested fields missing, null destination and an honest uncertainty explaining the failure.")
     return schema
 
 
@@ -214,10 +221,15 @@ def validate_verifier_output(value, brief, snapshots):
         require(not present and value["destination"] is None and value["uncertainties"], "dishonest_failed_verifier_result")
         return value
     require(present and (value["status"] == "complete") == (not missing), "verifier_status_coverage_mismatch")
+    if {"other_fact", "dated_availability"} <= set(fields):
+        require({"other_fact", "dated_availability"} <= present,
+                "recommendation_requires_programme_and_dated_availability")
     destination = value["destination"]
     if destination is not None:
         exact(destination, {"text", "source_reference", "quote"})
-        require({"visitor_entrance", "visitor_address"} <= present, "destination_needs_entrance_and_address")
+        require("visitor_address" in present
+                and ("visitor_entrance" not in fields or "visitor_entrance" in present),
+                "destination_needs_address_and_requested_entrance")
         short(destination["text"], 200)
         short(destination["quote"], 500)
         source = sources.get(destination["source_reference"])

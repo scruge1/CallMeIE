@@ -335,8 +335,8 @@ class TravelHelperTests(unittest.TestCase):
         self.assertIs(tool["function"]["parameters"]["additionalProperties"], False)
         self.assertEqual(tool["messages"], [
             {"type": "request-start", "content": ""},
-            {"type": "request-complete", "role": "assistant", "content": "The directions text has been submitted. Open the link when it arrives.", "endCallAfterSpokenEnabled": False},
-            {"type": "request-failed", "role": "assistant", "content": "I cannot confirm a directions text was sent. I will not retry it automatically. Would you like spoken directions?", "endCallAfterSpokenEnabled": False},
+            {"type": "request-complete", "role": "assistant", "content": "I've submitted the directions text. Open it when it arrives.", "endCallAfterSpokenEnabled": False},
+            {"type": "request-failed", "role": "assistant", "content": "I can't confirm the text was sent.", "endCallAfterSpokenEnabled": False},
         ])
         self.assertTrue(all("messages" not in t for t in tools if t["function"]["name"] != "sendDirections"))
 

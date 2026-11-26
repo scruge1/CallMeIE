@@ -442,11 +442,14 @@ class BackendTests(unittest.TestCase):
         self.assertEqual(assistant["metadata"]["request_id"], claim["request_id"])
         self.assertIn("Delivery isn't confirmed yet", assistant["firstMessage"])
         self.assertFalse(assistant["firstMessageInterruptionsEnabled"])
-        self.assertIn("Thursday 26 November 2026", assistant["firstMessage"])
+        self.assertNotIn("Thursday 26 November 2026", assistant["firstMessage"])
+        self.assertTrue(assistant["firstMessage"].endswith("Bye for now."))
+        self.assertEqual(assistant["endCallPhrases"], ["bye for now"])
+        self.assertEqual(self.service.read(claim["request_id"])["brief"]["visit_date"], "2026-11-26")
         self.deliver(claim); self.sms.assert_awaited_once()
         self.assertEqual(sum(len(c.args) > 1 and c.args[1] == "POST" for c in self.vapi.call_args_list), 1)
 
-    def test_callback_labels_bare_times_without_changing_default_summary_or_result(self):
+    def test_callback_explains_bare_times_without_changing_default_summary_or_result(self):
         claim, envelope = self.ready()
         result = deepcopy(envelope["result"])
         # Deliberately reorder the fields: their meaning comes from the typed
@@ -464,9 +467,12 @@ class BackendTests(unittest.TestCase):
         self.assertEqual(research.render_summary(result), expected)
         payload = research.callback_payload(record, self.profile, reservation)
         speech = payload["assistant"]["firstMessage"]
-        self.assertIn("Last admission: 15:00.", speech)
-        self.assertIn("Opening time: 09:00.", speech)
-        self.assertIn("Closing time: 16:30.", speech)
+        self.assertIn("Last admission is at 15:00.", speech)
+        self.assertIn("It opens at 09:00.", speech)
+        self.assertIn("It closes at 16:30.", speech)
+        self.assertNotIn("dated availability", speech)
+        self.assertEqual(speech.count("Ticket availability remains unverified."), 1)
+        self.assertTrue(speech.endswith("Bye for now."))
         self.assertTrue(payload["assistant"]["model"]["messages"][0]["content"].endswith(speech))
         self.assertLessEqual(len(speech), 1200)
         self.assertEqual(record, before)
