@@ -680,10 +680,11 @@ def effect_reservation(record, kind, now, extra=None):
             **(extra or {})}
 
 
-def render_summary(result):
+def render_summary(result, field_labels=False):
     if result["status"] == "failed":
         return "I could not verify the requested details within this research attempt. I have no confirmed information to add."
-    text = " ".join(c["text"].rstrip(" .") + ". " + c["qualifiers"].rstrip(" .") + "." for c in result["claims"])
+    labels = {"opening_time": "Opening time: ", "closing_time": "Closing time: ", "last_admission": "Last admission: "} if field_labels else {}
+    text = " ".join(labels.get(c["field"], "") + c["text"].rstrip(" .") + ". " + c["qualifiers"].rstrip(" .") + "." for c in result["claims"])
     if result["missing_coverage"]:
         text += " I could not verify " + ", ".join(c["field"].replace("_", " ") for c in result["missing_coverage"]) + "."
     if result["uncertainties"]:
@@ -715,7 +716,7 @@ def callback_payload(record, profile, reservation):
                 "I can't confirm that the directions text was sent." if sms["status"] in ("unknown", "failed") else "")
     visit = date.fromisoformat(record["brief"]["visit_date"])
     human_date = visit.strftime("%A") + " " + str(visit.day) + " " + visit.strftime("%B %Y")
-    speech = "This is CallMeIE with the details you asked me to check for " + human_date + ". " + render_summary(record["result"])
+    speech = "This is CallMeIE with the details you asked me to check for " + human_date + ". " + render_summary(record["result"], field_labels=True)
     if sms_text:
         speech += " " + sms_text
     require(len(speech) <= 1200, "callback_speech_budget_exceeded")

@@ -446,6 +446,35 @@ class BackendTests(unittest.TestCase):
         self.deliver(claim); self.sms.assert_awaited_once()
         self.assertEqual(sum(len(c.args) > 1 and c.args[1] == "POST" for c in self.vapi.call_args_list), 1)
 
+    def test_callback_labels_bare_times_without_changing_default_summary_or_result(self):
+        claim, envelope = self.ready()
+        result = deepcopy(envelope["result"])
+        # Deliberately reorder the fields: their meaning comes from the typed
+        # field, not from a caller remembering the order of three bare times.
+        result["claims"] = [{"field": name, "text": value, "qualifiers": "Daytime visit.",
+                             "source_reference": "source-1", "quote": value}
+                            for name, value in (("last_admission", "15:00."),
+                                ("opening_time", "09:00."), ("closing_time", "16:30."))]
+        record = self.service.read(claim["request_id"])
+        record.update(result=result, result_hash=digest(result))
+        reservation = {**binding(claim), "result_hash": record["result_hash"], "attempt_id": "render-only"}
+        before = deepcopy(record)
+        expected = ("15:00. Daytime visit. 09:00. Daytime visit. 16:30. Daytime visit. "
+                    "I could not verify dated availability. Unverified: Ticket availability remains unverified..")
+        self.assertEqual(research.render_summary(result), expected)
+        payload = research.callback_payload(record, self.profile, reservation)
+        speech = payload["assistant"]["firstMessage"]
+        self.assertIn("Last admission: 15:00.", speech)
+        self.assertIn("Opening time: 09:00.", speech)
+        self.assertIn("Closing time: 16:30.", speech)
+        self.assertTrue(payload["assistant"]["model"]["messages"][0]["content"].endswith(speech))
+        self.assertLessEqual(len(speech), 1200)
+        self.assertEqual(record, before)
+        self.assertEqual(payload["customer"], self.call["customer"])
+        self.assertEqual(payload["assistant"]["model"]["tools"], [{"type": "endCall"}])
+        self.assertEqual(research.render_summary(result), expected)
+        self.sms.assert_not_called(); self.vapi.assert_not_called()
+
     def test_callback_only_result_uses_no_sms(self):
         self.args["sms_consent"] = False; claim, envelope = self.ready(); self.service.result(envelope)
         self.deliver(claim); self.sms.assert_not_called()
