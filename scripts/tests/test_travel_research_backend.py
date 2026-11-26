@@ -592,6 +592,22 @@ class BackendTests(unittest.TestCase):
         self.assertEqual(self.client.post("/internal/travel-research/deliver", headers={"x-research-delivery-secret": self.policy.worker_secret}, json={}).status_code, 401)
         self.assertEqual(self.client.post("/internal/travel-research/worker/sources", json={}).status_code, 401)
 
+    def test_tool_schema_omits_unsupported_uniqueness_but_intake_rejects_duplicates(self):
+        definition = research.tool_definition("fixture", "secret")
+        fields = definition["function"]["parameters"]["properties"]["required_fields"]
+        self.assertNotIn("uniqueItems", fields)
+        self.assertEqual(fields["minItems"], 1)
+        self.assertEqual(fields["items"]["enum"], list(research.FIELDS))
+        duplicated = {**self.args, "required_fields": ["opening_time", "opening_time"]}
+        with self.assertRaisesRegex(ValueError, "invalid_required_fields"):
+            research.required_fields(duplicated)
+        with self.assertRaises(HTTPException) as rejected:
+            self.intake(duplicated)
+        self.assertEqual(rejected.exception.status_code, 422)
+        self.assertEqual(rejected.exception.detail, "invalid_required_fields")
+        self.assertIsNone(self.service.pending())
+        self.sms.assert_not_called(); self.vapi.assert_not_called()
+
     def test_fixed_intake_ack_only_selects_completion_after_durable_store(self):
         messages = {m["type"]: m for m in research.tool_definition("fixture", "secret")["messages"]}
         self.assertTrue(messages["request-complete"]["endCallAfterSpokenEnabled"])

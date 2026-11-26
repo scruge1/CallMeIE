@@ -770,7 +770,11 @@ class Tick:
             self.future = self.operation = self.message_body = self.message_path = None
             try:
                 response = future.result()
-                if operation == "pending" and response.get("request"):
+                if operation == "heartbeat":
+                    # A slow owner pass must not consume one heartbeat only to
+                    # enqueue another before advancing its acknowledged work.
+                    self.next_heartbeat = time.time() + 15
+                elif operation == "pending" and response.get("request"):
                     self.prepare_claim(response["request"])
                 elif operation == "claim":
                     self.accept_claim_response(response)
