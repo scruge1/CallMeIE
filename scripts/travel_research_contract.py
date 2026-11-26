@@ -221,7 +221,8 @@ def result_schema(fields, *, snapshots=None, candidate=None):
         "use the relevant complete row or the header through that row, preserving column "
         "meaning; do not clip into an unrelated row. If no intact span fits, mark the field unverified.")}
     claim = obj({"field": {"type": "string", "enum": fields}, "text": string(220),
-                 "qualifiers": {**string(180), "description": "A concise applicable qualification, including relevant age, ticket and visit scope; never a punctuation-only placeholder."},
+                 "qualifiers": {"type": "string", "minLength": 0, "maxLength": 180,
+                     "description": "Use an empty string when the complete claim sentence already includes every necessary qualification. Otherwise give a concise meaningful qualification. Preserve material age, ticket, donation and last-entry constraints in text or qualifiers; never add labels or filler."},
                  "source_reference": reference, "quote": quote})
     missing = obj({"field": {"type": "string", "enum": fields}, "reason": string(300)})
     destination = obj({"text": string(200), "source_reference": reference, "quote": quote})
@@ -284,7 +285,7 @@ def validate_verifier_output(value, brief, snapshots):
         require(claim["field"] in fields and claim["field"] not in present, "duplicate_or_unrequested_verifier_field")
         present.add(claim["field"])
         for field, limit in (("text", 220), ("qualifiers", 180), ("quote", 500)):
-            short(claim[field], limit)
+            short(claim[field], limit, empty=(field == "qualifiers" and claim[field] == ""))
         source = sources.get(claim["source_reference"])
         require(source is not None and normalize(claim["quote"]) in normalize(source["page_text"]), "verifier_quote_not_in_snapshot")
     for item in value["missing_coverage"]:
@@ -316,7 +317,9 @@ def validate_verifier_output(value, brief, snapshots):
                 and normalize(destination["quote"]) in normalize(source["page_text"]), "verifier_destination_not_supported")
         address = next(claim for claim in value["claims"] if claim["field"] == "visitor_address")
         validate_maps_anchor(destination["text"], address["quote"])
-    speech = " ".join(c["text"].rstrip(" .") + ". " + c["qualifiers"].rstrip(" .") + "." for c in value["claims"])
+    speech = " ".join(c["text"].rstrip(" .") + "."
+                      + (" " + c["qualifiers"].rstrip(" .") + "." if c["qualifiers"] else "")
+                      for c in value["claims"])
     if value["missing_coverage"]:
         speech += " I could not verify " + ", ".join(c["field"].replace("_", " ") for c in value["missing_coverage"]) + "."
     if value["uncertainties"]:

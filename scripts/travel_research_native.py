@@ -573,9 +573,15 @@ timestamp unless the caller explicitly asked for those dates. Keep those details
 in the evidence quote. For tonight, dated_availability should simply establish
 that the named show is on tonight; closing_time should give tonight's closing time.
 Give tonight's applicable price, without unrelated daytime or child-price lists.
-Avoid meta labels such as Visitor address, Published exhibition hours, or visit
-confirmation labels. Use short meaningful qualifiers without repeating another
-claim, and state each necessary caveat only once. Prefer natural times like 9pm.
+Write each claim as a complete, concise conversational sentence. Set qualifiers to
+the empty string when that sentence already includes all necessary qualifications;
+do not invent labels or filler to populate it. Keep material age, donation, ticket
+and last-entry constraints in the claim or a short meaningful qualifier. Avoid
+meta labels such as Visitor address, Published exhibition hours, or confirmation
+labels. State each necessary caveat only once. Prefer natural times like 9pm.
+Translate source/tool failures into their practical consequence, such as I could
+not check live train times. Never speak tool names, fetch failures, HTTP errors,
+provider metadata or other internal diagnostics. Keep those details in the audit.
 Do not remove material uncertainty to meet the word budget. Give one compact,
 truthful caveat, and no introduction or goodbye; the callback wrapper supplies them.
 Do not fill the available character limits. Keep all spoken content within 600

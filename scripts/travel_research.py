@@ -612,7 +612,9 @@ def validate_result(result, record, now, proof=None, *, delivery=False):
     for claim in result["claims"]:
         exact(claim, {"field", "text", "qualifiers", "source_reference", "quote"})
         require(claim["field"] in fields and claim["field"] not in found and claim["field"] not in missing, "duplicate_or_unrequested_claim")
-        require(all(isinstance(claim[k], str) and 0 < len(claim[k]) <= limit for k, limit in (("text", 220), ("qualifiers", 180), ("quote", 500))), "claim_qualifiers_required")
+        require(all(isinstance(claim[k], str) and len(claim[k]) <= limit
+                    and ((claim[k] == "" or bool(claim[k].strip())) if k == "qualifiers" else bool(claim[k]))
+                    for k, limit in (("text", 220), ("qualifiers", 180), ("quote", 500))), "claim_qualifiers_required")
         found.append(claim["field"])
     require(set(found + missing) == set(fields), "unaccounted_requested_fields")
     if result["status"] == "failed":
@@ -701,7 +703,9 @@ def render_summary(result, field_labels=False):
     if result["status"] == "failed":
         return "I could not verify the requested details within this research attempt. I have no confirmed information to add."
     labels = {"opening_time": "Opening time: ", "closing_time": "Closing time: ", "last_admission": "Last admission: "} if field_labels else {}
-    text = " ".join(labels.get(c["field"], "") + c["text"].rstrip(" .") + ". " + c["qualifiers"].rstrip(" .") + "." for c in result["claims"])
+    text = " ".join(labels.get(c["field"], "") + c["text"].rstrip(" .") + "."
+                     + (" " + c["qualifiers"].rstrip(" .") + "." if c["qualifiers"] else "")
+                     for c in result["claims"])
     if result["missing_coverage"]:
         text += " I could not verify " + ", ".join(c["field"].replace("_", " ") for c in result["missing_coverage"]) + "."
     if result["uncertainties"]:
@@ -726,7 +730,7 @@ def render_callback_summary(result):
         if (claim["field"] in bare_time_prefixes
                 and re.fullmatch(r"\d{1,2}(?::\d{2})?(?:\s*[ap]\.?m\.?)?", text, re.I)):
             text = bare_time_prefixes[claim["field"]] + text
-        parts.append(text + ". " + claim["qualifiers"].rstrip(" .") + ".")
+        parts.append(text + "." + (" " + claim["qualifiers"].rstrip(" .") + "." if claim["qualifiers"] else ""))
     spoken = {normalized(claim[key].rstrip(" .")) for claim in claims for key in ("text", "qualifiers")}
     uncertainties = []
     for item in result["uncertainties"]:
