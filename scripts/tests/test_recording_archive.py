@@ -87,6 +87,34 @@ class RecordingArchiveTests(unittest.TestCase):
                 self.assertEqual(data['recordings'][0]['key'], 'recordings/0085.wav')
                 self.assertEqual(len(storage.signed_keys), 8)
 
+    def test_migrated_objects_keep_their_dates_in_both_admin_views(self):
+        import hashlib
+        import io
+        older = dict(object_row(2), ETag='"archive-etag"')
+        newer = dict(object_row(1), ETag='"fresh-etag"')
+        key_hash = hashlib.sha256((older['Key'] + '\0archive-etag').encode()).hexdigest()
+        original = '2026-09-01T12:34:56+00:00'
+        data = json.dumps({key_hash: original}).encode()
+        for endpoint in ('admin_recordings', 'admin_recordings_enriched'):
+            storage = Storage([{'Contents': [older, newer]}])
+            storage.get_object = lambda **kwargs: {'Body': io.BytesIO(data)}
+            with patch.dict(os.environ, {'CALLMEIE_RECORDING_TIMES_KEY': 'migration/test.json'}):
+                response = json.loads(self.invoke(endpoint, storage, token='fixture-admin', limit=2).body)
+            rows = response['recordings']
+            self.assertEqual([row['key'] for row in rows], [newer['Key'], older['Key']])
+            self.assertEqual(rows[1]['last_modified'], original)
+
+    def test_retired_date_index_leaves_normal_listing_available(self):
+        class MissingIndex(Exception):
+            pass
+        storage = Storage([{'Contents': [object_row(4)]}])
+        storage.exceptions = type('Errors', (), {'NoSuchKey': MissingIndex})
+        def missing(**kwargs):
+            raise MissingIndex()
+        storage.get_object = missing
+        with patch.dict(os.environ, {'CALLMEIE_RECORDING_TIMES_KEY': 'migration/expired.json'}):
+            self.assertEqual(latest_recording_objects(storage, 'bucket', 1), [object_row(4)])
+
     def test_actual_endpoint_auth_precedes_storage_access(self):
         for name in ('admin_recordings', 'admin_recordings_enriched'):
             storage = Storage([])

@@ -1006,6 +1006,7 @@ def _mirror_recording_to_hetzner(call_id: str, assistant_id: str,
                 Key=key,
                 Body=resp.content,
                 ContentType=ctype,
+                CacheControl="private, no-store",
                 Metadata={
                     "vapi-call-id": call_id,
                     "vapi-assistant-id": assistant_id,
