@@ -1,0 +1,13 @@
+[Unit]
+Description=Recover CallMeIE recording channels after storage outages
+After=docker.service network-online.target
+
+[Service]
+Type=oneshot
+StateDirectory=callmeie-recording-retry
+StateDirectoryMode=0700
+UMask=0077
+ExecStart=/usr/bin/python3 /opt/callmeie/ops/recording-retry/systemd-runner.py
+TimeoutStartSec=200
+NoNewPrivileges=true
+PrivateTmp=true

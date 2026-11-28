@@ -990,6 +990,10 @@ def _mirror_recording_to_hetzner(call_id: str, assistant_id: str,
         if not url:
             continue
         try:
+            from recording_write_guard import channel_exists, downloaded_recording, put_missing
+            stem = f"recordings/{call_id}{'' if label == 'mono' else '.stereo'}"
+            if channel_exists(s3, bucket, stem):
+                continue
             resp = _rq.get(
                 f"https://api.vapi.ai/call/{call_id}/{endpoint_for[label]}",
                 headers={"Authorization": f"Bearer {api_key}"},
@@ -1001,19 +1005,22 @@ def _mirror_recording_to_hetzner(call_id: str, assistant_id: str,
             if "mp3" in ctype.lower():
                 ext = ".mp3"
             key = f"recordings/{call_id}{'' if label == 'mono' else '.stereo'}{ext}"
-            s3.put_object(
-                Bucket=bucket,
-                Key=key,
-                Body=resp.content,
-                ContentType=ctype,
-                CacheControl="private, no-store",
-                Metadata={
-                    "vapi-call-id": call_id,
-                    "vapi-assistant-id": assistant_id,
-                    "channel": label,
-                    "mirrored-at": datetime.utcnow().isoformat() + "Z",
-                },
-            )
+            with downloaded_recording(resp) as body:
+                params = dict(
+                    Bucket=bucket,
+                    Key=key,
+                    Body=body,
+                    ContentType=ctype,
+                    CacheControl="private, no-store",
+                    Metadata={
+                        "vapi-call-id": call_id,
+                        "vapi-assistant-id": assistant_id,
+                        "channel": label,
+                        "mirrored-at": datetime.utcnow().isoformat() + "Z",
+                    },
+                )
+                if not put_missing(s3, bucket, stem, label, call_id, params):
+                    continue
             archived[label] = f"s3://{bucket}/{key}"
         except Exception as e:
             log_event(call_id, "recording-archive-failed", assistant_id,
