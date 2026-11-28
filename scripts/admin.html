@@ -2406,7 +2406,7 @@
       const ops = valueOf(opsRes, null);
       const health = valueOf(healthRes, null);
       const events = valueOf(eventsRes, []);
-      const recordings = valueOf(recRes, []);
+      const recordings = valueOf(recRes, null);
       state.actions = actionsData.actions || [];
       state.events = Array.isArray(events) ? events : [];
       view.innerHTML = `
@@ -2749,13 +2749,13 @@
       <section class="panel">
         <div class="panel-header">
           <div>
-            <h2 class="panel-title">Recordings ready <span class="badge">${rows.length}</span></h2>
+            <h2 class="panel-title">Recordings ${recordings === null ? '' : `ready <span class="badge">${rows.length}</span>`}</h2>
             <p class="panel-subtitle">Review before callbacks</p>
           </div>
           <button class="btn ghost" type="button" onclick="navigate('more','recordings')">Open</button>
         </div>
         <div class="panel-body">
-          ${rows.length ? rows.map(renderRecordingRow).join("") : '<div class="empty">No mirrored recordings yet.</div>'}
+          ${recordings === null ? '<p class="muted" role="status">Recording storage is temporarily unavailable. Refresh to try again.</p>' : rows.length ? rows.map(renderRecordingRow).join("") : '<div class="empty">No mirrored recordings yet.</div>'}
         </div>
       </section>`;
   }
