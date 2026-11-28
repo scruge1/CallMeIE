@@ -18,8 +18,21 @@ def channel_exists(s3, bucket, stem):
         try:
             header = s3.head_object(Bucket=bucket, Key=stem + ext)
         except ClientError as exc:
-            if exc.response.get('ResponseMetadata', {}).get('HTTPStatusCode') == 404:
+            status = exc.response.get('ResponseMetadata', {}).get('HTTPStatusCode')
+            if status == 404:
                 continue
+            if status == 403:
+                # Some HTTP edges return 403 for a missing cache-eligible media suffix.
+                # Authenticate a bucket listing before concluding either format is absent.
+                keys = {stem + '.wav', stem + '.mp3'}
+                pages = s3.get_paginator('list_objects_v2').paginate(Bucket=bucket, Prefix=stem + '.')
+                for page in pages:
+                    for obj in page.get('Contents', []):
+                        if obj['Key'] in keys:
+                            if obj['Size'] <= 0:
+                                raise ValueError('Existing recording channel is empty')
+                            return True
+                return False
             raise
         if header['ContentLength'] <= 0:
             raise ValueError('Existing recording channel is empty')

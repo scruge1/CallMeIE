@@ -59,6 +59,25 @@ class Regression(unittest.TestCase):
         scope.start()
         self.addCleanup(scope.stop)
 
+    def test_ambiguous_head_requires_authenticated_exact_listing(self):
+        from recording_write_guard import channel_exists
+        class Ambiguous:
+            def __init__(self, pages):self.pages=pages
+            def head_object(self, **kwargs):
+                raise ClientError({'ResponseMetadata':{'HTTPStatusCode':403},'Error':{'Code':'403'}}, 'HeadObject')
+            def get_paginator(self, operation):
+                if operation != 'list_objects_v2':raise AssertionError(operation)
+                return self
+            def paginate(self, **kwargs):
+                if kwargs!={'Bucket':'isolated','Prefix':'recordings/id.'}:raise AssertionError('unexpected scope')
+                if isinstance(self.pages, Exception):raise self.pages
+                return self.pages
+        sibling={'Key':'recordings/id.stereo.wav','Size':9}
+        self.assertFalse(channel_exists(Ambiguous([{'Contents':[sibling]}]),'isolated','recordings/id'))
+        self.assertTrue(channel_exists(Ambiguous([{}, {'Contents':[{'Key':'recordings/id.mp3','Size':5}]}]),'isolated','recordings/id'))
+        with self.assertRaises(PermissionError):channel_exists(Ambiguous(PermissionError()),'isolated','recordings/id')
+        with self.assertRaises(ValueError):channel_exists(Ambiguous([{'Contents':[{'Key':'recordings/id.wav','Size':0}]}]),'isolated','recordings/id')
+
     def test_unconditional_backend_race(self):
         store=Store();call=str(uuid.uuid4()); stem='recordings/'+call;key=stem+'.wav';barrier=threading.Barrier(2)
         def write():
