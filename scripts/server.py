@@ -948,7 +948,7 @@ def _hetzner_s3():
         endpoint_url=endpoint,
         aws_access_key_id=key_id,
         aws_secret_access_key=secret,
-        region_name="eu-central-1",
+        region_name=os.environ.get("HETZNER_OBJECT_STORAGE_REGION") or "eu-central-1",
         config=Config(signature_version="s3v4", s3={"addressing_style": "path"}),
     )
     return _HETZNER_S3_CLIENT
@@ -6566,7 +6566,7 @@ async def _probe_hetzner_bucket() -> dict:
         import boto3
         from botocore.config import Config
         s3 = boto3.client("s3", aws_access_key_id=ak, aws_secret_access_key=sk,
-                          endpoint_url=ep, region_name="eu-central",
+                          endpoint_url=ep, region_name=os.environ.get("HETZNER_OBJECT_STORAGE_REGION") or "eu-central",
                           config=Config(signature_version="s3v4",
                                         s3={"addressing_style": "path"}))
         s3.head_bucket(Bucket=bk)
@@ -6948,7 +6948,7 @@ async def admin_recordings(token: str = Query(""), limit: int = Query(50, ge=1, 
         import boto3
         from botocore.config import Config
         s3 = boto3.client("s3", aws_access_key_id=ak, aws_secret_access_key=sk,
-                          endpoint_url=ep, region_name="eu-central",
+                          endpoint_url=ep, region_name=os.environ.get("HETZNER_OBJECT_STORAGE_REGION") or "eu-central",
                           config=Config(signature_version="s3v4",
                                         s3={"addressing_style": "path"}))
         from recording_archive import latest_recording_objects
@@ -7411,7 +7411,7 @@ async def admin_recordings_enriched(token: str = Query(""), limit: int = Query(5
         import boto3
         from botocore.config import Config
         s3 = boto3.client("s3", aws_access_key_id=ak, aws_secret_access_key=sk,
-                          endpoint_url=ep, region_name="eu-central",
+                          endpoint_url=ep, region_name=os.environ.get("HETZNER_OBJECT_STORAGE_REGION") or "eu-central",
                           config=Config(signature_version="s3v4",
                                         s3={"addressing_style": "path"}))
         from recording_archive import latest_recording_objects
@@ -8406,7 +8406,7 @@ def _hetzner_presigned_for_call(call_id: str, expires: int = 3600):
             aws_access_key_id=ak,
             aws_secret_access_key=sk,
             endpoint_url=ep,
-            region_name="eu-central",
+            region_name=os.environ.get("HETZNER_OBJECT_STORAGE_REGION") or "eu-central",
             config=Config(signature_version="s3v4",
                           s3={"addressing_style": "path"}),
         )
